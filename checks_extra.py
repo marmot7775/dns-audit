@@ -7,6 +7,7 @@ import ipaddress
 import re
 import socket
 import defusedxml.ElementTree as ET
+from defusedxml import DefusedXmlException, EntitiesForbidden
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -223,6 +224,15 @@ def _lookup_records(name: str, rdtype: str, raise_on_failure: bool = False) -> L
         return []
 
 
+def _parses_as_url(url: str) -> bool:
+    """urlparse raises ValueError on some input, "https://[bad" for one."""
+    try:
+        urlparse(url)
+        return True
+    except ValueError:
+        return False
+
+
 def _make_issue(severity: str, issue: str, plain_english: str,
                 impact: str = "", fix: str = "") -> Dict[str, str]:
     return {
@@ -347,6 +357,19 @@ def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, A
         key = key.strip().lower()
         value = value.strip()
 
+        # RFC 8461 section 3.2: for a duplicated field every entry after the
+        # first SHALL be ignored, so the first value stays in force. mx is
+        # the one field that repeats by design.
+        if key != "mx" and key in seen_keys:
+            issues.append(_make_issue(
+                "warning", f"Duplicate policy field: '{key}'",
+                "RFC 8461 section 3.2 has senders ignore every entry after the first.",
+                f"The first '{key}' value is the one in force.",
+                f"Remove the duplicate '{key}' line.",
+            ))
+            continue
+        seen_keys.add(key)
+
         if key == "version":
             policy["version"] = value
             if value != "STSv1":
@@ -413,20 +436,14 @@ def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, A
                     "Set max_age to a number, e.g., max_age: 604800",
                 ))
         else:
+            # RFC 8461 section 3.2: unknown fields SHALL be ignored (the
+            # grammar's sts-policy-extension), so this is information.
             issues.append(_make_issue(
-                "warning", f"Unknown policy field: '{key}'",
-                "Valid fields are: version, mode, mx, max_age.",
-                "This field will be ignored.",
-                f"Remove '{key}' from the policy file.",
+                "info", f"Unknown policy field: '{key}'",
+                "Senders ignore policy fields RFC 8461 does not define, so this one has no effect.",
+                "",
+                f"Remove '{key}' unless it is a deliberate extension.",
             ))
-        if key != "mx" and key in seen_keys:
-            issues.append(_make_issue(
-                "error", f"Duplicate policy field: '{key}'",
-                "RFC 8461 requires each non-mx field to appear at most once.",
-                "The second value silently overwrites the first.",
-                f"Remove the duplicate '{key}' line.",
-            ))
-        seen_keys.add(key)
 
     if policy["version"] is None:
         issues.append(_make_issue("error", "Missing 'version' in policy file",
@@ -700,8 +717,11 @@ def _validate_tls_rpt_record(record: str, domain: str = "") -> Tuple[Dict[str, s
                 f"'{key}' appears more than once.", "", "Remove the duplicate."))
             continue
         if key not in _TLSRPT_VALID_TAGS:
-            issues.append(_make_issue("warning", f"Unknown TLS-RPT tag: '{key}'",
-                "Valid tags are: v, rua.", "", f"Remove '{key}'."))
+            # RFC 8460 section 3: parsers accept a superset of the spec and
+            # ignore unknown fields, so this is information.
+            issues.append(_make_issue("info", f"Unknown TLS-RPT tag: '{key}'",
+                "Receivers ignore TLS-RPT tags RFC 8460 does not define, so this one has no effect.",
+                "", f"Remove '{key}' unless it is a deliberate extension."))
         tags[key] = value
 
     if "v" not in tags:
@@ -725,8 +745,9 @@ def _validate_tls_rpt_record(record: str, domain: str = "") -> Tuple[Dict[str, s
                     issues.append(_make_issue("error", f"Invalid email in rua: '{uri}'",
                         "Must contain a valid email.", "", "Fix the email format."))
             elif uri_lower.startswith("https:"):
-                parsed = urlparse(uri)
-                if not parsed.netloc:
+                # urlparse raises ValueError on input like "https://[bad",
+                # which used to escape the check as an Error card.
+                if not _parses_as_url(uri) or not urlparse(uri).netloc:
                     issues.append(_make_issue("error", f"Invalid HTTPS URI: '{uri}'",
                         "Must be a valid URL.", "", "Fix the URL format."))
             else:
@@ -887,18 +908,27 @@ def _validate_bimi_record(record: str) -> Tuple[Dict[str, str], List[Dict]]:
             "No logo at this selector.", "", ""))
     else:
         logo_url = tags["l"]
-        parsed = urlparse(logo_url)
-        if parsed.scheme.lower() != "https":
+        parsed = None
+        if not _parses_as_url(logo_url):
+            issues.append(_make_issue("error", f"Logo URL is not a valid URI: '{logo_url}'",
+                "The l= value cannot be parsed as a URL, so no receiver can fetch the logo.",
+                "", "Publish a valid https:// URL to the SVG logo."))
+        else:
+            parsed = urlparse(logo_url)
+        if parsed is not None and parsed.scheme.lower() != "https":
             issues.append(_make_issue("error", "Logo URL is not HTTPS",
                 "Must use HTTPS.", "", "Change to HTTPS."))
-        if not parsed.path.lower().endswith(".svg"):
+        if parsed is not None and not parsed.path.lower().endswith(".svg"):
             issues.append(_make_issue("warning", "Logo URL does not end in .svg",
                 "BIMI logos must be SVG Tiny PS format.", "", "Use an SVG file with baseProfile='tiny-ps'."))
 
     if "a" in tags and tags["a"]:
         vmc_url = tags["a"]
-        parsed = urlparse(vmc_url)
-        if parsed.scheme.lower() != "https":
+        if not _parses_as_url(vmc_url):
+            issues.append(_make_issue("error", f"VMC URL is not a valid URI: '{vmc_url}'",
+                "The a= value cannot be parsed as a URL.", "",
+                "Publish a valid https:// URL to the VMC."))
+        elif urlparse(vmc_url).scheme.lower() != "https":
             issues.append(_make_issue("error", "VMC URL is not HTTPS",
                 "Must use HTTPS.", "", "Change to HTTPS."))
     elif "a" not in tags:
@@ -1056,7 +1086,7 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
     result["svg_validated"] = None
     result["svg_profile"] = None
 
-    if REQUESTS_AVAILABLE and result["logo_url"]:
+    if REQUESTS_AVAILABLE and result["logo_url"] and _parses_as_url(result["logo_url"]):
         try:
             try:
                 resp = _safe_fetch(
@@ -1263,6 +1293,23 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
                                 "The SVG file could not be parsed as XML.",
                                 "Logo will not display in email clients.",
                                 "Fix XML syntax errors in the SVG file.",
+                            ))
+                            result["svg_validated"] = False
+                        except DefusedXmlException as exc:
+                            # defusedxml refuses entity declarations and
+                            # external references with a ValueError, not a
+                            # ParseError, so an Illustrator export used to
+                            # escape this handler and leave BIMI "Not checked".
+                            if isinstance(exc, EntitiesForbidden):
+                                _title = "Logo declares XML entities, which SVG Tiny PS forbids"
+                            else:
+                                _title = "Logo references external XML resources, which SVG Tiny PS forbids"
+                            result["issues"].append(_make_issue(
+                                "warning", _title,
+                                "The SVG carries a DOCTYPE with entity declarations or external "
+                                "references. BIMI logos must be SVG Tiny PS, which permits neither.",
+                                "Logo will not display in email clients.",
+                                "Re-export the SVG without a DOCTYPE, as SVG Tiny PS.",
                             ))
                             result["svg_validated"] = False
         except (requests.exceptions.RequestException, OSError):

@@ -127,6 +127,7 @@ except ImportError:
 from spf_intelligence import smart_dkim_check
 from dns_tools import (
     get_resolver,
+    is_spf_record,
     get_dnssec_resolver,
     is_dmarc_version_tag,
     version_tag_deviations,
@@ -2375,7 +2376,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     LOOKUP_MECHANISMS = {"include", "a", "mx", "ptr", "exists", "redirect"}
     # Known mechanisms/modifiers (anything else is likely a typo)
     KNOWN_MECHANISMS = {"all", "include", "a", "mx", "ptr", "ip4", "ip6", "exists"}
-    KNOWN_MODIFIERS = {"redirect", "exp"}
+    # RFC 6652 registers ra, rp and rr with IANA alongside redirect and exp.
+    KNOWN_MODIFIERS = {"redirect", "exp", "ra", "rp", "rr"}
     # RFC 7208 §5.3: bare 'a'/'mx' may carry a dual-cidr-length suffix,
     # e.g. a/24, mx//64, a/24//64.
     DUAL_CIDR_MECHANISM_RE = re.compile(r"^(a|mx)(/\d{1,3})?(//\d{1,3})?$")
@@ -2431,7 +2433,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         result["lookup_target"] = domain
         return result
 
-    spf_records = [r for r in all_txt if r.strip().lower().startswith("v=spf1")]
+    spf_records = [r for r in all_txt if is_spf_record(r)]
 
     if not spf_records:
         result["status"] = "error"
@@ -2540,11 +2542,16 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             elif mod_name_lower == "exp":
                 pass  # exp= is informational, no validation needed
             elif mod_name_lower not in KNOWN_MODIFIERS:
-                _add_syntax(
-                    f"Unknown modifier: '{mod_name}'",
-                    f"'{mod_name}' is not a recognized SPF modifier. "
-                    "It may be a typo or misplaced DMARC/DKIM tag.",
-                    "Valid SPF modifiers are: redirect, exp.",
+                # RFC 7208 section 6: unrecognized modifiers MUST be ignored,
+                # wherever and however often they appear, so this is
+                # information and never a failure.
+                _add_issue(
+                    "info",
+                    f"Unknown modifier '{mod_name}' is ignored by receivers (RFC 7208 section 6)",
+                    f"'{mod_name}' is not a registered SPF modifier. Receivers ignore it, so it "
+                    "has no effect on SPF evaluation. It may be a typo or a DMARC or DKIM tag "
+                    "in the wrong record.",
+                    f"Remove '{mod_name}=' if it was not meant to be there.",
                 )
 
         elif ":" in raw_lower:
@@ -2612,14 +2619,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
                 seen_mechanisms.append(part)
 
             elif mech_name_lower == "ptr":
-                _add_issue(
-                    "warning",
-                    f"Deprecated 'ptr' mechanism: {part}",
-                    "The ptr mechanism is discouraged by RFC 7208 because it is slow and places "
-                    "a burden on reverse DNS infrastructure. Receivers must still process it, but "
-                    "its use is unreliable in practice.",
-                    "Remove the ptr mechanism. Use ip4:/ip6: or include: instead.",
-                )
+                # Reported once, by spf_recursive (merged below).
                 seen_mechanisms.append(part)
 
             elif mech_name_lower in KNOWN_MECHANISMS:
@@ -2644,14 +2644,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
                 all_mech = effective_qualifier + "all"
 
             elif mech_lower == "ptr":
-                _add_issue(
-                    "warning",
-                    "Deprecated 'ptr' mechanism",
-                    "The ptr mechanism is discouraged by RFC 7208 because it is slow and places "
-                    "a burden on reverse DNS infrastructure. Receivers must still process it, but "
-                    "its use is unreliable in practice.",
-                    "Remove the ptr mechanism. Use ip4:/ip6: or include: instead.",
-                )
+                # Reported once, by spf_recursive (merged below).
                 seen_mechanisms.append(part)
 
             elif mech_lower in KNOWN_MECHANISMS or DUAL_CIDR_MECHANISM_RE.match(mech_lower):
@@ -2699,12 +2692,19 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
 
     # Merge in findings from the recursive resolution (e.g. broken includes /
     # void lookups) that would otherwise be silently discarded.
+    #
+    # spf_recursive is the single source for the ptr and lookup-limit
+    # findings. This function and the transformer each used to add their own
+    # copy, so one record showed the same finding up to three times.
     for _rec_issue in spf_recursive_result.get("issues", []):
+        _over_limit = (_rec_issue.get("kind") == "lookup_limit"
+                       and _rec_issue.get("severity") == "error")
         _add_issue(
             _rec_issue.get("severity", "warning"),
             _rec_issue.get("issue", ""),
             _rec_issue.get("plain_english", ""),
             _rec_issue.get("fix", ""),
+            business_risk_key="SPF_PERMERROR" if _over_limit else None,
         )
 
     # RFC 7208 §4.6.4: "SPF implementations SHOULD limit 'void lookups' to two
@@ -2734,25 +2734,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             business_risk_key="SPF_PERMERROR",
         )
 
-    # ── Step 6: Lookup limit checks ─────────────────────────────
-    if lookup_count > 10:
-        _add_issue(
-            "error",
-            f"SPF exceeds 10-lookup limit ({lookup_count} lookups)",
-            "RFC 7208 limits SPF to 10 DNS lookups. Exceeding this causes "
-            "SPF to return a permanent error (permerror). It fails entirely, "
-            "as if no SPF record existed.",
-            "Audit your includes and remove services you no longer use. Consolidate senders where possible.",
-            business_risk_key="SPF_PERMERROR",
-        )
-    elif lookup_count == 10:
-        _add_issue(
-            "warning",
-            "SPF is at the 10-lookup limit",
-            "Adding any more includes or mechanisms that require DNS lookups "
-            "will push SPF over the limit, causing it to fail entirely.",
-            "Audit your includes and remove any services you no longer use to free up lookup slots.",
-        )
+    # ── Step 6: Lookup limit ─────────────────────────────────────
+    # Reported by spf_recursive and merged above.
 
     # ── Step 7: 'all' mechanism checks ──────────────────────────
     if all_mech == "+all":
@@ -3423,6 +3406,8 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
         for rdata in answers:
             flags = rdata.flags
             tag = rdata.tag.decode("utf-8") if isinstance(rdata.tag, bytes) else str(rdata.tag)
+            # RFC 8659 section 4.1: tag matching is case insensitive.
+            tag_l = tag.lower()
             value = rdata.value.decode("utf-8") if isinstance(rdata.value, bytes) else str(rdata.value)
             raw_records.append({
                 "flags": flags,
@@ -3431,26 +3416,26 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
                 "raw": f'{flags} {tag} "{value}"',
             })
 
-            if tag == "issue":
+            if tag_l == "issue":
                 result["has_issue"] = True
                 if value and value != ";":
                     # Extract CA name (strip any parameters after ;)
                     ca_name = value.split(";")[0].strip()
                     if ca_name:
                         result["authorized_cas"].append(ca_name)
-            elif tag == "issuewild":
+            elif tag_l == "issuewild":
                 result["has_issuewild"] = True
                 if value and value != ";":
                     ca_name = value.split(";")[0].strip()
                     if ca_name:
                         result["wildcard_cas"].append(ca_name)
-            elif tag == "iodef":
+            elif tag_l == "iodef":
                 result["has_iodef"] = True
                 result["iodef_destinations"].append(value)
 
             # Check for unknown critical flags
             if flags & 0x80:  # Issuer Critical flag
-                if tag not in ("issue", "issuewild", "iodef"):
+                if tag_l not in ("issue", "issuewild", "iodef"):
                     _add_issue(
                         "warning",
                         f"Unknown critical CAA tag: {tag}",
@@ -3876,6 +3861,11 @@ def _raw_check_dane(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
     result["mx_hostnames"] = [
         d.get("hostname", "") for d in mx_details if d.get("hostname")
     ]
+    # Per host, in MX order, so the card can tell a domain whose every MX
+    # host is the provider's from one that lists its own host beside them.
+    result["mx_host_providers"] = [
+        d.get("provider") or "" for d in mx_details if d.get("hostname")
+    ]
     # An MX lookup that never completed leaves mx_hosts empty for a reason that
     # is not "this domain has no MX hosts". DANE is keyed entirely on that list,
     # so the distinction has to travel with it.
@@ -3931,12 +3921,20 @@ def _raw_check_dane(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
             "mx_host": mx_host,
             "query_name": query_name,
             "found": False,
+            "validated": False,
             "records": [],
             "error": None,
         }
 
         try:
             answers = resolver.resolve(query_name, "TLSA")
+            # RFC 7672 section 2.2.1: the TLSA RRset that must validate is this
+            # one, in the MX host's zone, whatever the audited domain's own
+            # DNSSEC state. The AD flag on this answer says whether it did,
+            # read the way the DNSKEY check reads it.
+            _resp = getattr(answers, "response", None)
+            host_result["validated"] = bool(
+                _resp is not None and _resp.flags & dns.flags.AD)
             for rdata in answers:
                 usage = rdata.usage
                 selector = rdata.selector
@@ -3990,29 +3988,20 @@ def _raw_check_dane(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
 
         result["tlsa_records"].append(host_result)
 
-    # Cross-check: TLSA without DNSSEC. Only when the DNSSEC state was actually
-    # established. dnssec_ok is None when the DNSSEC lookup did not complete,
-    # and "your DNSSEC is not enabled" is then a claim this audit cannot make.
-    if result["has_tlsa"] and dnssec_ok is None:
-        _add_issue(
-            "info",
-            "DNSSEC state could not be determined",
-            "TLSA records are published for this domain, but the DNSSEC check did "
-            "not complete, so this audit cannot say whether DANE is effective. "
-            "DANE requires DNSSEC (RFC 7672 Section 2.2). Nothing here says DNSSEC "
-            "is missing, only that it was not read on this run.",
-            "Re-run the audit. If the DNSSEC check keeps timing out, verify the "
-            "domain's nameservers are answering DNSKEY queries.",
-        )
-    elif result["has_tlsa"] and not dnssec_ok:
-        _add_issue(
-            "error",
-            "TLSA records found but DNSSEC is not enabled",
-            "DANE requires DNSSEC to be secure. Without DNSSEC, an attacker can spoof "
-            "or strip the TLSA records, completely defeating DANE. Sending MTAs that "
-            "follow RFC 7672 will ignore TLSA records when DNSSEC validation fails.",
-            "Enable DNSSEC for your domain before relying on DANE.",
-        )
+    # TLSA that does not validate, per MX host. The audited domain's DNSSEC
+    # used to decide this, which told an unsigned domain on a signed provider
+    # that senders ignore valid TLSA, and a signed domain on an unsigned MX
+    # host that its chain was valid.
+    for hr in result["tlsa_records"]:
+        if hr["found"] and not hr["validated"]:
+            _add_issue(
+                "warning",
+                f"TLSA not DNSSEC validated on {hr['mx_host']}",
+                "The TLSA answer for this MX host did not validate under DNSSEC. Senders "
+                "that implement RFC 7672 ignore TLSA records that do not validate, so DANE "
+                "does not protect mail to this host.",
+                f"Sign the zone that holds {hr['mx_host']} with DNSSEC, or ask its operator to.",
+            )
 
     # Mixed coverage warning
     if result["has_tlsa"] and result["mx_hosts_with_tlsa"] < result["mx_hosts_checked"]:
@@ -4472,7 +4461,7 @@ def _probe_subdomain(subdomain: str) -> Dict[str, Any]:
             # as a plain "v=spf1" literal with no %s prefix, which RFC 7405
             # S2 makes case insensitive. The DMARC line below looks identical
             # and is not: RFC 9989 writes %s"DMARC1". Do not unify them.
-            if txt.lower().startswith("v=spf1"):
+            if is_spf_record(txt):
                 result["has_spf"] = True
                 result["spf_record"] = txt
                 result["exists"] = True
@@ -4600,7 +4589,7 @@ _SPF_QUALIFIERS = "+-~?"
 def _spf_terms(record: str) -> List[str]:
     """Every term after the v=spf1 version tag, in the order it was published."""
     parts = (record or "").strip().split()
-    if not parts or not parts[0].lower().startswith("v=spf1"):
+    if not parts or not is_spf_record(record):
         return []
     return parts[1:]
 
@@ -4966,7 +4955,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             _dkim_sel = dkim_selector.strip()
             def _run_dkim_direct():
                 _fqdn = f"{_dkim_sel}._domainkey.{domain}"
-                _raw = {"domain": domain, "found_selectors": [], "selector_queried": _dkim_sel}
+                # Counted before the lookup: the success branch never set it,
+                # so a found key sat beside "Tested 0 selectors".
+                _raw = {"domain": domain, "found_selectors": [], "selector_queried": _dkim_sel,
+                        "tested_count": 1}
                 try:
                     # _get_resolver, not the bare module resolver: this is the
                     # only DNS call in the audit that skipped the shared answer
@@ -5015,7 +5007,6 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     # The name genuinely has no TXT record. "Not found" is a
                     # true statement about the domain here.
                     _raw["selector_not_found"] = _dkim_sel
-                    _raw["tested_count"] = 1
                 except dns.exception.DNSException:
                     # SERVFAIL, REFUSED or a timeout. Nothing was learned, so
                     # "Selector 'x' not found. Verify the selector name is
@@ -5026,7 +5017,6 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     _raw["status"] = "unavailable"
                     _raw["unavailable_reason"] = "dns_lookup_failed"
                     _raw["lookup_target"] = _fqdn
-                    _raw["tested_count"] = 1
                 return _raw
             _parallel_checks.append(("dkim", _run_dkim_direct,
                 lambda raw: transform_dkim(raw, domain, has_mx=has_mx, non_mail=non_mail), "DKIM"))
@@ -5603,7 +5593,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # --- Assemble final response ---
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-    _roadmap = build_security_roadmap(checks, is_no_mail=is_defensive)
+    _roadmap = build_security_roadmap(checks, is_no_mail=is_defensive, has_mx=has_mx)
 
     return {
         "domain": domain,
@@ -5751,6 +5741,14 @@ def _build_resilience_analysis(
             "SPF verifies that the sending server's IP address is authorized by the domain owner. "
             "However, SPF breaks when mail is forwarded because the forwarding server's IP "
             "is not in the original domain's SPF record."
+        )
+    elif not has_mx:
+        # The SPF card grades no SPF on a domain with no MX as amber "No
+        # mail", not red "Missing", and this row has to say the same.
+        spf_status = "no_mail"
+        spf_note = (
+            "No SPF record and no MX records. This domain does not appear to send or "
+            "receive email, so SPF has nothing to authorize."
         )
     else:
         spf_status = "missing"
@@ -6072,11 +6070,14 @@ def _build_resilience_analysis(
             "DMARC, having both provides redundancy if one mechanism fails for a given message."
         )
     elif dkim_inconclusive and spf_functional and dmarc_enforcing:
-        level = "moderate"
+        # Unknown, not weak. DKIM selectors cannot be enumerated from outside,
+        # so an unconfirmed DKIM does not lower the level. It used to drop to
+        # moderate, an amber block beside the summary's green "Full".
+        level = "high"
         summary = (
             "SPF is functional and DMARC is enforcing. DKIM status could not be confirmed "
-            "because DKIM selectors are not publicly enumerable. "
-            "If DKIM is configured (likely), resilience is high."
+            "because DKIM selectors are not publicly enumerable, so it is left out of "
+            "this grade rather than counted against it."
         )
         risk = (
             "DKIM selector names are chosen by each mail service and cannot be discovered from "

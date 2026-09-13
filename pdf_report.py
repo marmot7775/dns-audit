@@ -859,7 +859,9 @@ def _dmarc_deep_dive(data, S, number=3):
                 Paragraph(_safe(explanation), S["body_small"]),
             ])
 
-        tt = Table(rows, colWidths=[0.5*inch, 1.3*inch, 0.9*inch, 3.8*inch])
+        # splitInRow: a rua list taller than a page is one row, and without it
+        # ReportLab raises LayoutError and the PDF endpoint returns 500.
+        tt = Table(rows, colWidths=[0.5*inch, 1.3*inch, 0.9*inch, 3.8*inch], splitInRow=1)
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 4),

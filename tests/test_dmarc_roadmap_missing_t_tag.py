@@ -32,7 +32,7 @@ def test_roadmap_builds_when_t_tag_absent():
         "domain": "example.com",
     }
     raw_spf = {"record": "v=spf1 -all", "lookup_count": 0, "all_mechanism": "-all"}
-    raw_dkim = {"found_selectors": ["selector1"]}
+    raw_dkim = {"found_selectors": [{"selector": "selector1"}]}
 
     roadmap = build_dmarc_roadmap(
         raw_dmarc, raw_spf, raw_dkim,

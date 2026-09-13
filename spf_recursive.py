@@ -20,7 +20,7 @@ import dns.exception
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from dns_tools import get_resolver
+from dns_tools import get_resolver, is_spf_record
 
 
 def repair_spf_missing_spaces(record: str) -> Tuple[str, bool]:
@@ -122,7 +122,7 @@ def _lookup_spf(domain: str) -> Dict[str, Any]:
     records = []
     for rdata in answers:
         txt = b"".join(rdata.strings).decode("utf-8", errors="replace")
-        if txt.strip().lower().startswith("v=spf1"):
+        if is_spf_record(txt):
             repaired, _ = repair_spf_missing_spaces(txt.strip())
             records.append(repaired)
 
@@ -517,6 +517,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         )
         result["issues"].append({
             "severity": "error",
+            "kind": "lookup_limit",
             "issue": f"SPF exceeds 10-lookup limit ({total} lookups)",
             "plain_english": (
                 f"Your SPF record requires {total} DNS lookups when fully resolved. "
@@ -537,6 +538,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         )
         result["issues"].append({
             "severity": "warning",
+            "kind": "lookup_limit",
             "issue": "SPF at exactly 10-lookup limit",
             "plain_english": (
                 "You are using exactly 10 DNS lookups. Adding any new email "
@@ -552,6 +554,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         )
         result["issues"].append({
             "severity": "warning",
+            "kind": "lookup_limit",
             "issue": f"SPF approaching lookup limit ({total}/10)",
             "plain_english": (
                 f"You are using {total} of 10 allowed DNS lookups. "
@@ -680,6 +683,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             if mech_type == "ptr":
                 result["issues"].append({
                     "severity": "warning",
+                    "kind": "ptr",
                     "issue": "Deprecated 'ptr' mechanism found",
                     "plain_english": (
                         "The ptr mechanism is discouraged by RFC 7208 because it is slow and "

@@ -10,7 +10,9 @@ still rendered DKIM as N/A.
 
 The transformers now waive a check only on the same positive non-mail
 signal the engine uses (RFC 7505 null MX, or an SPF record that is exactly
-v=spf1 -all), passed in as non_mail=. Absent MX alone never waives anything.
+v=spf1 -all), passed in as non_mail=. Absent MX alone waives nothing except the
+inbound-transport checks (MTA-STS, TLS-RPT; Doc 45), which protect delivery to
+MX hosts.
 """
 import os
 import sys
@@ -46,7 +48,7 @@ def _card(result, name):
 
 def _is_waived(card):
     # DKIM is essential, so its waiver is a pass; the optional protocols are absent.
-    return card["status"] in ("pass", "absent") and card.get("pill_label") == "N/A"
+    return card["status"] in ("pass", "absent") and card.get("pill_label") in ("N/A", "Not applicable")
 
 
 # --- unit: the transformers no longer waive on has_mx=False alone ---------
@@ -72,15 +74,25 @@ def test_transform_dkim_waives_only_on_positive_non_mail_signal():
     assert card["fix"] is None
 
 
-def test_transform_mta_sts_absent_mx_alone_is_not_waived():
+def test_transform_mta_sts_is_not_applicable_without_mx():
+    """Doc 45 item 4: MTA-STS protects inbound delivery to MX hosts, so a
+    domain with no MX has nothing for it to protect. Sending is SPF's and
+    DKIM's concern, which is why DKIM is still not waived on absent MX."""
     raw = {"status": "warning", "txt_record": None, "policy_mode": None}
-    assert not _is_waived(rt.transform_mta_sts(raw, SEND_ONLY, has_mx=False))
+    card = rt.transform_mta_sts(raw, SEND_ONLY, has_mx=False)
+    assert _is_waived(card)
+    assert card["verdict"] == "No MX records, so there is no inbound mail to protect"
     assert _is_waived(rt.transform_mta_sts(raw, PARKED, has_mx=False, non_mail=True))
 
 
-def test_transform_tls_rpt_absent_mx_alone_is_not_waived():
+def test_transform_tls_rpt_is_not_applicable_without_mx():
+    """Doc 45 item 4: TLS-RPT protects inbound delivery to MX hosts, so a
+    domain with no MX has nothing for it to protect. Sending is SPF's and
+    DKIM's concern, which is why DKIM is still not waived on absent MX."""
     raw = {"status": "warning", "record": None}
-    assert not _is_waived(rt.transform_tls_rpt(raw, SEND_ONLY, has_mx=False))
+    card = rt.transform_tls_rpt(raw, SEND_ONLY, has_mx=False)
+    assert _is_waived(card)
+    assert card["verdict"] == "No MX records, so there is no inbound mail to protect"
     assert _is_waived(rt.transform_tls_rpt(raw, PARKED, has_mx=False, non_mail=True))
 
 
