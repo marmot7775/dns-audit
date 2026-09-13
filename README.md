@@ -18,7 +18,7 @@ Built for engineers, email administrators, and security consultants who need to 
 |-------|-------------|
 | **DMARC + RFC 9989** | Validation against RFC 9989 and against RFC 7489, side by side, with a per-tag decoder, dangerous-combination detection, and the DNS Tree Walk of [RFC 9989 Section 4.10](https://www.rfc-editor.org/rfc/rfc9989.html#section-4.10) for hierarchical policy discovery. Full detail under RFC 9989 Checker below. |
 | **SPF** | Syntax validation, mechanism analysis, recursive evaluation with full lookup chain tracing, void lookup detection, and vendor-labeled include tree visualization. Flags `+all`, `?all`, missing `all`, `redirect`+`all` conflicts, deprecated `ptr`, overly broad CIDRs, and invalid IPs. |
-| **DKIM** | Selector discovery across 1,100+ common patterns using SPF-based vendor fingerprinting. Key strength analysis for RSA (1024/2048/4096) and Ed25519. Direct lookup of user-supplied selectors. Wildcard DNS detection prevents false positives. |
+| **DKIM** | Selector discovery from a list of about 1,100 known selectors, narrowed by SPF-based vendor fingerprinting to about 200 lookups per audit. Key strength analysis for RSA (1024/2048/4096) and Ed25519. Direct lookup of user-supplied selectors. Wildcard DNS detection prevents false positives. |
 
 ### Mail and Transport
 
@@ -52,11 +52,11 @@ There are no letter grades and no numeric score. Results open with three summary
 
 | Metric | What It Shows |
 |--------|---------------|
-| Spoofing Protection | How many of four spoofing vectors the domain's records close |
+| Spoofing Protection | Whether direct, subdomain, and non-existent-subdomain spoofing are closed by the DMARC policy, naming any that are not. |
 | RFC 9989 Readiness | Ready, Compatible, In Progress, or Action Needed |
 | Protocol Coverage | How many of nine protocols (DMARC, SPF, DKIM, MTA-STS, TLS-RPT, DANE, DNSSEC, BIMI, CAA) are configured |
 
-Below the summary, each check reports pass, warning, or fail with the specific finding and a copy-paste fix where one applies. A prioritized roadmap orders the fixes by impact.
+Below the summary, each check reports pass, warning, fail, not configured, or not checked with the specific finding and a copy-paste fix where one applies. A prioritized roadmap orders the fixes by impact.
 
 *Note: DKIM selectors cannot be enumerated via DNS. For best results, provide your selector directly.* Domains where selectors could not be detected are not marked down for it, since DNS gives no way to list the names under `_domainkey` and an undetected selector is not evidence of a missing one.
 

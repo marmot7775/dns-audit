@@ -436,6 +436,11 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
             resolver = get_uncached_resolver(3)
             resolver.lifetime = 3
             answers = resolver.resolve(fqdn, 'TXT')
+            # Where the name led, when it is an alias. Microsoft 365 DKIM is a
+            # CNAME into its own namespace, so this is the evidence that
+            # attributes selector1/selector2 to it; the name alone is not.
+            _canon = str(getattr(answers, "canonical_name", "") or "").rstrip(".").lower()
+            cname_target = _canon if _canon and _canon != fqdn.lower() else None
 
             # Every record at the name, one joined string each. Looking only
             # at answers[0] dropped the key whenever a domain verification
@@ -474,6 +479,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                 'key_type': key_analysis['key_type'],
                 'key_bits': key_analysis['key_bits'],
                 'vendor': matched_vendor,
+                'cname_target': cname_target,
                 'discovery_priority': 'HIGH' if matched_vendor else 'LOW',
             }
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):

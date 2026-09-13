@@ -839,8 +839,10 @@ def _dmarc_deep_dive(data, S, number=3):
             tag_name = tag.get("tag", "")
             val = tag.get("value") or "(absent)" if tag.get("is_absent") else (tag.get("value") or "(default)")
             bis_status = tag.get("dmarcbis", "")
-            bis_clr = {"current": PASS_CLR, "new": TEAL_ACCENT, "deprecated": FAIL_CLR}.get(bis_status, TEXT_SEC)
-            bis_label = {"current": "Current", "new": "New", "deprecated": "Removed"}.get(bis_status, bis_status)
+            bis_clr = {"current": PASS_CLR, "new": TEAL_ACCENT, "imported": TEAL_ACCENT,
+                       "deprecated": FAIL_CLR}.get(bis_status, TEXT_SEC)
+            bis_label = {"current": "Current", "new": "New", "imported": "From RFC 9091",
+                         "deprecated": "Removed"}.get(bis_status, bis_status)
 
             explanation = tag.get("explanation", "")
             bis_note = tag.get("dmarcbis_note", "")
@@ -1612,7 +1614,13 @@ def _about_page(data, S, number=7):
     # performed. Listing it flat under "Checks performed" contradicted the
     # cover's own "not checked" figure on the same document.
     _performed = [c["name"] for c in _cards if c.get("status") != "unavailable"]
-    _not_checked = [c["name"] for c in _cards if c.get("status") == "unavailable"]
+    # DKIM without a selector ran its lookups; the name just cannot be
+    # enumerated. "The lookup did not complete" was false for it, and its
+    # pill says "Not confirmed", so it gets its own line.
+    _not_enumerable = [c["name"] for c in _cards if c.get("status") == "unavailable"
+                       and c.get("unavailable_kind") == "not_enumerable"]
+    _not_checked = [c["name"] for c in _cards if c.get("status") == "unavailable"
+                    and c.get("unavailable_kind") != "not_enumerable"]
     details = [
         ("Domain audited", domain),
         ("Date and time", now),
@@ -1622,6 +1630,11 @@ def _about_page(data, S, number=7):
     if _not_checked:
         details.append(
             ("Not checked", ", ".join(_not_checked) + " (the lookup did not complete)")
+        )
+    if _not_enumerable:
+        details.append(
+            ("Not confirmed", ", ".join(_not_enumerable)
+             + " (no selector was supplied and the name cannot be enumerated from DNS)")
         )
     for label, value in details:
         els.append(Paragraph(f"<b>{_safe(label)}:</b>  {_safe(value)}", S["body"]))
@@ -1836,7 +1849,7 @@ if __name__ == "__main__":
                       "warnings": [{"level": "warning", "text": "p=none is monitoring only"}]},
                      {"tag": "np", "value": None, "is_default": True, "is_absent": True,
                       "label": "Non-existent subdomain policy", "explanation": "Policy for non-existent subdomains",
-                      "dmarcbis": "new", "dmarcbis_note": "New in RFC 9989",
+                      "dmarcbis": "imported", "dmarcbis_note": "From RFC 9091",
                       "warnings": [{"level": "warning", "text": "Missing np= tag"}]},
                      {"tag": "rua", "value": "mailto:dmarc@example.com", "is_default": False,
                       "is_absent": False, "label": "Aggregate report URI",
@@ -1863,7 +1876,7 @@ if __name__ == "__main__":
                           "record_after": "v=DMARC1; p=reject; rua=mailto:dmarc@example.com",
                           "tags_changed": ["t"]},
                          {"step": 4, "action": "Add RFC 9989 tags: np=reject, sp=reject, psd=n",
-                          "why": "These tags close gaps in the old standard and prepare for RFC 9989.",
+                          "why": "Neither changes what receivers do here, since both already inherit p=reject. They make the record say what it means, so a later change to p= cannot loosen subdomains by accident.",
                           "tags_changed": ["np", "sp", "psd"]},
                      ],
                      "total_steps": 4,
@@ -1879,7 +1892,7 @@ if __name__ == "__main__":
                          {"tag": "sp", "action": "added", "value": "reject",
                           "reason": "Closes subdomain policy gap."},
                          {"tag": "np", "action": "added", "value": "reject",
-                          "reason": "Protects non-existent subdomains from spoofing (new in RFC 9989)."},
+                          "reason": "Makes the non-existent subdomain policy explicit; the tag comes from RFC 9091."},
                      ],
                  },
              },
