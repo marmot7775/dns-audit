@@ -37,6 +37,23 @@ const ICON = {
     chevron: iconSvg('<path d="M4 6l4 4 4-4"/>'),
 };
 
+const STATUS_LABELS = {
+    pass: 'Pass', warn: 'Warning', fail: 'Issue', absent: 'Not configured', unavailable: 'Not checked',
+};
+
+const COLOR_STATE = { green: 'pass', amber: 'warn', red: 'fail' };
+
+// The one badge component: `tag`, plus a modifier for a status or a tier.
+function tagClass(state) {
+    const known = ['pass', 'warn', 'fail', 'absent', 'unavailable', 'critical', 'high', 'medium', 'low'];
+    return known.includes(state) ? `tag tag-${state}` : 'tag';
+}
+
+function sentenceCase(text) {
+    const s = String(text || '').replace(/_/g, ' ');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function statusIcon(st) {
     return `<span class="status-icon ${safeClass(st)}">${ICON[st] || ICON.info}</span>`;
 }
@@ -686,7 +703,7 @@ function renderResults(data) {
         const levelClass = levelColors[res.level] || 'info';
 
         document.getElementById('resilience-summary').innerHTML = `
-            <span class="resilience-level resilience-${levelClass}">${escapeHtml(res.level.toUpperCase())}</span>
+            <span class="${tagClass(levelClass)}">${escapeHtml(sentenceCase(res.level))}</span>
             <span class="resilience-text">${escapeHtml(res.summary)}</span>
         `;
 
@@ -700,7 +717,7 @@ function renderResults(data) {
                 : info.status === 'inconclusive' ? 'info' : 'pass';
             mechHtml += `<div class="resilience-mech">
                 <span class="resilience-mech-name">${escapeHtml(name.toUpperCase())}</span>
-                <span class="resilience-mech-status resilience-${sClass}">${escapeHtml(info.status)}</span>
+                <span class="${tagClass(sClass)}">${escapeHtml(sentenceCase(info.status))}</span>
                 ${info.note ? `<span class="resilience-mech-note">${escapeHtml(info.note)}</span>` : ''}
             </div>`;
         }
@@ -780,7 +797,7 @@ function renderResults(data) {
             item.className = `anomaly-card anomaly-${sevClass}`;
             item.innerHTML = `
                 <div class="anomaly-top">
-                    <span class="anomaly-severity ${sevClass}">${sevLabel}</span>
+                    <span class="${tagClass(a.severity)}">${sevLabel}</span>
                     <span class="anomaly-title">${escapeHtml(a.title)}</span>
                 </div>
                 <div class="anomaly-desc">${escapeHtml(a.description)}</div>
@@ -1002,9 +1019,7 @@ function createResultCard(check, index) {
     card.dataset.status = check.status;
     card.style.animationDelay = `${index * 60}ms`;
 
-    const statusLabel = check.pill_label || {
-        pass: 'Pass', warn: 'Warning', fail: 'Issue', absent: 'Not configured', unavailable: 'Not checked'
-    }[check.status] || 'Unknown';
+    const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
 
     const tooltipText = PROTOCOL_TOOLTIPS[check.name] || '';
     const titleHtml = tooltipText
@@ -1016,7 +1031,7 @@ function createResultCard(check, index) {
         <div class="result-header">
             <span class="status-icon ${safeClass(check.status)}" title="${STATUS_TITLES[check.status] || 'Failed'}" aria-hidden="true">${ICON[check.status] || ICON.fail}</span>
             ${titleHtml}
-            <span class="status-pill ${check.status}">${escapeHtml(statusLabel)}</span>
+            <span class="${tagClass(check.status)}">${escapeHtml(statusLabel)}</span>
             <div class="result-verdict">${escapeHtml(check.verdict || '')}</div>
             <div class="result-chevron" aria-hidden="true">${ICON.chevron}</div>
         </div>
@@ -1414,7 +1429,7 @@ function renderTtlBadge(ttlInfo) {
     }[ttlInfo.category] || 'ttl-standard';
 
     return `
-        <div class="ttl-badge ${categoryClass}">
+        <div class="ttl-note ${categoryClass}">
             <span class="ttl-value">TTL: ${escapeHtml(String(ttlInfo.ttl))}s (${escapeHtml(ttlInfo.human)})</span>
             <span class="ttl-detail">${escapeHtml(ttlInfo.detail)}</span>
         </div>
@@ -1504,11 +1519,11 @@ function renderConsistencyFindings(findings) {
 
     let html = '';
     for (const finding of findings) {
-        const badgeClass = finding.badge === 'Configuration Drift' ? 'cf-badge-drift' : 'cf-badge-info';
+        const badgeClass = finding.badge === 'Configuration Drift' ? 'warn' : 'info';
         html += `
             <div class="cf-finding">
                 <div class="cf-finding-header">
-                    <span class="cf-badge ${badgeClass}">${escapeHtml(finding.badge || 'Note')}</span>
+                    <span class="${tagClass(badgeClass)}">${escapeHtml(finding.badge || 'Note')}</span>
                     <span class="cf-finding-title">${escapeHtml(finding.title)}</span>
                 </div>
                 <div class="cf-finding-detail">${escapeHtml(finding.detail)}</div>
@@ -1556,9 +1571,9 @@ function renderSpecToggle(comparison) {
     return `
         <div class="st-toggle-bar">
             <div class="st-toggle-label">Validation Mode</div>
-            <div class="st-toggle-pills" role="radiogroup" aria-label="Validation mode">
-                <button class="st-pill st-pill-legacy" data-mode="legacy" role="radio" aria-checked="false">RFC 7489 (Obsolete)</button>
-                <button class="st-pill st-pill-dmarcbis st-pill-active" data-mode="dmarcbis" role="radio" aria-checked="true">RFC 9989 (Current)</button>
+            <div class="st-seg-group" role="radiogroup" aria-label="Validation mode">
+                <button class="st-seg st-seg-legacy" data-mode="legacy" role="radio" aria-checked="false">RFC 7489 (Obsolete)</button>
+                <button class="st-seg st-seg-dmarcbis st-seg-active" data-mode="dmarcbis" role="radio" aria-checked="true">RFC 9989 (Current)</button>
             </div>
         </div>
         ${deltaDmarcbis}
@@ -1568,7 +1583,7 @@ function renderSpecToggle(comparison) {
 
 // Attach toggle handler via event delegation
 document.addEventListener('click', function(e) {
-    const pill = e.target.closest('.st-pill');
+    const pill = e.target.closest('.st-seg');
     if (!pill) return;
 
     const mode = pill.dataset.mode;
@@ -1577,9 +1592,9 @@ document.addEventListener('click', function(e) {
 
     // Update pill active states
     const bar = pill.closest('.st-toggle-bar');
-    bar.querySelectorAll('.st-pill').forEach(p => p.classList.remove('st-pill-active'));
-    pill.classList.add('st-pill-active');
-    bar.querySelectorAll('.st-pill').forEach(p => p.setAttribute('aria-checked', p === pill ? 'true' : 'false'));
+    bar.querySelectorAll('.st-seg').forEach(p => p.classList.remove('st-seg-active'));
+    pill.classList.add('st-seg-active');
+    bar.querySelectorAll('.st-seg').forEach(p => p.setAttribute('aria-checked', p === pill ? 'true' : 'false'));
 
     // Find the parent card
     const card = pill.closest('.result-card');
@@ -1616,7 +1631,7 @@ function renderAttackSurface(as) {
             <div class="as-vector as-vector-${safeClass(v.color)}">
                 <div class="as-vector-header">
                     <span class="as-vector-name">${escapeHtml(v.name)}</span>
-                    <span class="as-vector-badge as-badge-${safeClass(v.color)}">${icon} ${escapeHtml(statusLabel)}</span>
+                    <span class="${tagClass(COLOR_STATE[v.color])}">${icon} ${escapeHtml(statusLabel)}</span>
                 </div>
                 <div class="as-vector-summary">${escapeHtml(v.summary)}</div>
                 <div class="as-vector-detail">${escapeHtml(v.detail)}</div>
@@ -1696,7 +1711,7 @@ function renderSubdomainAudit(sa) {
         <div class="sua-block">
             <div class="sua-header">
                 <span class="sua-title">Subdomain Security</span>
-                <span class="sua-badge">${sa.total_probed} probed</span>
+                <span class="tag">${sa.total_probed} probed</span>
             </div>
             ${summaryHtml}
             ${calloutHtml}
@@ -1788,7 +1803,7 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
         <div class="sv-block">
             <div class="sv-header">
                 <div class="sv-header-left">
-                    <span class="sv-badge">${escapeHtml(specLabel)}</span>
+                    <span class="tag">${escapeHtml(specLabel)}</span>
                     <span class="sv-title">Strict Record Validation</span>
                 </div>
                 <div class="sv-header-right">
@@ -1867,7 +1882,7 @@ function renderDmarcTagBreakdown(bd) {
         let warningsHtml = '';
         if (tag.warnings && tag.warnings.length > 0) {
             warningsHtml = tag.warnings.map(w => {
-                const warnClass = w.level === 'warning' ? 'rb-tag-warn' : 'rb-tag-info';
+                const warnClass = w.level === 'warning' ? 'rb-kv-warn' : 'rb-kv-info';
                 return `<div class="${warnClass}">${escapeHtml(w.text)}</div>`;
             }).join('');
         }
@@ -1890,14 +1905,14 @@ function renderDmarcTagBreakdown(bd) {
         }
 
         tagsHtml += `
-            <div class="rb-tag-row">
-                <div class="rb-tag-header">
-                    <code class="rb-tag-name">${escapeHtml(tag.tag)}=</code>
+            <div class="rb-kv-row">
+                <div class="rb-kv-header">
+                    <code class="rb-kv-name">${escapeHtml(tag.tag)}=</code>
                     ${valueDisplay}
-                    <span class="rb-bis-badge ${bisClass}">${escapeHtml(bisLabel)}</span>
+                    <span class="${bisClass === 'rb-bis-deprecated' ? 'tag tag-warn' : 'tag'}">${escapeHtml(bisLabel)}</span>
                 </div>
-                <div class="rb-tag-label">${escapeHtml(tag.label)}</div>
-                <div class="rb-tag-explain">${escapeHtml(tag.explanation || '')}</div>
+                <div class="rb-kv-label">${escapeHtml(tag.label)}</div>
+                <div class="rb-kv-explain">${escapeHtml(tag.explanation || '')}</div>
                 ${chainHtml}
                 ${warningsHtml}
                 ${noteHtml}
@@ -1913,7 +1928,7 @@ function renderDmarcTagBreakdown(bd) {
                 : w.level === 'info' ? 'rb-cw-info' : 'rb-cw-advisory';
             const icon = w.level === 'critical' ? ICON.fail
                 : w.level === 'info' ? ICON.info : ICON.warn;
-            const tagPills = w.tags.map(t => `<code class="rb-cw-tag">${escapeHtml(t)}</code>`).join(' ');
+            const tagPills = w.tags.map(t => `<code class="tag tag-mono">${escapeHtml(t)}</code>`).join(' ');
             items += `
                 <div class="rb-cw-item ${cls}">
                     <div class="rb-cw-header">
@@ -1941,7 +1956,7 @@ function renderDmarcTagBreakdown(bd) {
                     <span class="mw-record-text">${escapeHtml(s.record_after)}</span>
                 </div>` : '';
             const tagBadges = (s.tags_changed || []).map(t =>
-                `<code class="mw-tag-badge">${escapeHtml(t)}</code>`
+                `<code class="tag tag-mono">${escapeHtml(t)}</code>`
             ).join(' ');
 
             stepsHtml += `
@@ -2031,7 +2046,7 @@ function renderDmarcTagBreakdown(bd) {
                 <span class="rb-title">DMARC Record Breakdown</span>
             </div>
             ${verdictHtml}
-            <div class="rb-tags">${tagsHtml}</div>
+            <div class="rb-kvs">${tagsHtml}</div>
             ${configWarningsHtml}
             ${migrationHtml}
             ${builderHtml}
@@ -2052,7 +2067,7 @@ function renderRecordBuilder(rb) {
         if (rb.suggestions && rb.suggestions.length > 0) {
             const items = rb.suggestions.map(s =>
                 `<div class="rcb-suggestion">
-                    <code class="rcb-suggestion-tag">${escapeHtml(s.tag)}</code>
+                    <code class="tag tag-mono">${escapeHtml(s.tag)}</code>
                     <span>${escapeHtml(s.reason)}</span>
                 </div>`
             ).join('');
@@ -2066,7 +2081,7 @@ function renderRecordBuilder(rb) {
             <div class="rcb-block rcb-ready">
                 <div class="rcb-header">
                     <span class="rcb-title">Record Builder</span>
-                    <span class="rcb-badge rcb-badge-ready">No changes needed</span>
+                    <span class="tag tag-pass">No changes needed</span>
                 </div>
                 <p class="rcb-ready-msg">Your DMARC record is RFC 9989 Ready. No modifications required.</p>
                 ${suggestionsHtml}
@@ -2119,7 +2134,7 @@ function renderRecordBuilder(rb) {
             return `
                 <div class="rcb-change ${actionClass}">
                     <div class="rcb-change-top">
-                        <span class="rcb-action-badge ${actionClass}">${actionLabel}</span>
+                        <span class="${tagClass({ 'rcb-added': 'pass', 'rcb-removed': 'fail', 'rcb-changed': 'warn' }[actionClass])}">${actionLabel}</span>
                         ${valueDisplay}
                     </div>
                     <div class="rcb-change-reason">${escapeHtml(c.reason)}</div>
@@ -2206,7 +2221,9 @@ function _renderDiffRecord(tags, changedSet, side, changes) {
                 else cls = 'rcb-hl-modified';
             }
         }
-        return `<span class="rcb-diff-tag ${cls}">${escapeHtml(t.raw)}</span>`;
+        const hl = { 'rcb-hl-removed': ' tag-fail rcb-hl-removed', 'rcb-hl-added': ' tag-pass',
+            'rcb-hl-modified': ' tag-warn' }[cls] || '';
+        return `<span class="tag tag-mono${hl}">${escapeHtml(t.raw)}</span>`;
     }).join('<span class="rcb-diff-sep">;</span> ');
 }
 
@@ -2225,15 +2242,15 @@ function renderTreeWalk(tw) {
 function renderTreeWalkSimple(tw) {
     const domain = escapeHtml(tw.domain);
     const policy = escapeHtml(tw.effective_policy || 'none');
-    const policyClass = policy === 'reject' ? 'tw-pill-pass'
-        : policy === 'quarantine' ? 'tw-pill-warn'
-            : 'tw-pill-muted';
+    const policyClass = policy === 'reject' ? 'tag-pass'
+        : policy === 'quarantine' ? 'tag-warn'
+            : '';
 
     return `
         <div class="tree-walk tree-walk-simple tw-animated">
             <div class="tw-header-row">
                 <div class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</div>
-                <a class="tw-spec-badge" href="https://www.rfc-editor.org/rfc/rfc9989.html"
+                <a class="tag tag-hit" href="https://www.rfc-editor.org/rfc/rfc9989.html"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
             <div class="tw-simple-body">
@@ -2241,7 +2258,7 @@ function renderTreeWalkSimple(tw) {
                 <span><strong>${domain}</strong> publishes its own DMARC record. No policy inheritance needed.</span>
             </div>
             <div class="tw-simple-policy">
-                Policy: <span class="tw-pill ${policyClass}">${policy}</span>
+                Policy: <span class="tag tag-mono ${policyClass}">${policy}</span>
             </div>
             <div class="tw-footnote">
                 Under <a href="https://www.rfc-editor.org/rfc/rfc9989.html" target="_blank" rel="noopener">RFC 9989</a>,
@@ -2263,7 +2280,7 @@ function renderTreeWalkFull(tw) {
         <div class="tree-walk tw-animated">
             <div class="tw-header-row">
                 <div class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</div>
-                <a class="tw-spec-badge" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
+                <a class="tag tag-hit" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
             </div>`;
 
     // Educational intro
@@ -2301,7 +2318,7 @@ function renderTreeWalkFull(tw) {
         html += `<div class="tw-content">`;
         html += `<div class="tw-domain">${escapeHtml(step.query || '_dmarc.' + step.domain)}</div>`;
         html += `<div class="tw-label">${escapeHtml(step.label)}`;
-        if (isPolicySource) html += ` <span class="tw-source-badge">policy source</span>`;
+        if (isPolicySource) html += ` <span class="tag">Policy source</span>`;
         if (step.stop_reason) html += ` &middot; stopped (${escapeHtml(step.stop_reason)})`;
         html += `</div>`;
         if (step.found && step.record) {
@@ -2316,9 +2333,9 @@ function renderTreeWalkFull(tw) {
     // Metadata summary
     if (tw.policy_source) {
         const policy = escapeHtml(tw.effective_policy || 'none');
-        const policyClass = policy === 'reject' ? 'tw-pill-pass'
-            : policy === 'quarantine' ? 'tw-pill-warn'
-                : 'tw-pill-muted';
+        const policyClass = policy === 'reject' ? 'tag-pass'
+            : policy === 'quarantine' ? 'tag-warn'
+                : '';
         const tag = tw.applied_tag || 'p';
         const tagExplanation = getTagExplanation(tag, tw);
 
@@ -2333,7 +2350,7 @@ function renderTreeWalkFull(tw) {
 
         html += `<div class="tw-meta-row">
             <span class="tw-meta-label">Effective Policy</span>
-            <span class="tw-meta-value"><span class="tw-pill ${policyClass}">${policy}</span>
+            <span class="tw-meta-value"><span class="tag tag-mono ${policyClass}">${policy}</span>
                 from <strong>${escapeHtml(tw.policy_source)}</strong></span>
         </div>`;
 
@@ -2411,7 +2428,7 @@ function renderDmarcbisReadiness(readiness) {
             : item.status === 'warn' ? ICON.warn
                 : ICON.info;
         const detail = item.detail
-            ? `<span class="dbis-tag">${escapeHtml(item.detail)}</span>`
+            ? `<span class="tag tag-mono">${escapeHtml(item.detail)}</span>`
             : '';
 
         // Per-tag deprecation details (expanded under the checklist item).
@@ -2423,15 +2440,15 @@ function renderDmarcbisReadiness(readiness) {
             item.deprecated_details.forEach(dep => {
                 const source = dep.source || 'editorial';
                 const isSpec = source === 'spec_required';
-                const badgeClass = isSpec ? 'dbis-source-spec' : 'dbis-source-editorial';
+                const badgeClass = isSpec ? 'tag tag-warn' : 'tag';
                 const badgeLabel = isSpec ? 'Spec-required' : 'Editorial';
                 const ref = dep.spec_reference
                     ? `<span class="dbis-spec-ref">${escapeHtml(dep.spec_reference)}</span>`
                     : '';
                 depItems += `
                     <div class="dbis-dep-item">
-                        <span class="dbis-dep-tag">${escapeHtml(dep.tag)}</span>
-                        <span class="dbis-source-badge ${badgeClass}">${badgeLabel}</span>
+                        <span class="tag tag-mono">${escapeHtml(dep.tag)}</span>
+                        <span class="${badgeClass}">${badgeLabel}</span>
                         ${ref}
                         <span class="dbis-dep-reason">${escapeHtml(dep.reason)}</span>
                     </div>`;
@@ -2456,7 +2473,7 @@ function renderDmarcbisReadiness(readiness) {
             if (item.recommendation) {
                 editorialBlock = `
                     <div class="dbis-editorial-note">
-                        <span class="dbis-source-badge dbis-source-editorial">Editorial</span>
+                        <span class="tag">Editorial</span>
                         <span class="dbis-editorial-text">${escapeHtml(item.recommendation)}</span>
                     </div>`;
             }
@@ -2482,12 +2499,12 @@ function renderDmarcbisReadiness(readiness) {
     if (readiness.suggested_record && readiness.changes && readiness.changes.length > 0) {
         let changesHtml = '';
         readiness.changes.forEach(change => {
-            const changeClass = change.type === 'removed' ? 'dbis-removed' : 'dbis-added';
-            const changeLabel = change.type === 'removed' ? 'REMOVED' : 'ADDED';
+            const changeClass = change.type === 'removed' ? 'tag tag-fail' : 'tag tag-pass';
+            const changeLabel = change.type === 'removed' ? 'Removed' : 'Added';
             changesHtml += `
                 <div class="dbis-change">
                     <span class="${changeClass}">${changeLabel}</span>
-                    <span class="dbis-change-tag">${escapeHtml(change.tag)}</span>
+                    <span class="tag tag-mono">${escapeHtml(change.tag)}</span>
                     <span class="dbis-change-reason">${escapeHtml(change.reason)}</span>
                 </div>`;
         });
@@ -2506,7 +2523,7 @@ function renderDmarcbisReadiness(readiness) {
         <div class="dbis-readiness-block">
             <div class="dbis-header">
                 <div class="dbis-header-left">
-                    <span class="dbis-badge">RFC 9989</span>
+                    <span class="tag">RFC 9989</span>
                     <span class="dbis-title">RFC 9989 Readiness</span>
                 </div>
                 <div class="dbis-header-right">
@@ -2638,10 +2655,10 @@ function renderDkimKeyAnalysis(dk) {
             tagsHtml = k.tags.map(t => {
                 let val = t.truncated || t.value || '';
                 if (t.revoked) val = '(empty - REVOKED)';
-                const cls = t.revoked ? 'dk-tag-revoked' : '';
-                return `<div class="dk-tag ${cls}"><code>${escapeHtml(t.tag)}=</code> <span class="dk-tag-label">${escapeHtml(t.label)}</span></div>`;
+                const cls = t.revoked ? ' tag-fail' : '';
+                return `<span class="tag${cls}"><code>${escapeHtml(t.tag)}=</code> <span class="dk-field-label">${escapeHtml(t.label)}</span></span>`;
             }).join('');
-            tagsHtml = `<div class="dk-tags">${tagsHtml}</div>`;
+            tagsHtml = `<div class="dk-fields">${tagsHtml}</div>`;
         }
 
         keysHtml += `
@@ -2650,7 +2667,7 @@ function renderDkimKeyAnalysis(dk) {
                     <code class="dk-selector">${escapeHtml(k.selector)}</code>
                     <span class="dk-key-info">${k.bits > 0 ? k.bits + '-bit ' : ''}${escapeHtml(k.key_type)}</span>
                     ${providerBadge}
-                    <span class="as-vector-badge as-badge-${safeClass(k.rating)}">${escapeHtml(k.rating_label.split('.')[0])}</span>
+                    <span class="${tagClass(COLOR_STATE[k.rating])}">${escapeHtml(k.rating_label.split('.')[0])}</span>
                 </div>
                 <div class="dk-key-detail">${escapeHtml(k.rating_label)}</div>
                 ${tagsHtml}
@@ -2738,7 +2755,7 @@ function renderSpfDeepAnalysis(spf) {
         <div class="spfd-block">
             <div class="spfd-header">
                 <span class="spfd-title">SPF Record Analysis</span>
-                <span class="spfd-lookup-badge">${spf.lookup_count}/10 lookups</span>
+                <span class="tag">${spf.lookup_count}/10 lookups</span>
             </div>
             ${noteHtml}
             ${mechHtml}
@@ -2764,7 +2781,7 @@ function renderSpfExecution(exec) {
         <div class="spf-execution se-animated">
             <div class="se-header-row">
                 <div class="se-header">SPF Evaluation Trace</div>
-                <a class="tw-spec-badge" href="https://datatracker.ietf.org/doc/html/rfc7208"
+                <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc7208"
                    target="_blank" rel="noopener">rfc7208</a>
             </div>`;
 
@@ -2796,12 +2813,12 @@ function renderSpfExecution(exec) {
         // Vendor badge (only for top-level includes with a match)
         if (step.vendor) {
             const catClass = step.vendor_category ? `se-vendor-${step.vendor_category}` : '';
-            html += ` <span class="se-vendor-badge ${catClass}">${escapeHtml(step.vendor)}</span>`;
+            html += ` <span class="tag">${escapeHtml(step.vendor)}</span>`;
         }
 
         // Unrecognized term badge
         if (step.status === 'unknown') {
-            html += ` <span class="se-unknown-badge">not recognized</span>`;
+            html += ` <span class="tag">Not recognized</span>`;
         }
 
         // Lookup counter pill
@@ -2835,16 +2852,16 @@ function renderSpfExecution(exec) {
 function renderDmarcEvaluation(ev) {
     if (!ev) return '';
 
-    const spfPillClass = (ev.spf_result === 'pass' || ev.spf_result === 'configured') ? 'de-pill-pass'
-        : ev.spf_result === 'none' ? 'de-pill-muted'
-            : 'de-pill-fail';
-    const dkimPillClass = (ev.dkim_result === 'pass' || ev.dkim_result === 'configured') ? 'de-pill-pass'
-        : ev.dkim_result === 'none' ? 'de-pill-muted'
-            : 'de-pill-fail';
-    const dmarcPillClass = (ev.dmarc_result === 'pass' || ev.dmarc_result === 'configured') ? 'de-pill-pass' : 'de-pill-fail';
-    const policyPillClass = ev.policy === 'reject' ? 'de-pill-pass'
-        : ev.policy === 'quarantine' ? 'de-pill-warn'
-            : 'de-pill-muted';
+    const spfPillClass = (ev.spf_result === 'pass' || ev.spf_result === 'configured') ? 'tag-pass'
+        : ev.spf_result === 'none' ? ''
+            : 'tag-fail';
+    const dkimPillClass = (ev.dkim_result === 'pass' || ev.dkim_result === 'configured') ? 'tag-pass'
+        : ev.dkim_result === 'none' ? ''
+            : 'tag-fail';
+    const dmarcPillClass = (ev.dmarc_result === 'pass' || ev.dmarc_result === 'configured') ? 'tag-pass' : 'tag-fail';
+    const policyPillClass = ev.policy === 'reject' ? 'tag-pass'
+        : ev.policy === 'quarantine' ? 'tag-warn'
+            : '';
 
     const spfAlignIcon = ev.spf_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
     const spfAlignClass = ev.spf_aligned ? 'de-aligned' : 'de-not-aligned';
@@ -2864,29 +2881,29 @@ function renderDmarcEvaluation(ev) {
         <div class="dmarc-eval de-animated">
             <div class="se-header-row">
                 <div class="se-header">DMARC Evaluation</div>
-                <a class="tw-spec-badge" href="https://datatracker.ietf.org/doc/html/rfc9989"
+                <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9989"
                    target="_blank" rel="noopener">rfc9989</a>
             </div>
             <div class="de-intro">${escapeHtml(ev.explanation)}</div>
             <div class="de-rows">
                 <div class="de-row">
                     <span class="de-protocol">SPF</span>
-                    <span class="de-pill ${spfPillClass}">${escapeHtml(ev.spf_result)}</span>
+                    <span class="tag ${spfPillClass}">${escapeHtml(sentenceCase(ev.spf_result))}</span>
                     <span class="de-align-mode">${escapeHtml(ev.spf_alignment_mode)}</span>
                     <span class="de-align-result ${spfAlignClass}">${spfAlignIcon}</span>
                     <span class="de-note">RFC 9989 evaluates SPF alignment against MAIL FROM only (not HELO)</span>
                 </div>
                 <div class="de-row">
                     <span class="de-protocol">DKIM</span>
-                    <span class="de-pill ${dkimPillClass}">${escapeHtml(ev.dkim_result)}</span>
+                    <span class="tag ${dkimPillClass}">${escapeHtml(sentenceCase(ev.dkim_result))}</span>
                     <span class="de-align-mode">${escapeHtml(ev.dkim_alignment_mode)}</span>
                     <span class="de-align-result ${dkimAlignClass}">${dkimAlignIcon}</span>
                 </div>
                 <div class="de-row de-final">
                     <span class="de-protocol">DMARC</span>
-                    <span class="de-pill ${dmarcPillClass}">${escapeHtml(ev.dmarc_result)}</span>
+                    <span class="tag ${dmarcPillClass}">${escapeHtml(sentenceCase(ev.dmarc_result))}</span>
                     <span class="de-policy-group">
-                        policy: <span class="de-pill ${policyPillClass}">${escapeHtml(ev.policy)}</span>
+                        policy: <span class="tag tag-mono ${policyPillClass}">${escapeHtml(ev.policy)}</span>
                     </span>
                     <span class="de-disposition">${escapeHtml(dispLabel)}</span>
                 </div>
@@ -2913,7 +2930,7 @@ function renderReportChain(rc) {
         <div class="report-chain rc-animated">
             <div class="se-header-row">
                 <div class="se-header">DMARC Report Delivery Chain</div>
-                <a class="tw-spec-badge" href="https://datatracker.ietf.org/doc/html/rfc9990#section-4"
+                <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9990#section-4"
                    target="_blank" rel="noopener">rfc9990 &sect;4</a>
             </div>
             <div class="${introClass}">${escapeHtml(introText)}</div>
@@ -2941,7 +2958,7 @@ function renderReportChain(rc) {
 
         let serviceHtml = '';
         if (dest.service) {
-            serviceHtml = `<span class="se-vendor-badge se-vendor-email_security">${escapeHtml(dest.service)}</span>`;
+            serviceHtml = `<span class="tag">${escapeHtml(dest.service)}</span>`;
         }
 
         html += `
@@ -2981,7 +2998,7 @@ function renderSpfTree(tree) {
         <div class="spf-tree st-animated">
             <div class="se-header-row">
                 <div class="se-header">SPF Lookup Budget</div>
-                <a class="tw-spec-badge" href="https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
+                <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
                    target="_blank" rel="noopener">RFC 7208 &sect;4.6.4</a>
             </div>
             <div class="st-budget">
@@ -3014,7 +3031,7 @@ function renderTreeNode(node, totalLookups, isRoot) {
     let vendorHtml = '';
     if (node.vendor) {
         const catClass = node.vendor_category ? `se-vendor-${node.vendor_category}` : '';
-        vendorHtml = `<span class="se-vendor-badge ${catClass}">${escapeHtml(node.vendor)}</span>`;
+        vendorHtml = `<span class="tag">${escapeHtml(node.vendor)}</span>`;
     }
 
     // Lookup cost -- prominent, before domain name
@@ -3457,19 +3474,13 @@ function renderProviderIntelligence(pi) {
 }
 
 function _renderProviderCard(provider, showScorecard) {
-    const categoryColors = {
-        mailbox: 'pi-cat-mailbox',
-        gateway: 'pi-cat-gateway',
-        sending: 'pi-cat-sending',
-    };
-    const catClass = categoryColors[provider.category] || 'pi-cat-sending';
     const sources = provider.detected_via.map(s => escapeHtml(s)).join(', ');
 
     let html = `<div class="pi-card ${showScorecard ? 'pi-card-primary' : 'pi-card-compact'}">
         <div class="pi-card-header">
             <div class="pi-provider-info">
                 <span class="pi-provider-name">${escapeHtml(provider.name)}</span>
-                <span class="pi-category-badge ${catClass}">${escapeHtml(provider.category_label)}</span>
+                <span class="tag">${escapeHtml(provider.category_label)}</span>
             </div>
             <div class="pi-detected-via">Detected via ${sources}</div>
         </div>`;
@@ -3638,14 +3649,14 @@ function _renderRecentAudits() {
                 <span class="recent-audits-label">Recent</span>
                 <button class="recent-audits-clear" type="button">Clear</button>
             </div>
-            <div class="recent-audits-chips"></div>
+            <div class="recent-audits-list"></div>
         `;
 
-        const chips = container.querySelector('.recent-audits-chips');
+        const chips = container.querySelector('.recent-audits-list');
         recent.forEach(r => {
             const chip = document.createElement('button');
             chip.type = 'button';
-            chip.className = 'recent-audit-chip';
+            chip.className = 'tag tag-hit';
             chip.textContent = r.domain;
             chip.addEventListener('click', () => {
                 domainInput.value = r.domain;
@@ -3711,7 +3722,7 @@ function _renderCacheBadge(data) {
     if (!badge) {
         badge = document.createElement('div');
         badge.id = 'cache-status-badge';
-        badge.className = 'cache-status-badge';
+        badge.className = 'tag';
         const ts = document.getElementById('result-timestamp');
         if (ts && ts.parentNode) {
             ts.parentNode.insertBefore(badge, ts.nextSibling);
@@ -3719,7 +3730,7 @@ function _renderCacheBadge(data) {
     }
 
     if (data._cached || data.cached) {
-        badge.className = 'cache-status-badge cached';
+        badge.className = 'tag';
         badge.innerHTML = `
             <span>Cached result</span>
             <button class="cache-rerun-btn" type="button" title="Force a fresh audit">Re-run</button>
@@ -3730,7 +3741,7 @@ function _renderCacheBadge(data) {
             runAudit(data.domain);
         });
     } else {
-        badge.className = 'cache-status-badge fresh';
+        badge.className = 'tag tag-pass';
         badge.innerHTML = '<span>Fresh result</span>';
         badge.style.display = 'inline-flex';
     }
@@ -3959,10 +3970,10 @@ function _renderComparison(data1, data2, container) {
             <tr>
                 <td>${escapeHtml(check.name)}</td>
                 <td class="${winner === 'left' ? 'comparison-winner' : ''}">
-                    <span class="status-pill ${s1}">${s1}</span>
+                    <span class="${tagClass(s1)}">${escapeHtml(STATUS_LABELS[s1] || s1)}</span>
                 </td>
                 <td class="${winner === 'right' ? 'comparison-winner' : ''}">
-                    <span class="status-pill ${s2}">${s2}</span>
+                    <span class="${tagClass(s2)}">${escapeHtml(STATUS_LABELS[s2] || s2)}</span>
                 </td>
             </tr>
         `;

@@ -1,5 +1,5 @@
 (function () {
-    var pills = document.querySelectorAll('.articles-tag-pill');
+    var pills = document.querySelectorAll('.articles-filter');
     var cards = document.querySelectorAll('.article-card');
     var emptyState = document.querySelector('.articles-empty');
     if (!pills.length || !cards.length) return;
