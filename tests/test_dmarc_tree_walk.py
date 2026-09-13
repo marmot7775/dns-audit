@@ -141,9 +141,10 @@ def test_no_psd_tags_org_domain_is_record_with_fewest_labels():
     assert result["policy_source"] == "example.com"
 
 
-def test_tag_cascade_author_nx_no_np_falls_back_to_p_not_sp():
-    """§4.10.1-7: when Author Domain is NXDOMAIN and the policy record
-    has sp but no np, fall back to p; sp does NOT apply."""
+def test_tag_cascade_author_nx_no_np_falls_back_to_sp():
+    """RFC 9989 section 4.7, np: when the Author Domain does not exist and
+    the policy record has no np, sp applies when present, otherwise p.
+    This test used to pin the walk skipping sp (Doc 44 item 5)."""
     domain = "missing.example.com"
     records = {
         "missing.example.com": None,
@@ -154,8 +155,8 @@ def test_tag_cascade_author_nx_no_np_falls_back_to_p_not_sp():
          patch.object(tw, "_domain_exists", return_value=False):
         result = tw.dmarc_tree_walk(domain)
 
-    assert result["applied_tag"] == "p"
-    assert result["effective_policy"] == "reject"
+    assert result["applied_tag"] == "sp"
+    assert result["effective_policy"] == "quarantine"
 
 
 def test_tag_cascade_author_nx_uses_np_when_present():

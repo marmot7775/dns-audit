@@ -609,6 +609,7 @@ function renderResults(data) {
     _recordRecentAudit(data.domain);
 
     // -- Executive Summary (Prompt 16) -- render at the very top --
+    _execSummary = data.executive_summary || null;
     const esSlot = document.getElementById('executive-summary-slot');
     if (esSlot) {
         if (data.executive_summary) {
@@ -1908,7 +1909,7 @@ function renderDmarcTagBreakdown(bd) {
                 <div class="rb-kv-header">
                     <code class="rb-kv-name">${escapeHtml(tag.tag)}=</code>
                     ${valueDisplay}
-                    <span class="${bisClass === 'rb-bis-deprecated' ? 'tag tag-warn' : 'tag'}">${escapeHtml(bisLabel)}</span>
+                    ${bisLabel ? `<span class="${bisClass === 'rb-bis-deprecated' ? 'tag tag-warn' : 'tag'}">${escapeHtml(bisLabel)}</span>` : ''}
                 </div>
                 <div class="rb-kv-label">${escapeHtml(tag.label)}</div>
                 <div class="rb-kv-explain">${escapeHtml(tag.explanation || '')}</div>
@@ -2400,22 +2401,19 @@ function getTagExplanation(tag, tw) {
 // RFC 9989 Readiness
 // ============================================================
 
+// The executive summary of the result on screen, set by renderResults
+// before any card renders.
+let _execSummary = null;
+
 function renderDmarcbisReadiness(readiness) {
     if (!readiness || readiness.status === 'no_record') return '';
 
-    const statusLabels = {
-        'compliant': 'RFC 9989 Ready',
-        'compatible': 'RFC 9989 Compatible',
-        'non_compliant': 'Needs Update'
-    };
-    const statusColors = {
-        'compliant': 'pass',
-        'compatible': 'warn',
-        'non_compliant': 'fail'
-    };
-
-    const statusLabel = statusLabels[readiness.status] || 'Unknown';
-    const statusClass = statusColors[readiness.status] || 'warn';
+    // One label and one colour per result: the executive summary's RFC 9989
+    // tile. This block used to keep its own table, which put a red "Needs
+    // Update" beside an amber "In Progress" tile for the same record.
+    const tile = (_execSummary && _execSummary.dmarcbis_readiness) || {};
+    const statusLabel = tile.label || '';
+    const statusClass = COLOR_STATE[tile.color];
 
     // Checklist items
     let checklistHtml = '';
@@ -2526,7 +2524,7 @@ function renderDmarcbisReadiness(readiness) {
                     <span class="dbis-title">RFC 9989 Readiness</span>
                 </div>
                 <div class="dbis-header-right">
-                    <span class="${tagClass(statusClass)}">${escapeHtml(statusLabel)}</span>
+                    ${statusLabel ? `<span class="${tagClass(statusClass)}">${escapeHtml(statusLabel)}</span>` : ''}
                     <span class="dbis-score">${readiness.pass_count}/${readiness.total_count}</span>
                 </div>
             </div>

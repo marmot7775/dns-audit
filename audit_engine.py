@@ -239,8 +239,9 @@ BUSINESS_RISK = {
         "mail as your domain. Spoofing attacks may already be happening undetected."
     ),
     "DMARC_PCT_LOW": (
-        "Partial enforcement leaves some failing messages delivered, so a fraction "
-        "of spoofed mail still reaches inboxes."
+        "Partial enforcement applies the published policy to only part of the "
+        "failing mail. The rest gets the next weaker treatment, quarantine under "
+        "p=reject and none under p=quarantine."
     ),
     "DMARC_TEST_MODE": (
         "Test mode signals receivers to apply a softer policy than published, so "
@@ -911,14 +912,25 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 entry["business_risk"] = risk
         result["issues"].append(entry)
 
-    def _add_syntax(issue, plain_english, fix):
-        """Syntax errors are always severity=error."""
+    def _add_syntax(issue, plain_english, fix, fatal=False):
+        """A syntax problem in the record.
+
+        RFC 9989 section 4.8: receivers ignore unknown tags and discard
+        syntax errors in the rest of the record in favour of defaults, so
+        the record stays valid and p= still applies. Those are warnings.
+        fatal=True is for what actually invalidates the record: the version
+        tag not first, separators no parser can read, a duplicated tag, or
+        no usable p= with no valid rua=.
+        """
         result["syntax_errors"].append({
-            "severity": "error",
+            "severity": "error" if fatal else "warning",
             "issue": issue,
             "plain_english": plain_english,
             "fix": fix,
         })
+
+    def _add_fatal_syntax(issue, plain_english, fix):
+        _add_syntax(issue, plain_english, fix, fatal=True)
 
     # ── Step 0: CNAME detection ────────────────────────────────
     dmarc_fqdn = f"_dmarc.{domain}"
@@ -967,7 +979,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
         if version_tag_deviations(
             _r, "DMARC1", allow_whitespace=True, case_sensitive=True
         ):
-            _add_syntax(
+            _add_fatal_syntax(
                 "Lowercase v=dmarc1 detected",
                 "Lowercase v=dmarc1 detected. RFC 7489 requires uppercase. "
                 "This record is invalid and will not be honored.",
@@ -1111,7 +1123,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     if re.match(r"v=DMARC\s*[;]", stripped, re.IGNORECASE) or \
        stripped.upper().startswith("V=DMARC;") or \
        stripped.upper().rstrip() == "V=DMARC":
-        _add_syntax(
+        _add_fatal_syntax(
             "Version tag missing '1': v=DMARC instead of v=DMARC1",
             "The record says 'v=DMARC' but is missing the required '1'. "
             "Receivers will not recognize this as a valid DMARC record.",
@@ -1121,7 +1133,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # 3c. Separator errors (dmarc.org: colons, slashes, missing semicolons)
     # Check for colons used as separators (v=DMARC1: p=none: ...)
     if re.search(r"DMARC1\s*:", stripped, re.IGNORECASE):
-        _add_syntax(
+        _add_fatal_syntax(
             "Colons used as tag separators instead of semicolons",
             "DMARC tags must be separated by semicolons (;), not colons (:). "
             "This record will not be parsed correctly by any receiver.",
@@ -1130,7 +1142,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
 
     # Check for forward-slash separators (v=DMARC1/; p=none/;)
     if "/;" in record:
-        _add_syntax(
+        _add_fatal_syntax(
             "Forward-slash characters before semicolons",
             "The record contains '/;' sequences, likely confusing forward-slash "
             "with backslash escaping. Receivers will not parse this correctly.",
@@ -1142,7 +1154,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
 
     # Check for no separators at all (v=DMARC1 p=none pct=100)
     if ";" not in record and " p=" in record.lower():
-        _add_syntax(
+        _add_fatal_syntax(
             "No semicolon separators between tags",
             "DMARC tags must be separated by semicolons. This record uses spaces "
             "only, which means receivers cannot parse the tags.",
@@ -1152,7 +1164,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # 3e. Commas used as tag separators (dmarcchecker.app: bonkerscorner.com example)
     # Pattern: value, tag= (e.g., "adkim=r, aspf=r, pct=100")
     if re.search(r'=[^\s;,]+\s*,\s*[a-z]+=', record, re.IGNORECASE):
-        _add_syntax(
+        _add_fatal_syntax(
             "Commas used as tag separators instead of semicolons",
             "DMARC tags must be separated by semicolons (;). Commas (,) are only "
             "valid inside rua/ruf tags to list multiple report addresses. "
@@ -1174,7 +1186,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
 
     # ── Step 4: Parse tags ──────────────────────────────────────
     tags = {}
-    tag_positions = []  # Track order for v= and p= position checks
+    tag_positions = []  # Track order for the v= position check
     seen_tags = {}      # Track duplicates
 
     for part in record.split(";"):
@@ -1191,7 +1203,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
 
             # Check for duplicate tags
             if key_clean in seen_tags:
-                _add_syntax(
+                _add_fatal_syntax(
                     f"Duplicate tag: '{key_clean}' appears multiple times",
                     f"The tag '{key_clean}' is defined more than once. "
                     "RFC 7489 does not define behavior for duplicate tags, so "
@@ -1214,7 +1226,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 if key_clean == "pct":
                     _add_issue(
                         "warning",
-                        "Deprecated tag: 'pct' (removed in RFC 9989 §C.5.2)",
+                        "Removed tag: 'pct' (RFC 9989 §C.5.2)",
                         "RFC 9989 §C.5.2 (Tags Removed) and §A.6 explicitly "
                         "remove the pct tag. The RFC 9989 testing mechanism is "
                         "the t tag (§4.7): t=y signals receivers to apply the "
@@ -1226,7 +1238,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 elif key_clean == "ri":
                     _add_issue(
                         "info",
-                        "Deprecated tag: 'ri' (removed in RFC 9989 §C.5.2)",
+                        "Removed tag: 'ri' (RFC 9989 §C.5.2)",
                         "RFC 9989 §C.5.2 (Tags Removed) explicitly lists "
                         "ri among the tags removed from the protocol, so it "
                         "is also absent from the §4.7 tag registry. Current "
@@ -1239,7 +1251,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 elif key_clean == "rf":
                     _add_issue(
                         "info",
-                        "Deprecated tag: 'rf' (removed in RFC 9989 §C.5.2)",
+                        "Removed tag: 'rf' (RFC 9989 §C.5.2)",
                         "RFC 9989 §C.5.2 (Tags Removed) explicitly lists "
                         "rf among the tags removed from the protocol, so it "
                         "is also absent from the §4.7 tag registry. The only "
@@ -1268,22 +1280,15 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # ── Step 5: Tag ordering checks ─────────────────────────────
     # 5a. v= must be first tag (RFC 7489 §6.3, dmarc.org)
     if tag_positions and tag_positions[0] != "v":
-        _add_syntax(
+        _add_fatal_syntax(
             "Version tag (v=DMARC1) is not the first tag",
             "RFC 7489 requires v=DMARC1 to be the very first tag in the record. "
             "If it appears anywhere else, receivers may ignore the entire record.",
             "Move v=DMARC1 to the beginning of the record.",
         )
 
-    # 5b. p= must immediately follow v= (dmarc.org, Valimail)
-    if len(tag_positions) >= 2 and tag_positions[0] == "v" and tag_positions[1] != "p":
-        _add_syntax(
-            f"Policy tag (p=) is not the second tag (found '{tag_positions[1]}=' instead)",
-            "RFC 7489 requires the policy tag (p=) to appear immediately after "
-            "v=DMARC1. Some receivers may skip DMARC processing if this order "
-            "is wrong.",
-            "Move p= to be the second tag, right after v=DMARC1.",
-        )
+    # No rule for p=. RFC 9989 section 4.8's ABNF is dmarc-version followed
+    # by the other tags in any order; only v= has a fixed position.
 
     # ── Step 6: Extract and validate individual tag values ──────
 
@@ -1419,7 +1424,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 )
         else:
             if rec_kind == "missing":
-                _add_syntax(
+                _add_fatal_syntax(
                     "Missing required policy tag (p=) and no valid rua= URI",
                     "Per RFC 9989 §4.10.1, a record without a valid "
                     "p= tag is recoverable only when rua= contains at "
@@ -1692,7 +1697,9 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
         )
 
     # ── Step 8: Merge syntax errors into issues and set final status ──
-    # Syntax errors are always severity=error and go into the main issues list
+    # Syntax problems join the main issues list at their own severity: error
+    # for the ones that invalidate the record, warning for the ones receivers
+    # ignore (see _add_syntax).
     for se in result["syntax_errors"]:
         result["issues"].append(se)
 
@@ -1745,7 +1752,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     tag_counts: dict = {}
 
     for token in tokens:
-        m = re.match(r'^(?P<key>[a-zA-Z][a-zA-Z0-9_-]*)=(?P<value>.+)$', token.strip())
+        m = re.match(r'^(?P<key>[a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(?P<value>.+)$', token.strip())
         if m:
             key = m.group("key").lower()
             value = m.group("value")
@@ -1788,8 +1795,16 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     # Check 3: Policy required
     p_count = tag_counts.get("p", 0)
     if p_count == 0:
-        _add("record_structure", "P_MISSING", "fail",
-             "No policy tag. Every DMARC record requires p=none, p=quarantine, or p=reject.")
+        # The rule the recovery block in _raw_check_dmarc applies: an absent
+        # p with a valid rua is read as p=none, so it is not structural.
+        if _is_rua_syntactically_valid(tag_dict.get("rua", "")):
+            _add("record_structure", "P_MISSING", "warn",
+                 "No policy tag. RFC 9989 section 4.7: with a valid rua, receivers treat "
+                 "the record as p=none. RFC 7489 receivers ignore it. Add an explicit p=.")
+        else:
+            _add("record_structure", "P_MISSING", "fail",
+                 "No policy tag and no valid rua, so receivers apply no DMARC processing. "
+                 "Add p=none, p=quarantine, or p=reject.")
     elif p_count > 1:
         p_vals = [v for k, v, _ in parsed_tags if k == "p"]
         _add("record_structure", "DUPLICATE_TAG", "fail",
@@ -2006,7 +2021,7 @@ def _validate_dmarc_legacy(record: str, dmarc_records_count: int = 1) -> Dict:
     tag_counts: dict = {}
 
     for token in tokens:
-        m = re.match(r'^(?P<key>[a-zA-Z][a-zA-Z0-9_-]*)=(?P<value>.+)$', token.strip())
+        m = re.match(r'^(?P<key>[a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(?P<value>.+)$', token.strip())
         if m:
             key = m.group("key").lower()
             value = m.group("value")
@@ -2162,7 +2177,11 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
     deprecated_tags = []
     record = dmarc_result.get("record", "")
     policy = (dmarc_result.get("policy") or "").lower()
-    record_valid = dmarc_result.get("status") != "error"
+    # A recovered p/sp/np is honoured only by RFC 9989 receivers; RFC 7489
+    # receivers ignore the record, so it is not valid under both specs. Tags
+    # receivers ignore (RFC 9989 section 4.8) leave the record valid.
+    record_valid = (dmarc_result.get("status") != "error"
+                    and not dmarc_result.get("policy_recovery_applied"))
 
     tags_in_record = {}
     for part in record.split(";"):

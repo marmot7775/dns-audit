@@ -37,7 +37,7 @@ def test_deprecated_tags_still_block_ready_and_still_appear_as_a_reason():
     tags = {"v": "DMARC1", "p": "reject", "rua": "mailto:reports@example.com", "pct": "50"}
     health = result_transformer._calculate_dmarcbis_health(tags, "reject", [])
     assert health["status"] == "compatible"
-    assert any("Deprecated tags" in r for r in health["reasons"])
+    assert any("Removed tags" in r for r in health["reasons"])
 
 
 def _roadmap_checks(dmarc_record):

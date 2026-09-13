@@ -100,11 +100,12 @@ def test_pct_zero_is_not_a_pass(policy):
 def test_quarantine_pct_zero_without_rua_grades_like_p_none():
     """p=quarantine with pct=0 is p=none's protection level on RFC 7489
     receivers and better on RFC 9989 ones, so it takes p=none's grading:
-    warn with rua, fail without. It used to be fail regardless of rua, which
-    put a redder card on the stronger of the two records."""
+    warn, with or without rua (Doc 44: p=none without rua is weak, not
+    broken). It used to be fail regardless of rua, which put a redder card
+    on the stronger of the two records."""
     record = "v=DMARC1; p=quarantine; pct=0"
     card = transform_dmarc(_raw(record, "quarantine", pct=0, rua=None))
-    assert card["status"] == "fail", card
+    assert card["status"] == "warn", card
 
     none_card = transform_dmarc(_raw("v=DMARC1; p=none", "none", rua=None))
     assert none_card["status"] == card["status"]
