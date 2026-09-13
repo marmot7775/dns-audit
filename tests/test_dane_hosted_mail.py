@@ -54,7 +54,7 @@ def test_google_workspace_dane_is_informational_with_no_fix(audit, mx_host):
     card = _dane(audit, "g.test", mx_host)
 
     assert card["status"] == "absent"
-    assert card["pill_label"] == "N/A"
+    assert card["pill_label"] == "Not applicable"
     assert not card.get("fix"), (
         f"a Workspace-hosted domain cannot publish TLSA for Google's hosts, so "
         f"the card must not hand it a fix: {card.get('fix')!r}"

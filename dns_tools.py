@@ -255,6 +255,15 @@ def is_mta_sts_version_tag(record: str) -> bool:
                                allow_whitespace=False, case_sensitive=True)
 
 
+def is_spf_record(record: str) -> bool:
+    """RFC 7208 section 4.5: exactly "v=spf1", then a space or the end.
+
+    Case insensitive, since RFC 7208 writes the version as a plain literal.
+    A prefix match accepted "v=spf10 ..." as SPF.
+    """
+    return re.match(r"v=spf1(?:\s|$)", (record or "").strip(), re.IGNORECASE) is not None
+
+
 def mta_sts_version_deviations(record: str) -> Optional[List[str]]:
     """Reasons an intended MTA-STS record at _mta-sts is not one. See above."""
     return version_tag_deviations(record, "STSv1",
