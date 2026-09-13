@@ -276,7 +276,11 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         spf_result = "configured"
 
     # --- DKIM result ---
-    found_selectors = raw_dkim.get("found_selectors", []) if raw_dkim else []
+    # A revoked key (empty p=) is published but signs nothing, so it is no
+    # DKIM path. The DKIM card and the resilience block already split them.
+    from result_transformer import _split_dkim_selectors
+    found_selectors, _revoked = _split_dkim_selectors(
+        (raw_dkim.get("found_selectors") or []) if raw_dkim else [])
     dkim_result = "configured" if found_selectors else "none"
 
     # --- DMARC record and alignment modes ---
@@ -533,7 +537,8 @@ def build_dmarc_roadmap(raw_dmarc: Dict, raw_spf: Dict, raw_dkim: Dict,
     spf_lookup_count = raw_spf.get("lookup_count", 0)
     all_mech = (raw_spf.get("all_mechanism") or "").lower()
     spf_valid = has_spf and spf_lookup_count <= 10 and all_mech != "+all"
-    has_dkim = bool(raw_dkim.get("found_selectors"))
+    from result_transformer import _split_dkim_selectors
+    has_dkim = bool(_split_dkim_selectors(raw_dkim.get("found_selectors") or [])[0])
     has_rua = bool(rua)
 
     # Check rua authorization from report_auth data

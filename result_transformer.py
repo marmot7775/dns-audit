@@ -626,7 +626,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
 # Email Security Roadmap (Prompt 11)
 # ============================================================
 
-def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False) -> Dict:
+def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
+                           has_mx: bool = True) -> Dict:
     """Synthesize all check results into a prioritized action plan.
 
     Takes the transformed checks list and returns a roadmap with
@@ -734,18 +735,21 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False) -> Dict
     def _assessed(card):
         return bool(card) and card.get("status") != "unavailable"
 
-    if _assessed(mta_sts) and mta_sts.get("pill_label") == "Not configured":
+    # MTA-STS, TLS-RPT and DANE protect inbound delivery to MX hosts. With no
+    # MX there is none, and naming MTA-STS as the biggest risk told a domain
+    # that receives no mail its encryption could be stripped.
+    if has_mx and _assessed(mta_sts) and mta_sts.get("pill_label") == "Not configured":
         items.append({"priority": "medium", "protocol": "MTA-STS",
                       "action": "Configure MTA-STS for TLS enforcement",
                       "impact": "Without MTA-STS, email encryption can be silently stripped."})
 
-    if _assessed(tls_rpt) and (tls_rpt.get("status") == "fail"
+    if has_mx and _assessed(tls_rpt) and (tls_rpt.get("status") == "fail"
                                or tls_rpt.get("pill_label") == "Not configured"):
         items.append({"priority": "medium", "protocol": "TLS-RPT",
                       "action": "Configure TLS-RPT for failure visibility",
                       "impact": "TLS downgrade attacks go undetected."})
 
-    if _assessed(dane) and dane.get("pill_label") == "Not configured":
+    if has_mx and _assessed(dane) and dane.get("pill_label") == "Not configured":
         items.append({"priority": "medium", "protocol": "DANE",
                       "action": "Consider DANE TLSA records",
                       "impact": "Inbound mail TLS relies solely on the CA system, with no DNS-pinned backstop if a CA is compromised or coerced."})
@@ -4199,7 +4203,17 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             details.append(_issue_to_detail(issue))
     elif record:
         lookups = raw.get("lookup_count", 0)
-        if lookups <= 8:
+        # spf_recursive is the one source for lookup-limit findings, and they
+        # arrive with the issues below. This budget line is only for a record
+        # it had nothing to say about; adding it as well put the same finding
+        # on the card up to three times.
+        _limit_reported = any(
+            i.get("kind") == "lookup_limit"
+            for i in (raw.get("spf_recursive") or {}).get("issues", [])
+        )
+        if _limit_reported:
+            pass
+        elif lookups <= 8:
             details.append({"type": "good", "text": f"{lookups} DNS lookups (well within the 10-lookup limit)"})
         elif lookups <= 10:
             details.append({"type": "warning", "text": f"{lookups} DNS lookups ({'at' if lookups == 10 else 'near'} the 10-lookup limit)"})
@@ -5434,10 +5448,7 @@ def transform_mx(raw: Dict) -> Dict:
             f"so a single MX hostname does not indicate a single point of failure."
         )
     else:
-        explanation = (
-            "Only one MX record is configured. If this host becomes unavailable, inbound email "
-            "delivery will fail until it recovers."
-        )
+        explanation = "Only one MX record is configured."
     if providers:
         explanation += f" Provider: {_e(', '.join(providers))}."
 
@@ -5574,7 +5585,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             return {
                 "name": "MTA-STS",
                 "status": "absent",
-                "pill_label": "N/A",
+                "pill_label": "Not applicable",
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
                 "configured": False,
@@ -5587,6 +5598,29 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
                     {"type": "info", "text": "Null MX or null SPF published - domain declares it does not handle email"},
                     {"type": "info", "text": "MTA-STS is only relevant for domains with MX records"},
                 ],
+                "fix": None,
+                "fix_records": None,
+                "deliverability": None,
+            }
+
+        # No MX: MTA-STS names MX hosts in its policy and protects delivery
+        # to them, so there is nothing for it to protect. remediation_planner
+        # already skips it here; the roadmap now does too.
+        if not has_mx:
+            return {
+                "name": "MTA-STS",
+                "status": "absent",
+                "pill_label": "Not applicable",
+                "verdict": "No MX records, so there is no inbound mail to protect",
+                "record": None,
+                "configured": False,
+                "explanation": (
+                    "MTA-STS (<a href=\"https://datatracker.ietf.org/doc/html/rfc8461\" target=\"_blank\" rel=\"noopener\">RFC 8461</a>) "
+                    "protects inbound delivery by requiring TLS to the MX hosts its policy names. "
+                    "This domain publishes no MX records, so there are no MX hosts for a policy "
+                    "to name."
+                ),
+                "details": [{"type": "info", "text": "No MX records, so MTA-STS is not applicable"}],
                 "fix": None,
                 "fix_records": None,
                 "deliverability": None,
@@ -5762,7 +5796,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             return {
                 "name": "TLS-RPT",
                 "status": "absent",
-                "pill_label": "N/A",
+                "pill_label": "Not applicable",
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
                 "configured": False,
@@ -5775,6 +5809,24 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
                     {"type": "info", "text": "Null MX or null SPF published - domain declares it does not handle email"},
                     {"type": "info", "text": "TLS-RPT is only relevant for domains with MX records"},
                 ],
+                "fix": None,
+                "fix_records": None,
+            }
+
+        if not has_mx:
+            return {
+                "name": "TLS-RPT",
+                "status": "absent",
+                "pill_label": "Not applicable",
+                "verdict": "No MX records, so there is no inbound mail to protect",
+                "record": None,
+                "configured": False,
+                "explanation": (
+                    "TLS-RPT (<a href=\"https://datatracker.ietf.org/doc/html/rfc8460\" target=\"_blank\" rel=\"noopener\">RFC 8460</a>) "
+                    "reports TLS failures on inbound delivery to the domain's MX hosts. This "
+                    "domain publishes no MX records, so there is no inbound delivery to report on."
+                ),
+                "details": [{"type": "info", "text": "No MX records, so TLS-RPT is not applicable"}],
                 "fix": None,
                 "fix_records": None,
             }
@@ -6340,8 +6392,8 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
         return {
             "name": "DANE",
             "status": "absent",
-            "pill_label": "N/A",
-            "verdict": "No MX hosts to check",
+            "pill_label": "Not applicable",
+            "verdict": "No MX records, so there is no inbound mail to protect",
             "record": None,
             "configured": False,
             "explanation": (
@@ -6349,155 +6401,99 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
                 "your mail server's TLS certificate directly via DNS, without relying on a CA. "
                 "This domain has no MX records, so DANE is not applicable."
             ),
-            "details": [{"type": "info", "text": "No MX hosts. DANE check not applicable"}],
+            "details": [{"type": "info", "text": "No MX records, so DANE is not applicable"}],
             "fix": None,
             "fix_records": None,
         }
 
-    # Has TLSA, DNSSEC state never established
-    if has_tlsa and dnssec_ok is None:
+    # Has TLSA. RFC 7672 section 2.2.1: the TLSA RRset that has to validate is
+    # the one at _25._tcp.<mx-host>, in the MX host's own zone, so validation
+    # is read per host from the AD flag on that answer. The audited domain's
+    # DNSSEC only decides whether its MX RRset can be forged, a separate
+    # statement below. Keying the verdict on the domain told an unsigned
+    # domain on a signed provider that senders ignore valid TLSA, and a
+    # signed domain on an unsigned MX host that its chain was valid.
+    if has_tlsa:
+        found = [hr for hr in tlsa_records if hr.get("found")]
+        validated = [hr["mx_host"] for hr in found if hr.get("validated")]
+        unvalidated = [hr["mx_host"] for hr in found if not hr.get("validated")]
+        missing = [hr["mx_host"] for hr in tlsa_records
+                   if not hr.get("found") and not hr.get("error")]
         details = []
         for hr in tlsa_records:
             if hr.get("found"):
+                ok = bool(hr.get("validated"))
                 for rec in hr.get("records", []):
                     details.append({
-                        "type": "info",
+                        "type": "good" if ok else "info",
                         "text": f"{hr['mx_host']}: {rec['usage_name']}, {rec['selector_name']}, {rec['matching_type_name']}"
                     })
-        details.append({
-            "type": "info",
-            "text": "The DNSSEC check did not complete, so DANE effectiveness was not assessed"
-        })
-        for issue in issues:
-            details.append(_issue_to_detail(issue))
-        return {
-            "name": "DANE",
-            # Not "warn". The explanation below says this is a gap in the audit
-            # and not a finding about the domain, and a warn contradicted it by
-            # counting on the PDF cover and in the front end's tallies. Every
-            # other check that reaches this state answers "unavailable", which
-            # is neither a pass nor a finding. The pill still says what was and
-            # was not established, which is the part the reader needs.
-            "status": "unavailable",
-            "pill_label": "Partly checked",
-            "verdict": "TLSA records published, DNSSEC state not confirmed",
-            "record": None,
-            "configured": True,
-            "explanation": (
-                "TLSA records are published for this domain's MX hosts. DANE "
-                "(<a href=\"https://datatracker.ietf.org/doc/html/rfc7672\" target=\"_blank\" rel=\"noopener\">RFC 7672</a>) "
-                "requires DNSSEC to be effective, and the DNSSEC check did not complete on "
-                "this run, so this audit cannot say whether these records are trusted by "
-                "sending servers. This is a gap in the audit, not a finding about the domain."
-            ),
-            "details": details,
-            "fix": None,
-            "fix_records": None,
-            "dane_deep": _build_dane_deep(tlsa_records, dnssec_ok),
-            "ttl_info": format_ttl(raw.get("ttl")),
-        }
-
-    # Has TLSA but no DNSSEC. Not-enabled and signed-but-unanchored both
-    # collapse to dnssec_ok == False, but they are different domain states
-    # with different fixes: an unanchored zone already has DNSKEY published,
-    # so "enable DNSSEC" is a step already done. The missing piece is the DS
-    # record at the registrar.
-    if has_tlsa and not dnssec_ok:
-        signed_unanchored = raw.get("dnssec_state") == "signed_unanchored"
-        details = []
-        for hr in tlsa_records:
-            if hr.get("found"):
-                for rec in hr.get("records", []):
-                    details.append({
-                        "type": "info",
-                        "text": f"{hr['mx_host']}: {rec['usage_name']}, {rec['selector_name']}, {rec['matching_type_name']}"
-                    })
-        details.append({
-            "type": "error",
-            "text": (
-                "TLSA records found but DNSSEC is signed and not anchored at the "
-                "parent, so DANE is ineffective"
-                if signed_unanchored else
-                "TLSA records found but DNSSEC is not enabled, so DANE is ineffective"
-            )
-        })
-        for issue in issues:
-            if "dnssec" not in (issue.get("issue") or "").lower():
-                details.append(_issue_to_detail(issue))
-
-        if signed_unanchored:
-            return {
-                "name": "DANE",
-                "status": "warn",
-                "verdict": "TLSA found but DNSSEC unanchored",
-                "record": None,
-                "configured": True,
-                "explanation": (
-                    "DANE TLSA records are published for your MX hosts, and DNSSEC keys are "
-                    "published for your domain, but no DS record was found at the parent "
-                    "zone. DANE requires DNSSEC (<a href=\"https://datatracker.ietf.org/doc/html/rfc7672\" target=\"_blank\" rel=\"noopener\">RFC 7672</a> Section 2.2) to be anchored to the "
-                    "global trust chain. Without the DS record, validating resolvers treat "
-                    "this zone as unsigned, so an attacker can forge or strip TLSA records, "
-                    "completely defeating the authentication."
-                ),
-                "details": details,
-                "fix": "Add a DS record for your domain at your registrar, pointing to your published DNSKEY. Once the chain is anchored, your existing TLSA records will become effective.",
-                "fix_records": None,
-                "ttl_info": format_ttl(raw.get("ttl")),
-            }
-
-        return {
-            "name": "DANE",
-            "status": "warn",
-            "verdict": "TLSA found but DNSSEC missing",
-            "record": None,
-            "configured": True,
-            "explanation": (
-                "DANE TLSA records are published for your MX hosts, but DNSSEC is not enabled. "
-                "DANE requires DNSSEC (<a href=\"https://datatracker.ietf.org/doc/html/rfc7672\" target=\"_blank\" rel=\"noopener\">RFC 7672</a> Section 2.2). Without it, an attacker can forge "
-                "or strip TLSA records, completely defeating the authentication. "
-                "Senders that implement RFC 7672 will ignore TLSA records that are not DNSSEC-validated."
-            ),
-            "details": details,
-            "fix": "Enable DNSSEC for your domain before relying on DANE. Once DNSSEC is active, your existing TLSA records will become effective.",
-            "fix_records": None,  # DNSSEC activation required first; TLSA records already exist
-            "ttl_info": format_ttl(raw.get("ttl")),
-        }
-
-    # Has TLSA + DNSSEC
-    if has_tlsa and dnssec_ok:
-        details = []
-        for hr in tlsa_records:
-            if hr.get("found"):
-                for rec in hr.get("records", []):
-                    details.append({
-                        "type": "good",
-                        "text": f"{hr['mx_host']}: {rec['usage_name']}, {rec['selector_name']}, {rec['matching_type_name']}"
-                    })
+                details.append(
+                    {"type": "good", "text": f"{hr['mx_host']}: TLSA validates under DNSSEC"}
+                    if ok else
+                    {"type": "error", "text": f"{hr['mx_host']}: TLSA present but not DNSSEC validated, so senders that implement RFC 7672 ignore it"}
+                )
             elif hr.get("error"):
                 details.append({"type": "warning", "text": f"{hr['mx_host']}: {hr['error']}"})
 
         if mx_with_tlsa == mx_checked:
             details.append({"type": "good", "text": f"All {mx_checked} MX host{'s' if mx_checked != 1 else ''} have TLSA records"})
-        else:
-            missing = [h["mx_host"] for h in tlsa_records if not h["found"] and not h.get("error")]
-            if missing:
-                details.append({"type": "warning", "text": f"Missing DANE on: {', '.join(missing)}"})
+        elif missing:
+            details.append({"type": "warning", "text": f"Missing DANE on: {', '.join(missing)}"})
 
-        details.append({"type": "good", "text": "DNSSEC is enabled and the DANE chain of trust is valid"})
+        # The domain's own zone decides whether its MX records can be forged.
+        if dnssec_ok is False:
+            _unanchored = raw.get("dnssec_state") == "signed_unanchored"
+            details.append({"type": "info", "text": (
+                ("This domain's zone is signed but has no DS record at the parent"
+                 if _unanchored else "This domain's zone is not DNSSEC-signed")
+                + ", so its MX records are not authenticated and an attacker on the path "
+                "could redirect mail to other hosts. The TLSA records above still protect "
+                "mail that reaches these MX hosts."
+            )})
+        elif dnssec_ok:
+            details.append({"type": "good", "text": "This domain's MX records are DNSSEC-signed, so they cannot be forged to redirect mail"})
 
         for issue in issues:
-            details.append(_issue_to_detail(issue))
+            if not (issue.get("issue") or "").startswith("TLSA not DNSSEC validated on "):
+                details.append(_issue_to_detail(issue))
 
-        status = "pass"
-        if any(i.get("severity") == "warning" for i in issues) or mx_with_tlsa < mx_checked:
+        _n = len(validated)
+        if unvalidated and not validated:
             status = "warn"
+            verdict = "TLSA present but not DNSSEC validated"
+        elif unvalidated:
+            status = "warn"
+            verdict = f"DANE-protected on {_n}/{mx_checked} MX hosts, TLSA not validated on {len(unvalidated)}"
+        else:
+            status = "pass"
+            if any(i.get("severity") == "warning" for i in issues) or mx_with_tlsa < mx_checked:
+                status = "warn"
+            verdict = f"DANE-protected ({_n}/{mx_checked} MX hosts)"
 
-        verdict = f"DANE-protected ({mx_with_tlsa}/{mx_checked} MX hosts)"
-        fix = _first_fix(issues)
-        if not fix and mx_with_tlsa < mx_checked:
-            missing = [h["mx_host"] for h in tlsa_records if not h["found"] and not h.get("error")]
-            fix = f"Add TLSA records for: {', '.join(missing)}"
+        if unvalidated:
+            explanation = (
+                f"TLSA records are published for {', '.join(unvalidated)}, but those answers did "
+                "not validate under DNSSEC. DANE (<a href=\"https://datatracker.ietf.org/doc/html/rfc7672\" target=\"_blank\" rel=\"noopener\">RFC 7672</a>) "
+                "section 2.2.1 has senders use a TLSA RRset only when it validates in the MX "
+                "host's zone, so senders ignore these records and fall back to opportunistic "
+                "TLS for those hosts."
+            )
+            fix = (
+                f"Sign the DNS zone that holds {', '.join(unvalidated)} with DNSSEC and publish "
+                "its DS record, or ask the operator of that host to. The TLSA records already "
+                "published take effect once they validate."
+            )
+        else:
+            explanation = (
+                "DANE (<a href=\"https://datatracker.ietf.org/doc/html/rfc7672\" target=\"_blank\" rel=\"noopener\">RFC 7672</a>) is configured: "
+                "the TLSA records at each MX host validate under DNSSEC in that host's zone. Sending "
+                "mail servers that implement RFC 7672 can verify your mail server's TLS certificate "
+                "through those records, independent of the public CA trust model."
+            )
+            fix = _first_fix(issues)
+            if not fix and missing:
+                fix = f"Add TLSA records for: {', '.join(missing)}"
 
         return {
             "name": "DANE",
@@ -6505,13 +6501,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
             "verdict": verdict,
             "record": None,
             "configured": True,
-            "explanation": (
-                "DANE (<a href=\"https://datatracker.ietf.org/doc/html/rfc7672\" target=\"_blank\" rel=\"noopener\">RFC 7672</a>) is configured and backed by DNSSEC. Sending mail servers that "
-                "implement RFC 7672 can verify your mail server's TLS certificate through DNS-based "
-                "TLSA records, independent of the Certificate Authority infrastructure. "
-                "This allows senders to authenticate the TLS certificate without relying on the "
-                "public CA trust model."
-            ),
+            "explanation": explanation,
             "details": details,
             "fix": fix,
             "fix_records": None,
@@ -6529,7 +6519,17 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
     _providers = raw.get("mx_providers") or []
     _hosts = [h.lower() for h in (raw.get("mx_hostnames") or [])]
 
-    if any(p.startswith("Google Workspace") for p in _providers):
+    _host_providers = raw.get("mx_host_providers")
+
+    def _every_host(prefix):
+        # Every MX host, not any. A domain listing its own host beside the
+        # provider's controls that host, so "not under this domain's control"
+        # is false for it and the generic advice below applies instead.
+        if _host_providers is None:  # a result stored before this field
+            return any(p.startswith(prefix) for p in _providers)
+        return bool(_host_providers) and all(p.startswith(prefix) for p in _host_providers)
+
+    if _every_host("Google Workspace"):
         # Verified 2026-09-08: no TLSA at smtp.google.com, aspmx.l.google.com or
         # alt1.aspmx.l.google.com, and google.com publishes no DS record. Google
         # neither publishes TLSA for its MX hosts nor signs the zone they live
@@ -6538,7 +6538,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
         return {
             "name": "DANE",
             "status": "absent",
-            "pill_label": "N/A",
+            "pill_label": "Not applicable",
             "verdict": "DANE is not available on Google Workspace",
             "record": None,
             "configured": False,
@@ -6567,7 +6567,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
         ".mail.eo.outlook.com",
         ".mail.protection.outlook.de",
     )
-    if (any(p.startswith("Microsoft 365") for p in _providers)
+    if (_every_host("Microsoft 365")
             and any(h.endswith(_LEGACY_MS_MX) for h in _hosts)):
         # Microsoft supports inbound SMTP DANE, but not by the owner publishing
         # TLSA: Exchange Online issues a new MX host under mx.microsoft and
@@ -6690,18 +6690,20 @@ def _build_dane_deep(tlsa_records: List[Dict], dnssec_ok: bool) -> Optional[Dict
     if not tlsa_records:
         return None
 
-    # DNSSEC gate
-    if dnssec_ok is None and any(r.get("found") for r in tlsa_records):
-        dnssec_status = {"status": "info", "text": (
-            "TLSA records are published. The DNSSEC check did not complete, so "
-            "whether DANE is effective here was not established."
+    # DNSSEC gate, per MX host: a TLSA RRset has to validate in the MX host's
+    # own zone (RFC 7672 section 2.2.1), not the audited domain's.
+    _found = [r for r in tlsa_records if r.get("found")]
+    if _found and all(r.get("validated") for r in _found):
+        dnssec_status = {"status": "pass", "text": "DANE fully functional: every published TLSA RRset validates under DNSSEC."}
+    elif _found and any(r.get("validated") for r in _found):
+        dnssec_status = {"status": "partial", "text": (
+            "DANE works for some MX hosts only. TLSA records that do not validate under "
+            "DNSSEC are ignored by senders implementing RFC 7672."
         )}
-    elif dnssec_ok and any(r.get("found") for r in tlsa_records):
-        dnssec_status = {"status": "pass", "text": "DANE fully functional."}
-    elif not dnssec_ok and any(r.get("found") for r in tlsa_records):
+    elif _found:
         dnssec_status = {"status": "fail", "text": (
-            "DANE is ineffective here. Without DNSSEC, TLSA records cannot be authenticated, "
-            "and senders implementing RFC 7672 ignore TLSA records from unsigned zones."
+            "DANE is ineffective here. The published TLSA records do not validate under DNSSEC, "
+            "and senders implementing RFC 7672 ignore TLSA records that do not validate."
         )}
     elif dnssec_ok:
         dnssec_status = {"status": "partial", "text": (

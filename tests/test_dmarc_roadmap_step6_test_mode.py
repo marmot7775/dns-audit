@@ -25,7 +25,7 @@ def _roadmap(record, policy, t):
         "domain": "example.com",
     }
     raw_spf = {"record": "v=spf1 -all", "lookup_count": 0, "all_mechanism": "-all"}
-    raw_dkim = {"found_selectors": ["selector1"]}
+    raw_dkim = {"found_selectors": [{"selector": "selector1"}]}
     return build_dmarc_roadmap(
         raw_dmarc, raw_spf, raw_dkim,
         tree_walk=None, has_mx=True, is_defensive=False,

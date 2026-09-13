@@ -27,7 +27,7 @@ def test_dkim_only_alignment_uses_adkim_not_aspf():
         "aspf": "s",
     }
     raw_spf = {"record": None, "lookup_count": 0}
-    raw_dkim = {"found_selectors": ["selector1"]}
+    raw_dkim = {"found_selectors": [{"selector": "selector1"}]}
 
     result = build_dmarc_evaluation(raw_dmarc, raw_spf, raw_dkim, tree_walk=None)
 
@@ -74,7 +74,7 @@ def test_both_configured_with_different_modes_mentions_both():
         "aspf": "s",
     }
     raw_spf = {"record": "v=spf1 -all", "lookup_count": 0}
-    raw_dkim = {"found_selectors": ["selector1"]}
+    raw_dkim = {"found_selectors": [{"selector": "selector1"}]}
 
     result = build_dmarc_evaluation(raw_dmarc, raw_spf, raw_dkim, tree_walk=None)
 
