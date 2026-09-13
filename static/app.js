@@ -2550,11 +2550,9 @@ function renderExecutiveSummary(es) {
     const pct = pc.total ? (pc.configured / pc.total) : 0;
     const circumference = 2 * Math.PI * 18;
     const dashOffset = circumference * (1 - pct);
-    // 'neutral' means nothing in the denominator could be assessed, so the ring
-    // must not read as a red score.
-    const ringColor = pc.color === 'green' ? 'var(--pass)'
-        : pc.color === 'amber' ? 'var(--warn)'
-        : pc.color === 'neutral' ? 'var(--text-tertiary)' : 'var(--fail)';
+    // Coverage counts what is adopted; it is not a defect, so it is never
+    // red or amber. Neutral when nothing in the denominator was assessable.
+    const ringColor = pc.total ? 'var(--primary)' : 'var(--text-tertiary)';
     const ringText = pc.total ? `${pc.configured}/${pc.total}` : 'n/a';
 
     const ringSvg = `<svg class="es-ring" width="44" height="44" viewBox="0 0 44 44">
