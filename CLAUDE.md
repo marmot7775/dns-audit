@@ -3,7 +3,7 @@
 ## Stack
 - **Backend:** Python, FastAPI (server.py), uvicorn
 - **Frontend:** Vanilla HTML/CSS/JS (static/)
-- **Server:** Ubuntu on DigitalOcean (159.223.201.90), Cloudflare DNS
+- **Server:** Ubuntu on DigitalOcean (DROPLET_HOST), Cloudflare DNS
 - **Domain:** dns-audit.com
 
 ## Key files
@@ -118,7 +118,12 @@ would let a client supply its own peer address and walk past the rate
 limiter. Read the docstring on `_get_client_ip` before touching it.
 
 ## Deploy
-git push && ssh marmot7@159.223.201.90 "cd dns-security-auditor && git pull && ~/.venv/bin/pip install -r requirements.txt && sudo systemctl restart dns-auditor"
+DROPLET_HOST and DEPLOY_USER are placeholders. The real values live in
+deploy.local.md at the repo root, a local file that .gitignore keeps out of
+the repo; substitute them before running anything below. dns-auditor.service
+is a template for the same reason.
+
+git push && ssh DEPLOY_USER@DROPLET_HOST "cd dns-security-auditor && git pull && ~/.venv/bin/pip install -r requirements.txt && sudo systemctl restart dns-auditor"
 
 The pip install step matters: the server's venv is not kept in sync with
 requirements.txt automatically, so a new or bumped dependency (e.g.
@@ -131,6 +136,27 @@ Confirm the restart took: `curl -s https://dns-audit.com/api/health` reports
 `static/` changes, so a commit that touches only Python leaves every asset URL
 on the previous build and a skipped restart is indistinguishable from a
 successful one from outside.
+
+## Origin firewall
+The droplet accepts ports 80 and 443 only from Cloudflare's published
+ranges, so nobody can reach the origin around Cloudflare's rate limiting,
+WAF and email obfuscation. Port 22 is not part of this and its rules stay
+as they are. The rules were added with these two commands; rerun them when
+Cloudflare changes its ranges:
+
+```bash
+ssh DEPLOY_USER@DROPLET_HOST 'for r in $(curl -s https://www.cloudflare.com/ips-v4) $(curl -s https://www.cloudflare.com/ips-v6); do sudo ufw prepend allow proto tcp from "$r" to any port 80,443 comment cloudflare; done'
+ssh DEPLOY_USER@DROPLET_HOST 'sudo ufw deny proto tcp from any to any port 80,443'
+```
+
+Check `sudo ufw status` lists the cloudflare rules before running the
+second command: if the curl in the first one failed, the deny would take the
+site down. `prepend` keeps every allow above the deny, so a range added on a
+refresh still matches, and ufw skips rules that already exist. A range
+Cloudflare drops has to be removed by hand (`sudo ufw status numbered`, then
+`sudo ufw delete N`). Verify from outside afterwards: `curl -s -o /dev/null
+-w '%{http_code}' https://dns-audit.com/api/health` prints 200, and the same
+request with `--resolve dns-audit.com:443:DROPLET_HOST` times out.
 
 ## Cache-busting
 After any change to `static/style.css`, `static/app.js`, `static/articles.js` or `static/theme.js`, run this command before committing, OR include it as the final step of your commit. It handles any alphanumeric version string and rewrites both CSS and JS references across every static HTML page:

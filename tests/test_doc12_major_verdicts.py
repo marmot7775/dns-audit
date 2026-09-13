@@ -178,9 +178,9 @@ def test_timeout_and_error_cards_do_not_score_against_the_domain():
 def test_error_card_still_hides_the_exception_text():
     """Control: the earlier fix against leaking server paths must survive."""
     card = audit_engine._error_card(
-        "DMARC", RuntimeError("/home/marmot7/secret/path.py exploded"))
+        "DMARC", RuntimeError("/home/deployuser/secret/path.py exploded"))
     rendered = repr(card)
-    assert "marmot7" not in rendered and "secret" not in rendered
+    assert "deployuser" not in rendered and "secret" not in rendered
 
 
 # ---------------------------------------------------------------------------
