@@ -196,8 +196,8 @@ VENDOR_SPF_INCLUDES = {
 BUSINESS_RISK = {
     # ── SPF ──────────────────────────────────────────────────
     "SPF_NO_RECORD": (
-        "Without SPF, attackers can send email claiming to be from your domain, "
-        "exposing customers to phishing and damaging brand trust."
+        "Without SPF, receivers have no list of servers allowed to send as your "
+        "domain. Mail claiming to be from you cannot be checked against one."
     ),
     "SPF_MULTIPLE_RECORDS": (
         "Multiple SPF records cause receivers to ignore all of them, so your "
@@ -239,12 +239,12 @@ BUSINESS_RISK = {
         "mail as your domain. Spoofing attacks may already be happening undetected."
     ),
     "DMARC_PCT_LOW": (
-        "Partial enforcement leaves some failed messages delivered, so attackers "
-        "still succeed at impersonating your domain a fraction of the time."
+        "Partial enforcement leaves some failing messages delivered, so a fraction "
+        "of spoofed mail still reaches inboxes."
     ),
     "DMARC_TEST_MODE": (
         "Test mode signals receivers to apply a softer policy than published, so "
-        "attackers see the relaxed policy rather than your intended enforcement."
+        "the policy in effect is the relaxed one, not the one you intended."
     ),
     "DMARC_PARSE_FAILURE": (
         "An unparseable DMARC record gives receivers no policy to apply, leaving "
@@ -2951,7 +2951,8 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
                     "error",
                     f"Deprecated DNSSEC algorithm: {algo_name}",
                     f"Algorithm {algo} ({algo_name}) is deprecated and considered insecure. "
-                    "Attackers may be able to forge DNSSEC signatures using this algorithm.",
+                    "This algorithm is no longer recommended in the IANA DNSSEC algorithm registry "
+                    "and its signatures are not considered secure.",
                     "Migrate to algorithm 13 (ECDSA P-256) or 8 (RSA/SHA-256).",
                 )
             elif algo in LEGACY_ALGORITHMS:
@@ -3007,7 +3008,8 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
                         "error",
                         f"Deprecated DNSSEC algorithm: {algo_name}",
                         f"Algorithm {algo} ({algo_name}) is deprecated and considered insecure. "
-                        "Attackers may be able to forge DNSSEC signatures using this algorithm.",
+                        "This algorithm is no longer recommended in the IANA DNSSEC algorithm registry "
+                        "and its signatures are not considered secure.",
                         "Migrate to algorithm 13 (ECDSA P-256) or 8 (RSA/SHA-256).",
                     )
                 elif algo in LEGACY_ALGORITHMS:

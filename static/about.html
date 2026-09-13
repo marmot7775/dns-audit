@@ -19,8 +19,8 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
-    <link rel="stylesheet" href="/static/style.css?v=0be682f">
-    <script src="/static/theme.js?v=0be682f"></script>
+    <link rel="stylesheet" href="/static/style.css?v=246de5d">
+    <script src="/static/theme.js?v=246de5d"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -66,7 +66,7 @@
     <main class="about-page">
         <h1>About</h1>
         <p>The tools I wanted didn't exist.</p>
-        <p>Most DNS tools show you what records you have. They leave you to figure out whether those records are correct, whether the tag combination is dangerous, whether the RFC you're reading is the one that's actually current. I wanted something that did the analysis, showed the work, cited the specific RFC section it was checking against, and gave me the exact record to paste.</p>
+        <p>Most DNS tools show you what records you have. They leave you to figure out whether those records are correct, whether the tag combination is dangerous, whether the RFC you're reading is the one that's actually current. I wanted something that did the analysis, showed the work, cited the RFC it was checking against, and gave me the exact record to paste.</p>
         <p>So I built it.</p>
         <p>It checks your DNS and email security configuration against current standards, flags misconfigurations, and gives you copy-paste fixes. DMARC validation runs against the current standard, published May 2026 in three parts: RFC 9989 for the protocol, RFC 9990 for aggregate reporting, RFC 9991 for failure reporting. It also runs against RFC 7489 behavior, which most receivers still implement while tree walk support rolls out. You see both, and what changes between them. SPF, DKIM, MX, DNSSEC, MTA-STS, TLS-RPT, DANE, CAA, BIMI, Certificate Transparency, and nameserver configuration are all covered.</p>
         <p>If you manage DNS for a domain someone depends on, this tool was built for you.</p>
