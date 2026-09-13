@@ -3178,6 +3178,11 @@ details.st-node>summary:hover {
     font-size: inherit;
 }
 
+.footer-attribution .footer-link {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
 .footer-version {
     color: var(--text-muted);
     font-family: var(--font-mono);
@@ -3204,23 +3209,9 @@ details.st-node>summary:hover {
 .footer-attribution {
     font-size: var(--font-sm);
     color: var(--text-muted);
-    /* Doc 39: one sentence with an inline link. It was a flex row with a
-       gap while an icon sat beside the text; as flex, the sentence's
-       trailing full stop became its own item with a gap before it. */
-}
-.footer-attribution a {
-    color: var(--text-muted);
-    text-decoration: underline;
-}
-.footer-attribution a:hover {
-    color: var(--text-secondary);
-}
-.footer-email {
-    color: var(--text-muted);
-    text-decoration: underline;
-}
-.footer-email:hover {
-    color: var(--primary-light);
+    /* Doc 39: one sentence with an inline link. The flex row only existed
+       to sit the LinkedIn icon beside the text. */
+    display: block;
 }
 .footer-linkedin {
     color: #9ca3af;

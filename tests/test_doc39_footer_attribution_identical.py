@@ -71,6 +71,7 @@ def test_footer_attribution_says_what_neil_does():
     assert block.count("<a ") == 1
     assert f'href="{LINKEDIN}"' in block
     assert 'target="_blank"' in block and 'rel="noopener"' in block
+    assert 'class="footer-link"' in block
     assert ">Contact me on LinkedIn</a>." in block
     assert "<svg" not in block
     assert "footer-linkedin" not in block
