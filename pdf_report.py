@@ -654,8 +654,9 @@ def _roadmap_page(data, S, number=2):
             p_clr = PRIORITY_CLR.get(p, TEXT_SEC)
             st = item.get("status")
             s_clr = STATUS_CLR.get(st, NEUTRAL_CLR)
+            glyph = STATUS_GLYPH.get(st, "\u2022")
             rows.append([
-                Paragraph(f'<font color="{s_clr.hexval()}">{STATUS_GLYPH.get(st, "\u2022")}</font>', S["body"]),
+                Paragraph(f'<font color="{s_clr.hexval()}">{glyph}</font>', S["body"]),
                 Paragraph(f'<font color="{p_clr.hexval()}"><b>{p.upper()}</b></font>', S["body_small"]),
                 Paragraph(_safe(item.get("protocol", "")), S["body"]),
                 Paragraph(_safe(item.get("action", "")), S["body"]),
