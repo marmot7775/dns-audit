@@ -16,7 +16,30 @@ const SCOPE_CHECKS = {
 };
 
 // Severity sort order (lower = higher priority = displayed first)
-const SEVERITY_ORDER = { fail: 0, warn: 1, pass: 2 };
+const SEVERITY_ORDER = { fail: 0, warn: 1, pass: 2, absent: 3, unavailable: 4 };
+
+// One icon set: 16px, stroke 1.75, round caps and joins, drawn in
+// currentColor so the wrapper's status class colours it. Five statuses, five
+// shapes, so colour is never the only signal.
+function iconSvg(body) {
+    return '<svg class="icon" viewBox="0 0 16 16" width="16" height="16" fill="none" ' +
+        'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" ' +
+        'stroke-linejoin="round" aria-hidden="true">' + body + '</svg>';
+}
+
+const ICON = {
+    pass: iconSvg('<path d="M3.5 8.5l3 3 6-7"/>'),
+    warn: iconSvg('<path d="M8 2.25l6.25 11.25H1.75z"/><path d="M8 6.5v3"/><path d="M8 11.75h.01"/>'),
+    fail: iconSvg('<path d="M4.25 4.25l7.5 7.5M11.75 4.25l-7.5 7.5"/>'),
+    absent: iconSvg('<circle cx="8" cy="8" r="5.75" stroke-dasharray="2.25 2.25"/>'),
+    unavailable: iconSvg('<circle cx="8" cy="8" r="5.75"/><path d="M4 12L12 4"/>'),
+    info: iconSvg('<circle cx="8" cy="8" r="5.75"/><path d="M8 7.25v3.5"/><path d="M8 5.1h.01"/>'),
+    chevron: iconSvg('<path d="M4 6l4 4 4-4"/>'),
+};
+
+function statusIcon(st) {
+    return `<span class="status-icon ${safeClass(st)}">${ICON[st] || ICON.info}</span>`;
+}
 
 const DEFAULT_TITLE = document.title;
 let currentScope = 'complete';
@@ -635,17 +658,15 @@ function renderResults(data) {
     });
 
     // Summary counts (scoped)
-    const passCount = checks.filter(c => c.status === 'pass').length;
-    const warnCount = checks.filter(c => c.status === 'warn').length;
-    const failCount = checks.filter(c => c.status === 'fail').length;
-    // A check whose lookup never completed is none of the three. Counting only
-    // pass, warn and fail left the tiles adding up to less than the number of
-    // cards on screen, which the PDF already fixed with a fourth bucket.
-    const unavailableCount = checks.filter(c => c.status === 'unavailable').length;
+    const counts = statusCounts(checks);
+    const warnCount = counts.warn;
+    const failCount = counts.fail;
+    const unavailableCount = counts.unavailable;
 
-    document.getElementById('summary-pass').textContent = passCount;
+    document.getElementById('summary-pass').textContent = counts.pass;
     document.getElementById('summary-warn').textContent = warnCount;
     document.getElementById('summary-fail').textContent = failCount;
+    document.getElementById('summary-absent').textContent = counts.absent;
     document.getElementById('summary-unavailable').textContent = unavailableCount;
     document.getElementById('summary-unavailable-card')
         .classList.toggle('is-hidden', unavailableCount === 0);
@@ -653,14 +674,7 @@ function renderResults(data) {
     // Prompt 26: quiet contact note, shown only when there is something to hand off.
     _renderContactNote(failCount, warnCount);
 
-    // Tab title with issue summary
-    if (failCount > 0) {
-        document.title = `(${failCount} issue${failCount > 1 ? 's' : ''}) ${data.domain} | DNS Audit`;
-    } else if (warnCount > 0) {
-        document.title = `(${warnCount} warning${warnCount > 1 ? 's' : ''}) ${data.domain} | DNS Audit`;
-    } else {
-        document.title = `${data.domain} | DNS Audit`;
-    }
+    document.title = auditTabTitle(counts, data.domain);
 
     // -- Authentication Resilience --
     const resSection = document.getElementById('resilience-section');
@@ -699,24 +713,26 @@ function renderResults(data) {
         resSection.style.display = 'none';
     }
 
-    // -- Priority fixes (always at top, before detailed results) --
+    // -- Priorities: the one prioritized list, from the roadmap --
     const prioritySection = document.getElementById('priority-section');
     const priorityList = document.getElementById('priority-list');
-    priorityList.innerHTML = '';
-
-    const fixes = data.priority_fixes || [];
-    if (fixes.length > 0) {
+    const rm = data.security_roadmap;
+    if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
-        fixes.forEach((fix, i) => {
-            const item = document.createElement('div');
-            item.className = 'priority-item';
-            item.innerHTML = `
-                <div class="priority-number">${i + 1}</div>
-                <div>${escapeHtml(fix)}</div>
-            `;
-            priorityList.appendChild(item);
+        document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
+        priorityList.innerHTML = renderPriorities(rm);
+        priorityList.querySelectorAll('[data-scroll-to]').forEach(el => {
+            const go = () => {
+                const target = document.getElementById(el.dataset.scrollTo);
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            };
+            el.addEventListener('click', go);
+            el.addEventListener('keydown', ev => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); }
+            });
         });
     } else {
+        priorityList.innerHTML = '';
         prioritySection.style.display = 'none';
     }
 
@@ -774,21 +790,6 @@ function renderResults(data) {
         });
     } else {
         anomaliesSection.style.display = 'none';
-    }
-
-    // Security Roadmap (Prompt 11) -- render at top of results
-    if (data.security_roadmap && data.security_roadmap.items && data.security_roadmap.items.length > 0) {
-        const roadmapEl = document.createElement('div');
-        roadmapEl.innerHTML = renderSecurityRoadmap(data.security_roadmap);
-        const roadmapBlock = roadmapEl.firstElementChild;
-        roadmapBlock.id = 'security-roadmap-anchor';
-        resultsList.appendChild(roadmapBlock);
-        roadmapBlock.querySelectorAll('[data-scroll-to]').forEach(el => {
-            el.addEventListener('click', () => {
-                const target = document.getElementById(el.dataset.scrollTo);
-                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
-        });
     }
 
     // Every card is built here, not lazily. Deferring the cards below the
@@ -962,8 +963,33 @@ const STATUS_TITLES = {
     pass: 'Passing',
     warn: 'Warning',
     fail: 'Failed',
+    absent: 'Not configured',
     unavailable: 'Not checked',
 };
+
+// One tally for the tiles, the tab title and both share texts, so the four
+// can never disagree. "absent" is an optional protocol not published and
+// "unavailable" a check that did not run; neither is a warning or an issue.
+function statusCounts(checks) {
+    const counts = { pass: 0, warn: 0, fail: 0, absent: 0, unavailable: 0 };
+    for (const c of checks || []) {
+        if (Object.prototype.hasOwnProperty.call(counts, c.status)) counts[c.status] += 1;
+        else counts.unavailable += 1;
+    }
+    return counts;
+}
+
+function auditTabTitle(counts, domain) {
+    if (counts.fail > 0) return `(${counts.fail} issue${counts.fail > 1 ? 's' : ''}) ${domain} | DNS Audit`;
+    if (counts.warn > 0) return `(${counts.warn} warning${counts.warn > 1 ? 's' : ''}) ${domain} | DNS Audit`;
+    return `${domain} | DNS Audit`;
+}
+
+function shareTweetText(d) {
+    const counts = statusCounts(d?.checks);
+    return `DNS security audit for ${d?.domain || ''}: ${counts.fail} issue${counts.fail !== 1 ? 's' : ''}, ` +
+        `${counts.warn} warning${counts.warn !== 1 ? 's' : ''}`;
+}
 
 function createResultCard(check, index) {
     const card = document.createElement('div');
@@ -977,7 +1003,7 @@ function createResultCard(check, index) {
     card.style.animationDelay = `${index * 60}ms`;
 
     const statusLabel = check.pill_label || {
-        pass: 'Pass', warn: 'Warning', fail: 'Issue'
+        pass: 'Pass', warn: 'Warning', fail: 'Issue', absent: 'Not configured', unavailable: 'Not checked'
     }[check.status] || 'Unknown';
 
     const tooltipText = PROTOCOL_TOOLTIPS[check.name] || '';
@@ -988,11 +1014,11 @@ function createResultCard(check, index) {
     const bodyId = `body-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.innerHTML = `
         <div class="result-header">
-            <div class="status-dot ${check.status}" title="${STATUS_TITLES[check.status] || 'Failed'}" aria-hidden="true"></div>
+            <span class="status-icon ${safeClass(check.status)}" title="${STATUS_TITLES[check.status] || 'Failed'}" aria-hidden="true">${ICON[check.status] || ICON.fail}</span>
             ${titleHtml}
             <span class="status-pill ${check.status}">${escapeHtml(statusLabel)}</span>
             <div class="result-verdict">${escapeHtml(check.verdict || '')}</div>
-            <div class="result-chevron" aria-hidden="true">&#9662;</div>
+            <div class="result-chevron" aria-hidden="true">${ICON.chevron}</div>
         </div>
         <div class="result-body" id="${bodyId}">
             <div class="result-body-inner">
@@ -1137,9 +1163,9 @@ function _renderDetailItem(d) {
         info: 'info-item', good: 'pass-item'
     }[d.type] || 'info-item';
     const icon = {
-        error: '&#10005;', warning: '&#9888;',
-        info: '&#8250;', good: '&#10003;'
-    }[d.type] || '&#8250;';
+        error: ICON.fail, warning: ICON.warn,
+        info: ICON.info, good: ICON.pass
+    }[d.type] || ICON.info;
     const businessRisk = d.business_risk
         ? `<div class="business-risk-callout">
             <span class="business-risk-label">Business impact:</span>
@@ -1407,7 +1433,7 @@ function renderChangeHistory(changes) {
             <span class="cd-header-icon">&#8635;</span>
             <span class="cd-header-title">Change History</span>
             <span class="cd-header-count">${changes.length} change${changes.length !== 1 ? 's' : ''} detected</span>
-            <span class="cd-chevron">&#9662;</span>
+            <span class="cd-chevron">${ICON.chevron}</span>
         </div>
         <div class="cd-body is-hidden">`;
 
@@ -1418,8 +1444,8 @@ function renderChangeHistory(changes) {
 
         const improvementClass = change.is_improvement === true ? 'cd-improvement'
             : change.is_improvement === false ? 'cd-regression' : 'cd-neutral';
-        const improvementIcon = change.is_improvement === true ? '&#10003;'
-            : change.is_improvement === false ? '&#9888;' : '&#8226;';
+        const improvementIcon = change.is_improvement === true ? ICON.pass
+            : change.is_improvement === false ? ICON.warn : ICON.info;
 
         html += `
             <div class="cd-change ${improvementClass}">
@@ -1459,7 +1485,7 @@ function renderPropagationWarning(ttlInfo, checkName) {
 
     return `
         <div class="prop-warning">
-            <span class="prop-warning-icon">&#8505;</span>
+            <span class="prop-warning-icon">${ICON.info}</span>
             <span class="prop-warning-text">
                 Your current ${escapeHtml(checkName || 'DNS')} record has a TTL of ${ttl}s (${escapeHtml(human)}).
                 After publishing changes, it may take up to ${escapeHtml(human)} for all DNS resolvers to pick up the new record.
@@ -1576,7 +1602,7 @@ function renderAttackSurface(as) {
     if (!as || !as.vectors || as.vectors.length === 0) return '';
 
     const statusLabels = { protected: 'Protected', partial: 'Partially Protected', exposed: 'Exposed' };
-    const statusIcons = { protected: '&#9632;', partial: '&#9650;', exposed: '&#9679;' };
+    const statusIcons = { protected: ICON.pass, partial: ICON.warn, exposed: ICON.fail };
 
     // Overall score
     const overallClass = `as-overall-${safeClass(as.overall.color)}`;
@@ -1624,7 +1650,7 @@ function renderAttackSurface(as) {
 function renderSubdomainAudit(sa) {
     if (!sa || !sa.subdomains || sa.subdomains.length === 0) return '';
 
-    const statusIcons = { protected: '&#x2705;', partial: '&#x26A0;&#xFE0F;', exposed: '&#x1F534;' };
+    const statusIcons = { protected: statusIcon('pass'), partial: statusIcon('warn'), exposed: statusIcon('fail') };
 
     // Summary stats
     let summaryHtml = '';
@@ -1676,7 +1702,7 @@ function renderSubdomainAudit(sa) {
             ${calloutHtml}
             <details class="sua-details">
                 <summary class="sua-toggle">
-                    <span class="sua-toggle-icon">&#9654;</span>
+                    <span class="sua-toggle-icon">${ICON.chevron}</span>
                     Show ${sa.subdomains.length} subdomain${sa.subdomains.length === 1 ? '' : 's'}
                 </summary>
                 <div class="sua-table-wrap">
@@ -1720,9 +1746,9 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
     if (!sv || !sv.categories || sv.categories.length === 0) return '';
 
     const statusIcon = {
-        pass: '<span class="sv-icon sv-pass">&#10003;</span>',
-        fail: '<span class="sv-icon sv-fail">&#10005;</span>',
-        warn: '<span class="sv-icon sv-warn">&#9651;</span>'
+        pass: `<span class="sv-icon sv-pass">${ICON.pass}</span>`,
+        fail: `<span class="sv-icon sv-fail">${ICON.fail}</span>`,
+        warn: `<span class="sv-icon sv-warn">${ICON.warn}</span>`
     };
 
     // Summary badge
@@ -1885,8 +1911,8 @@ function renderDmarcTagBreakdown(bd) {
         bd.config_warnings.forEach(w => {
             const cls = w.level === 'critical' ? 'rb-cw-critical'
                 : w.level === 'info' ? 'rb-cw-info' : 'rb-cw-advisory';
-            const icon = w.level === 'critical' ? '&#10005;'
-                : w.level === 'info' ? '&#8505;' : '&#9888;';
+            const icon = w.level === 'critical' ? ICON.fail
+                : w.level === 'info' ? ICON.info : ICON.warn;
             const tagPills = w.tags.map(t => `<code class="rb-cw-tag">${escapeHtml(t)}</code>`).join(' ');
             items += `
                 <div class="rb-cw-item ${cls}">
@@ -1947,7 +1973,7 @@ function renderDmarcTagBreakdown(bd) {
     } else if (bd.migration && bd.migration.status === 'ready') {
         migrationHtml = `
             <div class="mw-block mw-ready">
-                <span class="mw-ready-check">&#10003;</span>
+                <span class="mw-ready-check">${ICON.pass}</span>
                 <span class="mw-ready-text">No migration needed. This record is RFC 9989 Ready.</span>
             </div>`;
     }
@@ -2211,7 +2237,7 @@ function renderTreeWalkSimple(tw) {
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
             <div class="tw-simple-body">
-                <span class="tw-simple-check">&#10003;</span>
+                <span class="tw-simple-check">${ICON.pass}</span>
                 <span><strong>${domain}</strong> publishes its own DMARC record. No policy inheritance needed.</span>
             </div>
             <div class="tw-simple-policy">
@@ -2381,9 +2407,9 @@ function renderDmarcbisReadiness(readiness) {
         const iconClass = item.status === 'pass' ? 'tw-hit'
             : item.status === 'warn' ? 'tw-psd'
                 : 'dbis-info-icon';
-        const icon = item.status === 'pass' ? '&#10003;'
-            : item.status === 'warn' ? '&#9651;'
-                : '&#8505;';
+        const icon = item.status === 'pass' ? ICON.pass
+            : item.status === 'warn' ? ICON.warn
+                : ICON.info;
         const detail = item.detail
             ? `<span class="dbis-tag">${escapeHtml(item.detail)}</span>`
             : '';
@@ -2530,7 +2556,7 @@ function renderExecutiveSummary(es) {
         ? 'es-risk-calm' : 'es-risk-urgent';
 
     // Action buttons
-    let actions = `<button class="es-action" data-scroll-to="security-roadmap-anchor">View Full Roadmap</button>`;
+    let actions = `<button class="es-action" data-scroll-to="priority-section">View Priorities</button>`;
     actions += `<button class="es-action" data-scroll-to="check-dmarc">View Attack Surface</button>`;
     if (es.has_record_builder) {
         actions += `<button class="es-action" data-scroll-to="check-dmarc">Copy Recommended Record</button>`;
@@ -2570,54 +2596,29 @@ function renderExecutiveSummary(es) {
 }
 
 // ============================================================
-// Security Roadmap
+// Priorities
 // ============================================================
 
-function renderSecurityRoadmap(rm) {
-    if (!rm || !rm.items || rm.items.length === 0) return '';
-
-    const priorityLabels = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
-    const priorityColors = { critical: 'fail', high: 'warn', medium: 'info', low: 'pass' };
-
-    // Progress bar
-    const total = rm.total;
-    const tierSummary = Object.entries(rm.tiers)
-        .filter(([_, v]) => v > 0)
-        .map(([k, v]) => `${v} ${priorityLabels[k].toLowerCase()}`)
+function priorityTierSummary(rm) {
+    return ['critical', 'high', 'medium', 'low']
+        .filter(t => (rm.tiers || {})[t] > 0)
+        .map(t => `${rm.tiers[t]} ${t}`)
         .join(', ');
+}
 
-    // Group items by priority
-    let itemsHtml = '';
-    ['critical', 'high', 'medium', 'low'].forEach(tier => {
-        const tierItems = rm.items.filter(i => i.priority === tier);
-        if (tierItems.length === 0) return;
-
-        let rows = tierItems.map(item => {
-            const anchor = `check-${item.protocol.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-            return `<div class="sr-item sr-item-${priorityColors[item.priority]}" data-scroll-to="${anchor}">
-                <span class="sr-protocol">${escapeHtml(item.protocol)}</span>
-                <div class="sr-item-body">
-                    <div class="sr-action">${escapeHtml(item.action)}</div>
-                    <div class="sr-impact">${escapeHtml(item.impact)}</div>
-                </div>
-            </div>`;
-        }).join('');
-
-        itemsHtml += `
-            <div class="sr-tier">
-                <div class="sr-tier-label sr-tier-${priorityColors[tier]}">${escapeHtml(priorityLabels[tier])}</div>
-                ${rows}
-            </div>`;
-    });
-
-    return `
-        <div class="sr-block">
-            <div class="sr-header">
-                <span class="sr-title">Email Security Roadmap</span>
-                <span class="sr-summary">${escapeHtml(tierSummary)}</span>
-            </div>
-            ${itemsHtml}
+// One row per roadmap item, in the roadmap's order. The icon is the card's
+// status: fail, warn or absent, and info for a suggestion on a passing card.
+function renderPriorities(rm) {
+    return ((rm && rm.items) || []).map(item => {
+        const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
+        const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+        return `<div class="priority-row" data-scroll-to="${anchor}" role="link" tabindex="0">
+            <span class="status-icon ${st}">${ICON[st]}</span>
+            <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
+            <span class="tag tag-${safeClass(item.priority)}">${escapeHtml(item.priority)}</span>
+            <span class="priority-action">${escapeHtml(item.action)}</span>
         </div>`;
+    }).join('');
 }
 
 // ============================================================
@@ -2716,7 +2717,7 @@ function renderSpfDeepAnalysis(spf) {
     if (spf.misconfigs && spf.misconfigs.length > 0) {
         let items = spf.misconfigs.map(m => {
             const cls = m.level === 'critical' ? 'rb-cw-critical' : m.level === 'warning' ? 'rb-cw-advisory' : 'rb-cw-info';
-            const icon = m.level === 'critical' ? '&#10005;' : '&#9888;';
+            const icon = m.level === 'critical' ? ICON.fail : ICON.warn;
             return `<div class="rb-cw-item ${cls}">
                 <div class="rb-cw-header"><span class="rb-cw-icon">${icon}</span><span class="rb-cw-title">${escapeHtml(m.title)}</span></div>
                 <div class="rb-cw-text">${escapeHtml(m.text)}</div>
@@ -2845,9 +2846,9 @@ function renderDmarcEvaluation(ev) {
         : ev.policy === 'quarantine' ? 'de-pill-warn'
             : 'de-pill-muted';
 
-    const spfAlignIcon = ev.spf_aligned ? '&#10003; alignment possible' : '&#10005; not configured';
+    const spfAlignIcon = ev.spf_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
     const spfAlignClass = ev.spf_aligned ? 'de-aligned' : 'de-not-aligned';
-    const dkimAlignIcon = ev.dkim_aligned ? '&#10003; alignment possible' : '&#10005; not configured';
+    const dkimAlignIcon = ev.dkim_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
     const dkimAlignClass = ev.dkim_aligned ? 'de-aligned' : 'de-not-aligned';
 
     const dispLabel = ev.disposition === 'none' ? 'delivered'
@@ -2924,16 +2925,16 @@ function renderReportChain(rc) {
 
         let authHtml = '';
         if (dest.authorized === true) {
-            authHtml = '<span class="rc-auth rc-authorized">&#10003; External authorization verified</span>';
+            authHtml = `<span class="rc-auth rc-authorized">${ICON.pass} External authorization verified</span>`;
         } else if (dest.authorized === false) {
-            authHtml = '<span class="rc-auth rc-unauthorized">&#10005; Not authorized (reports will be dropped)</span>';
+            authHtml = `<span class="rc-auth rc-unauthorized">${ICON.fail} Not authorized (reports will be dropped)</span>`;
         } else {
-            authHtml = '<span class="rc-auth rc-same-domain">&#10003; Same domain (no external authorization needed)</span>';
+            authHtml = `<span class="rc-auth rc-same-domain">${ICON.pass} Same domain (no external authorization needed)</span>`;
         }
 
         let mxHtml = '';
         if (dest.has_mx === true) {
-            mxHtml = '<span class="rc-mx-ok">Can receive mail &#10003;</span>';
+            mxHtml = `<span class="rc-mx-ok">Can receive mail ${ICON.pass}</span>`;
         } else if (dest.has_mx === false && dest.is_external) {
             mxHtml = '<span class="rc-mx-fail">Cannot receive mail (no MX)</span>';
         }
@@ -3208,12 +3209,7 @@ function _initShareDropdown() {
         });
 
         dropdown.querySelector('[data-action="twitter"]').addEventListener('click', () => {
-            const d = lastAuditData;
-            const domain = d?.domain || '';
-            const checks = d?.checks || [];
-            const passCount = checks.filter(c => c.status === 'pass').length;
-            const failCount = checks.filter(c => c.status === 'fail').length;
-            const text = `DNS security audit for ${domain}: ${passCount} passing, ${failCount} issue${failCount !== 1 ? 's' : ''}`;
+            const text = shareTweetText(lastAuditData);
             const url = _getShareUrl();
             window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(url), '_blank', 'noopener');
             removeDropdown();
@@ -3251,29 +3247,21 @@ function _getShareUrl() {
     return url.toString();
 }
 
-function _buildShareSummary() {
-    const d = lastAuditData;
+function _buildShareSummary(d = lastAuditData) {
     if (!d) return '';
     const domain = d.domain || '';
     const checks = d.checks || [];
-    const passCount = checks.filter(c => c.status === 'pass').length;
-    const warnCount = checks.filter(c => c.status === 'warn').length;
-    const failCount = checks.filter(c => c.status === 'fail').length;
-    const fixes = d.priority_fixes || [];
+    const counts = statusCounts(checks);
+    const priorities = (d.security_roadmap && d.security_roadmap.items) || [];
     const missing = checks.filter(c => c.status === 'fail').map(c => c.name).join(', ');
 
     let lines = [];
     lines.push(`DNS Security Audit: ${domain}`);
-
-    let statusLine = '';
-    statusLine += `\u2713 ${passCount} Passing`;
-    statusLine += ` | \u26A0 ${warnCount} Warning${warnCount !== 1 ? 's' : ''}`;
-    statusLine += ` | \u2717 ${failCount} Issue${failCount !== 1 ? 's' : ''}`;
-    lines.push(statusLine);
+    lines.push(`${counts.fail} Issue${counts.fail !== 1 ? 's' : ''} | ${counts.warn} Warning${counts.warn !== 1 ? 's' : ''}`);
     lines.push('');
 
-    if (fixes.length > 0) {
-        lines.push('Priority: ' + fixes[0]);
+    if (priorities.length > 0) {
+        lines.push('Priority: ' + priorities[0].action);
     }
     if (missing) {
         lines.push('Issues: ' + missing);
@@ -3464,7 +3452,6 @@ function renderProviderIntelligence(pi) {
             const expanded = btn.getAttribute('aria-expanded') === 'true';
             btn.setAttribute('aria-expanded', String(!expanded));
             body.classList.toggle('is-hidden', expanded);
-            btn.querySelector('.pi-chevron').textContent = expanded ? '\u25B6' : '\u25BC';
         });
     });
 }
@@ -3490,7 +3477,7 @@ function _renderProviderCard(provider, showScorecard) {
     // Guidance (collapsible)
     if (provider.guidance && provider.guidance.length > 0) {
         html += `<button class="pi-guidance-toggle" aria-expanded="false">
-            <span class="pi-chevron">&#9654;</span> Platform Guidance
+            <span class="pi-chevron">${ICON.chevron}</span> Platform Guidance
         </button>
         <div class="pi-guidance-body is-hidden">`;
         for (const g of provider.guidance) {
@@ -3515,12 +3502,12 @@ function _renderProviderCard(provider, showScorecard) {
                 </thead>
                 <tbody>`;
         for (const row of provider.scorecard) {
-            const supportsIcon = row.provider_supports ? '\u2705' : '\u274C';
+            const supportsIcon = row.provider_supports ? statusIcon('pass') : statusIcon('fail');
             let domainIcon;
-            if (row.domain_status === 'yes') domainIcon = '\u2705';
-            else if (row.domain_status === 'no') domainIcon = '\u26A0\uFE0F';
+            if (row.domain_status === 'yes') domainIcon = statusIcon('pass');
+            else if (row.domain_status === 'no') domainIcon = statusIcon('warn');
             else if (row.domain_status === 'n/a') domainIcon = 'N/A';
-            else domainIcon = '\u2014';
+            else domainIcon = statusIcon('unavailable');
             html += `<tr>
                 <td>${escapeHtml(row.feature)}</td>
                 <td class="pi-sc-center">${supportsIcon}</td>
@@ -3705,10 +3692,10 @@ function _realtimeValidate() {
 
     if (domain && DOMAIN_RE.test(domain)) {
         indicator.className = 'domain-valid-indicator valid';
-        indicator.innerHTML = '&#10003;';
+        indicator.innerHTML = ICON.pass;
     } else if (raw.length > 2) {
         indicator.className = 'domain-valid-indicator invalid';
-        indicator.innerHTML = '&#10005;';
+        indicator.innerHTML = ICON.fail;
     } else {
         indicator.className = 'domain-valid-indicator';
         indicator.textContent = '';
@@ -3795,9 +3782,10 @@ function _renderRequestId(requestId) {
 
 function _exportToCSV(data) {
     if (!data) return;
-    const rows = [['Domain', 'Check', 'Status', 'Verdict', 'Priority Fixes', 'Timestamp']];
+    const rows = [['Domain', 'Check', 'Status', 'Verdict', 'Priorities', 'Timestamp']];
     const ts = new Date().toISOString();
-    const fixes = (data.priority_fixes || []).map(f => f.title || f).join('; ');
+    const priorities = ((data.security_roadmap && data.security_roadmap.items) || [])
+        .map(i => i.action).join('; ');
 
     if (data.checks && data.checks.length > 0) {
         data.checks.forEach(check => {
@@ -3806,7 +3794,7 @@ function _exportToCSV(data) {
                 check.name || '',
                 check.status || '',
                 (check.verdict || '').replace(/,/g, ';'),
-                fixes,
+                priorities,
                 ts,
             ]);
         });

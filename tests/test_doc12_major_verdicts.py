@@ -171,8 +171,8 @@ def test_timeout_and_error_cards_do_not_score_against_the_domain():
     for card in cards:
         assert card["status"] == "unavailable"
         assert "not checked" in card["verdict"].lower()
-    passes, warns, fails, unavailable = pdf_report._tally(cards)
-    assert (passes, warns, fails, unavailable) == (0, 0, 0, 2)
+    passes, warns, fails, absent, unavailable = pdf_report._tally(cards)
+    assert (passes, warns, fails, absent, unavailable) == (0, 0, 0, 0, 2)
 
 
 def test_error_card_still_hides_the_exception_text():
