@@ -105,12 +105,16 @@ def _dedupe_details(details: List[Dict]) -> List[Dict]:
 
     The tag breakdown and the engine's issue list both describe p=none and
     pct, so the card said each of them twice. Rows that name no tag are kept.
+    A row can name its tag outright with a "tag" key: the p=none pct row
+    mentions p=none before pct, and matching on the first tag in its text
+    dropped it as a repeat of the p=none row.
     """
     seen = set()
     kept = []
     for d in details:
         m = _DETAIL_TAG_RE.search(d.get("text") or "")
-        key = (m.group(1), d.get("type")) if m else None
+        tag = d.get("tag") or (m.group(1) if m else None)
+        key = (tag, d.get("type")) if tag else None
         if key in seen:
             continue
         if key:
@@ -1399,10 +1403,15 @@ def build_subdomain_audit(
         f"{total_discovered} subdomain{'s' if total_discovered != 1 else ''} discovered, "
         f"{total_mail} with mail configuration",
     ]
-    if total_exposed > 0:
+    # Names that exist, not every probed name: the probe list is a fixed set
+    # of guesses and most of them come back Exists: No.
+    exposed_existing = [s["subdomain"] for s in subdomains
+                        if s["status"] == "exposed" and s["exists"]]
+    assert len(exposed_existing) == exposed_mail + exposed_exist
+    if exposed_existing:
+        _n = len(exposed_existing)
         summary_lines.append(
-            f"{total_exposed} subdomain{'s' if total_exposed != 1 else ''} "
-            f"exposed due to policy gaps"
+            f"{_n} existing subdomain{'s' if _n != 1 else ''} exposed due to policy gaps"
         )
 
     # Build the "killer insight" callout
@@ -1424,11 +1433,12 @@ def build_subdomain_audit(
             f"Your domain has no DMARC record. All {total_discovered} discovered "
             f"subdomain{'s' if total_discovered != 1 else ''} can be freely spoofed."
         )
-    elif sp and sp.lower() == "none" and total_discovered > 0 and total_exposed > 0:
+    elif sp and sp.lower() == "none" and exposed_existing:
+        _n = len(exposed_existing)
+        _names = f", {', '.join(exposed_existing)}" if _n <= 3 else ""
         callout = (
-            f"Your subdomain policy gap (sp=none) affects "
-            f"{total_exposed} real subdomain{'s' if total_exposed != 1 else ''}, "
-            f"not just theoretical ones."
+            f"Your subdomain policy gap (sp=none) affects {_n} "
+            f"{'subdomain that exists' if _n == 1 else 'subdomains that exist'}{_names}."
         )
 
     return {
@@ -1501,14 +1511,14 @@ def _build_dmarcbis_card_data(readiness: Optional[Dict], record: Optional[str]) 
         # is rendered as "warn" (a real issue), editorial as "info".
         checklist_status = "warn" if any(d.get("source") == "spec_required" for d in deprecated) else "info"
         checklist.append({
-            "label": "No deprecated tags (pct, rf, ri)",
+            "label": "No removed tags (pct, rf, ri)",
             "status": checklist_status,
             "detail": ", ".join(dep_names),
             "deprecated_details": dep_details,
         })
     else:
         checklist.append({
-            "label": "No deprecated tags (pct, rf, ri)",
+            "label": "No removed tags (pct, rf, ri)",
             "status": "pass",
             "detail": None,
         })
@@ -1775,8 +1785,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # rejects. Grading that a failure put a red card on a domain whose
         # failing mail is universally enforced against.
         #
-        # p=quarantine with pct=0 grades the way p=none does, warn with rua
-        # and fail without, because it is never less protective than p=none.
+        # p=quarantine with pct=0 grades the way p=none does, warn, because
+        # it is never less protective than p=none.
         # RFC 7489 receivers do nothing for either. RFC 9989 receivers ignore
         # pct and quarantine everything, so it is better there. This branch
         # used to grade it fail unconditionally, which put a redder card on
@@ -1787,10 +1797,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # its own.
         if pct <= 0:
             verdict = _disabled
-            if policy == "reject" or raw.get("rua"):
-                status = "warn"
-            else:
-                status = "fail"
+            status = "warn"
         elif pct < 100:
             verdict = _partial
             status = "warn"
@@ -1805,23 +1812,34 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             status = "pass"
     elif policy == "none":
         verdict = "p=none (monitoring only, no enforcement)"
-        # p=none with no rua is a critical failure: no enforcement AND no visibility
-        if not raw.get("rua"):
-            status = "fail"
-        else:
-            status = "warn"
+        # Warn with or without rua. A published record that enforces nothing
+        # and reports nothing is weak, not broken: Doc 38 puts p=none and a
+        # missing rua both under warn, and the details say what is missing.
+        status = "warn"
     else:
         verdict = f"Policy: {policy}" if policy else "Invalid record"
         status = "fail"
 
-    # Syntax errors or engine-level errors override to fail
+    # Fail only on what invalidates the record: a fatal syntax problem or an
+    # engine error. What receivers ignore under RFC 9989 section 4.8 (unknown
+    # tags, malformed optional values) arrives as a warning and grades warn:
+    # the record stays valid and p= still applies.
     if record and not inherited:
-        has_syntax_errors = bool(raw.get("syntax_errors"))
+        syntax = raw.get("syntax_errors", [])
+        has_fatal_syntax = any(se.get("severity") == "error" for se in syntax)
         has_engine_errors = any(
             i.get("severity") == "error" for i in raw.get("issues", [])
         )
-        if has_syntax_errors or has_engine_errors:
+        if has_fatal_syntax or has_engine_errors:
             status = "fail"
+        elif status == "pass" and syntax:
+            status = "warn"
+        # sp weaker than p is one of Doc 38's warn rules: the root enforces
+        # and its subdomains get less.
+        _rank = {"none": 0, "quarantine": 1, "reject": 2}
+        if (status == "pass" and raw.get("sp") in _rank and policy in _rank
+                and _rank[raw["sp"]] < _rank[policy]):
+            status = "warn"
 
     # RFC 9989 §4.10.1 policy recovery: invalid p/sp/np with valid
     # rua= is treated as p=none by RFC 9989 receivers but may be
@@ -2038,26 +2056,29 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             # to read "policy applied to only N% of failing messages" for both
             # policies, which is wrong for reject: RFC 7489 section 6.6.4 sends
             # the unselected fraction to quarantine rather than to nothing.
-            if policy == "reject":
-                _seven = (
-                    f"reject {pct}% of failing messages and quarantine the rest"
-                    if pct else "quarantine all failing messages"
+            if policy == "none":
+                _pct_text = (
+                    "pct has no effect at p=none: there is no action to apply to a "
+                    "fraction of failing mail. Remove it; RFC 9989 removed the tag."
                 )
-                _nine = "ignore pct and reject all of them"
+            elif policy == "reject":
+                _pct_text = (
+                    f"pct={pct}: RFC 7489 receivers reject the selected fraction and "
+                    "quarantine the rest (RFC 7489 section 6.6.4); RFC 9989 receivers "
+                    "ignore pct and reject all of them."
+                )
             else:
                 _seven = (
                     f"apply the policy to {pct}% of failing messages and leave "
                     "the rest to local filtering"
                     if pct else "enforce on no mail at all"
                 )
-                _nine = "ignore pct and quarantine all of them"
-            details.append({
-                "type": "warning",
-                "text": (
+                _pct_text = (
                     f"pct={pct}: RFC 7489 receivers {_seven}. RFC 9989 receivers "
-                    f"{_nine}, because pct is removed in RFC 9989."
-                ),
-            })
+                    "ignore pct and quarantine all of them, because pct is removed "
+                    "in RFC 9989."
+                )
+            details.append({"type": "warning", "text": _pct_text, "tag": "pct"})
 
         # Append all issues from the audit engine (syntax_errors already merged into issues)
         for issue in raw.get("issues", []):
@@ -2104,6 +2125,12 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 "no protection against spoofing. Upgrade to <strong>p=reject</strong> to "
                 "reject all mail that fails authentication. Reporting is optional because "
                 "there is no legitimate mail to monitor."
+            )
+        elif not raw.get("rua"):
+            fix = (
+                "Add an rua address first; without it there are no reports to review. "
+                "Then review them until every legitimate sender aligns before moving "
+                "to p=quarantine."
             )
         else:
             fix = (
@@ -2220,7 +2247,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         "spec_comparison": _build_spec_comparison(
             raw.get("strict_validation"), raw.get("legacy_validation")
         ),
-        "attack_surface": _build_attack_surface(raw, display_record or record, is_no_mail=is_no_mail),
+        "attack_surface": _build_attack_surface(raw, display_record or record, is_no_mail=is_no_mail,
+                                                usable=status != "fail"),
         "tag_breakdown": tag_breakdown,
         "record_builder": no_record_builder,
         "dmarcbis_readiness": _build_dmarcbis_card_data(
@@ -2349,8 +2377,13 @@ def _build_spec_comparison(strict: Optional[Dict], legacy: Optional[Dict]) -> Op
 # Attack Surface View
 # ============================================================
 
-def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = False) -> Optional[Dict]:
-    """Build the 4-vector email spoofing attack surface analysis."""
+def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = False,
+                          usable: bool = True) -> Optional[Dict]:
+    """Build the 4-vector email spoofing attack surface analysis.
+
+    usable is False when the DMARC card fails, meaning there is no record a
+    receiver can act on. Only then does the overall grade go red.
+    """
     if not record:
         return None
 
@@ -2481,15 +2514,26 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     np_effective = np_val if np_val else (sp if sp else policy)
     np_fallback = np_val is None
     if np_effective == "reject":
-        note = ""
+        # Protected however the reject was reached. RFC 9989 section 4.7 makes
+        # np OPTIONAL: an absent np falls to sp, then p, so a p=reject domain
+        # already rejects invented subdomains. Stating it explicitly is a
+        # suggestion, not a gap, so it rides in the detail line.
         if np_fallback:
-            note = " Protected by fallback, but not explicitly. RFC 9989 recommends setting np= directly."
+            _from = "sp=" if sp else "p="
+            summary3 = f"Non-existent subdomains inherit reject from {_from}."
+            detail3 = (
+                f"Invented subdomains like secure-login.{domain} are blocked. "
+                f"np= is not set, so {_from}reject applies; np=reject would state it explicitly."
+            )
+        else:
+            summary3 = "Non-existent subdomains reject."
+            detail3 = f"Invented subdomains like secure-login.{domain} are blocked."
         v3 = {
             "name": "Non-Existent Subdomain Spoofing",
-            "status": "protected" if not np_fallback else "partial",
-            "color": "green" if not np_fallback else "amber",
-            "summary": f"Non-existent subdomains {'reject' if not np_fallback else 'inherit reject via fallback'}.{note}",
-            "detail": f"Invented subdomains like secure-login.{domain} are blocked.",
+            "status": "protected",
+            "color": "green",
+            "summary": summary3,
+            "detail": detail3,
         }
     elif np_effective == "quarantine":
         v3 = {
@@ -2562,7 +2606,16 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     exposed = [v for v in vectors if v["status"] == "exposed"]
     partial = [v for v in vectors if v["status"] == "partial"]
 
-    if len(exposed) >= 2:
+    # Red is for no usable record. With a published record the card's own
+    # pill is amber at worst for these exposures (p=none, sp=none) and the
+    # Spoofing Protection tile reads amber, so the block tops out at moderate
+    # and its summary names what is exposed.
+    if exposed and usable:
+        overall = {"level": "moderate", "label": "Moderate Risk", "color": "amber",
+                   "summary": ("This domain has multiple paths for email spoofing attacks."
+                               if len(exposed) >= 2 else
+                               f"This domain can be spoofed through {exposed[0]['name'].lower()}.")}
+    elif len(exposed) >= 2:
         overall = {"level": "critical", "label": "Critical Risk", "color": "red",
                    "summary": "This domain has multiple paths for email spoofing attacks."}
     elif len(exposed) == 1:
@@ -2944,9 +2997,11 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
             e["warnings"].append({"level": "info", "text": "Removed in RFC 9989. Safe to remove."})
             return e
         else:
-            return _entry(tag, "afrf", True, True, "Report Format",
-                          "RFC 7489 defaulted to afrf. RFC 9989 removes the rf tag.",
-                          "deprecated")
+            # Absent like sp, np, ruf and t: no value, no badge. Printing the
+            # old RFC 7489 default with a badge sent readers looking for a
+            # tag the record does not contain.
+            return _entry(tag, None, False, True, "Report Format",
+                          "Not in this record. RFC 9989 removed the tag.", "")
 
     # ── ri= (deprecated) ───────────────────────────────────
     if tag == "ri":
@@ -2961,9 +3016,8 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
             e["warnings"].append({"level": "info", "text": "Removed in RFC 9989. Safe to remove."})
             return e
         else:
-            return _entry(tag, "86400", True, True, "Report Interval",
-                          "RFC 7489 defaulted to 86400s (24h). RFC 9989 removes the ri tag.",
-                          "deprecated")
+            return _entry(tag, None, False, True, "Report Interval",
+                          "Not in this record. RFC 9989 removed the tag.", "")
 
     # ── psd= (RFC 9989) ────────────────────────────────────
     if tag == "psd":
@@ -3269,10 +3323,10 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
     if deprecated_present:
         warnings.append({
             "level": "advisory",
-            "title": "Deprecated tags present",
+            "title": "Removed tags present",
             "text": (
-                f"Deprecated tags found that will be ignored by RFC 9989-compliant receivers. "
-                f"Consider removing: {', '.join(deprecated_present)}."
+                f"The record still carries tags RFC 9989 removed, which RFC 9989-compliant "
+                f"receivers ignore. Consider removing: {', '.join(deprecated_present)}."
             ),
             "tags": deprecated_present,
         })
@@ -3467,7 +3521,7 @@ def _calculate_dmarcbis_health(tags: Dict[str, str], policy: str, config_warning
     # above), so neither appears here either.
     reasons = []
     if deprecated_present:
-        reasons.append(f"Deprecated tags: {', '.join(deprecated_present)}")
+        reasons.append(f"Removed tags: {', '.join(deprecated_present)}")
 
     improvements = ". ".join(reasons) if reasons else "Minor improvements available"
 
@@ -3524,7 +3578,7 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
     if dep_in_record:
         tag_list = " and ".join(dep_in_record)
         whats_new.append(
-            f"Your record uses {tag_list} which {'is' if len(dep_in_record) == 1 else 'are'} deprecated in RFC 9989. "
+            f"Your record uses {tag_list} which {'is' if len(dep_in_record) == 1 else 'are'} removed in RFC 9989. "
             f"rf was redundant (only afrf was ever implemented) and ri was rarely respected by receivers."
         )
 
@@ -3732,7 +3786,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         step_num += 1
         steps.append({
             "step": step_num,
-            "action": f"Remove deprecated tags: {', '.join(deprecated)}",
+            "action": f"Remove the tags RFC 9989 removed: {', '.join(deprecated)}",
             "why": "These tags are ignored by RFC 9989 receivers. Removing them cleans up the record.",
             "tags_changed": deprecated,
         })
@@ -3886,8 +3940,8 @@ def _build_record_builder(
         if dep in rec_tags:
             dep_reasons = {
                 "pct": "Removed in RFC 9989. Replaced by the t= tag.",
-                "rf": "Deprecated in RFC 9989. Only afrf was ever implemented.",
-                "ri": "Deprecated in RFC 9989. Receivers standardize on daily reports.",
+                "rf": "Removed in RFC 9989. Only afrf was ever implemented.",
+                "ri": "Removed in RFC 9989. Receivers standardize on daily reports.",
             }
             changes.append({
                 "tag": dep, "action": "removed",
@@ -4156,7 +4210,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         if all_mech == "-all":
             details.append({"type": "good", "text": "-all (hardfail): declares no other servers are authorized"})
         elif all_mech == "~all":
-            details.append({"type": "good", "text": "~all (softfail): unlisted servers are not authorized"})
+            details.append({"type": "warning", "text": "~all (softfail): unlisted servers are not authorized, but receivers are asked only to treat their mail with suspicion. -all fails it outright."})
         elif all_mech == "?all":
             details.append({"type": "warning", "text": "Neutral (?all) provides no protection"})
         elif all_mech == "+all":
@@ -4200,7 +4254,11 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             # At least one lookup in the chain never answered, so the lookup
             # count is a floor rather than a total. Do not certify the record.
             status = "warn"
-        elif all_mech in ("-all", "~all") and lookups <= 10 and not has_engine_errors:
+        elif all_mech == "~all":
+            # Doc 38's warn rule: softfail asks receivers to accept mail from
+            # unlisted servers with suspicion rather than fail it.
+            status = "warn"
+        elif all_mech == "-all" and lookups <= 10 and not has_engine_errors:
             # Lenient parser recovered a valid record with a proper all mechanism
             # and within lookup limits.  Syntax warnings (e.g. missing spaces)
             # should not downgrade the card to "warn" -- show "pass" with the
@@ -5572,6 +5630,10 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         verdict = "Configured but disabled"
     else:
         verdict = f"Mode: {policy_mode}" if policy_mode else "Record found"
+    # Doc 38's warn rule: in testing mode senders report TLS failures but
+    # still deliver, so nothing is enforced yet.
+    if policy_mode == "testing" and status == "pass":
+        status = "warn"
 
     explanation = ""
     if policy_mode == "enforce":

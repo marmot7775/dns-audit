@@ -56,7 +56,7 @@ Spec rules implemented (per §4.10 numbered steps and §4.10.1 / §4.10.2):
 import dns.resolver
 import dns.name
 
-from dns_tools import get_resolver
+from dns_tools import get_resolver, is_dmarc_version_tag
 from typing import Dict, Any, Optional, List
 
 import os
@@ -181,9 +181,14 @@ def _query_dmarc(domain: str) -> Optional[str]:
         dmarc_records = []
         for rdata in answers:
             txt = "".join(
-                s.decode() if isinstance(s, bytes) else s for s in rdata.strings
+                s.decode("utf-8", errors="replace") if isinstance(s, bytes) else s
+                for s in rdata.strings
             )
-            if txt.strip().startswith("v=DMARC1"):
+            # The matcher and decoding every other DMARC reader uses. A bare
+            # startswith missed the *WSP RFC 9989 section 5.4 allows around
+            # the equals, and a strict decode turned one undecodable byte
+            # into a failed lookup for the whole level.
+            if is_dmarc_version_tag(txt.strip()):
                 dmarc_records.append(txt.strip())
         # §4.10 steps 2 and 6: multiple valid records at one target -> discard all.
         if len(dmarc_records) == 1:
@@ -533,8 +538,9 @@ def _dmarc_tree_walk_impl(domain: str) -> Dict[str, Any]:
     # ------------------------------------------------------------------
     # §4.10.1-7 tag cascade for a walk-discovered policy record:
     #   - If the Author Domain exists, "sp" applies (else fall back to p).
-    #   - If the Author Domain does NOT exist, "np" applies (else p).
-    #   - "sp" never applies when the Author Domain is NXDOMAIN.
+    #   - If the Author Domain does NOT exist, "np" applies; if np is
+    #     absent, "sp" applies when present, otherwise p (RFC 9989
+    #     section 4.7, np).
     # _domain_exists() approximates receive-time existence by querying
     # SOA at audit time; non-NXDOMAIN responses (including SERVFAIL or
     # timeout) treat the domain as existing, which keeps np from being
@@ -551,6 +557,9 @@ def _dmarc_tree_walk_impl(domain: str) -> Dict[str, Any]:
         if np_tag:
             applied_tag = "np"
             effective_policy = np_tag
+        elif sp:
+            applied_tag = "sp"
+            effective_policy = sp
         else:
             applied_tag = "p"
             effective_policy = p
