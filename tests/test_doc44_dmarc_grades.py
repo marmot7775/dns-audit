@@ -236,8 +236,8 @@ process.stdout.write(renderDmarcbisReadiness(d.readiness));
     html = subprocess.run(["node", "-e", program], input=json.dumps(payload),
                           capture_output=True, text=True, timeout=60, check=True).stdout
 
-    assert (tile["label"], tile["color"]) == ("In Progress", "amber"), tile
-    assert 'class="tag tag-warn">In Progress<' in html, html[:600]
+    assert (tile["label"], tile["color"]) == ("In progress", "amber"), tile
+    assert 'class="tag tag-warn">In progress<' in html, html[:600]
     assert "Needs Update" not in html
 
 

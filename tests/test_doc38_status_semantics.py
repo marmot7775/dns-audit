@@ -252,7 +252,8 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
 def test_p_none_business_risk_is_the_doc38_sentence():
     assert audit_engine.BUSINESS_RISK["DMARC_P_NONE"] == (
         "DMARC monitoring-only mode collects reports but does not block anything. "
-        "Mail that fails authentication is still delivered as if it came from you."
+        "p=none requests no action, so each receiver applies only its own filtering "
+        "to mail that fails."
     )
 
 

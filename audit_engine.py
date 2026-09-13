@@ -234,11 +234,13 @@ BUSINESS_RISK = {
     ),
     "DMARC_P_NONE": (
         "DMARC monitoring-only mode collects reports but does not block anything. "
-        "Mail that fails authentication is still delivered as if it came from you."
+        "p=none requests no action, so each receiver applies only its own filtering "
+        "to mail that fails."
     ),
     "DMARC_NO_RUA": (
         "Without aggregate reporting, you have no visibility into who is sending "
-        "mail as your domain. Spoofing attacks may already be happening undetected."
+        "mail as your domain. Without aggregate reports you cannot see who is sending "
+        "as your domain or whether their mail passes."
     ),
     "DMARC_PCT_LOW": (
         "Partial enforcement applies the published policy to only part of the "
@@ -1003,14 +1005,20 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
         ) is None
     ]
     if non_dmarc_txt:
-        result["non_dmarc_txt_count"] = len(non_dmarc_txt)
+        _n_other = len(non_dmarc_txt)
+        result["non_dmarc_txt_count"] = _n_other
         _add_issue(
             "info",
-            f"{len(non_dmarc_txt)} non-DMARC TXT record(s) at {dmarc_fqdn}",
-            f"Found {len(non_dmarc_txt)} TXT record(s) at {dmarc_fqdn} that "
-            "do not start with 'v=DMARC1'. These are not DMARC records and "
-            "are ignored by DMARC processors. They may be misconfigured SPF "
-            "or other records accidentally placed at the wrong subdomain.",
+            f"{_n_other} non-DMARC TXT record{'s' if _n_other != 1 else ''} at {dmarc_fqdn}",
+            (f"Found {_n_other} TXT records at {dmarc_fqdn} that "
+             "do not start with 'v=DMARC1'. These are not DMARC records and "
+             "are ignored by DMARC processors. They may be misconfigured SPF "
+             "or other records accidentally placed at the wrong subdomain.")
+            if _n_other != 1 else
+            (f"Found 1 TXT record at {dmarc_fqdn} that "
+             "does not start with 'v=DMARC1'. It is not a DMARC record and "
+             "is ignored by DMARC processors. It may be a misconfigured SPF "
+             "or other record accidentally placed at the wrong subdomain."),
             f"Review the non-DMARC TXT records at {dmarc_fqdn} and remove "
             "any that were placed there by mistake.",
         )
@@ -1437,7 +1445,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                     "exposed as having no DMARC record at all.",
                     "Add a policy tag. Start with p=none for "
                     "monitoring, and add rua=mailto:dmarc-reports@"
-                    "yourdomain.com to receive aggregate reports.",
+                    f"{domain} to receive aggregate reports.",
                 )
             else:
                 _add_issue(
@@ -1453,7 +1461,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                     f"DMARC record at all.",
                     f"Set {rec_tag_name}= to a valid value (none, "
                     f"quarantine, or reject) AND add a valid rua= URI "
-                    f"such as rua=mailto:reports@yourdomain.com.",
+                    f"such as rua=mailto:reports@{domain}.",
                     business_risk_key="DMARC_PARSE_FAILURE",
                 )
 
@@ -1930,7 +1938,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
         if all_valid:
             uri_count = len(uris)
             _add("uri_validation", f"{tag_name.upper()}_VALID", "pass",
-                 f"{tag_name} has {uri_count} valid URI(s).")
+                 f"{tag_name} has {uri_count} valid URI{'s' if uri_count != 1 else ''}.")
 
     # Check 14: fo values
     fo_val = tag_dict.get("fo")
@@ -2442,7 +2450,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         _add_issue(
             "error",
             "No SPF record found",
-            "No SPF record tells receivers which servers can send your email.",
+            "Without an SPF record, receivers have no list of the servers allowed to send your email.",
             f"Publish an SPF record at {domain} listing your authorized sending servers.",
             business_risk_key="SPF_NO_RECORD",
         )
@@ -4322,8 +4330,8 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         result["status"] = "warning"
         _add_issue(
             "warning",
-            f"{len(expiring_soon)} certificate(s) expiring within 30 days",
-            f"{len(expiring_soon)} active certificate(s) will expire soon. Ensure auto-renewal is working.",
+            f"{len(expiring_soon)} certificate{'s' if len(expiring_soon) != 1 else ''} expiring within 30 days",
+            f"{len(expiring_soon)} active certificate{'s' if len(expiring_soon) != 1 else ''} will expire soon. Ensure auto-renewal is working.",
         )
 
     if result["status"] == "info" and active_count > 0:
@@ -5309,7 +5317,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                         "text": (
                             "Strict DKIM alignment (adkim=s) is set. This audit could not "
                             "confirm a DKIM key by probing, so it cannot say whether DKIM "
-                            "alignment is available. Enter your selector above to settle it"
+                            "alignment is available. Re-run the audit at dns-audit.com with "
+                            "the selector entered to settle it"
                         ),
                     })
 
@@ -5907,8 +5916,9 @@ def _build_resilience_analysis(
     elif dmarc_policy == "none":
         dmarc_status = "none"
         dmarc_note = (
-            "DMARC policy is p=none (monitoring only). Messages are delivered "
-            "even if they fail authentication. This is useful for collecting aggregate reports "
+            "DMARC policy is p=none (monitoring only). p=none requests no action, so each "
+            "receiver applies only its own filtering to mail that fails. This is useful for "
+            "collecting aggregate reports "
             "before enforcing, but provides no protection against spoofing."
         )
     else:
@@ -6126,7 +6136,8 @@ def _build_resilience_analysis(
         level = "moderate"
         summary = (
             f"DMARC is p={dmarc_status} (monitoring only). SPF and DKIM may be present, but "
-            "receivers will not act on authentication failures. Spoofed messages will still be delivered."
+            "receivers will not act on authentication failures. p=none requests no action, so "
+            "each receiver applies only its own filtering to mail that fails."
         )
         risk = (
             "p=none is the right starting point for collecting data, but it provides no protection. "

@@ -51,6 +51,6 @@ def test_roadmap_dkim_weak_key_impact_does_not_overstate():
              "tested_count": 1}, "example.com"),
     ])
     dkim_items = [i for i in roadmap["items"] if i["protocol"] == "DKIM"
-                  and "Rotate weak" in i["action"]]
+                  and "weak DKIM key" in i["action"]]
     assert len(dkim_items) == 1
     assert "factored" not in dkim_items[0]["impact"].lower()
