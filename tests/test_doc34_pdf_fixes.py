@@ -175,7 +175,7 @@ def test_warning_line_renders_a_bang_in_the_pdf_text():
 def test_scoped_pdf_toc_lists_only_the_sections_it_contains(audit, zone):
     text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN, scope="dns_infra"))
     assert "1. Executive Summary" in text
-    assert "2. Email Security Roadmap" in text
+    assert "2. Priorities" in text
     assert "3. Protocol Details" in text
     assert "4. About This Report" in text
     for absent in ("DMARC Deep Dive", "Attack Surface Analysis", "Migration Path",
@@ -185,7 +185,7 @@ def test_scoped_pdf_toc_lists_only_the_sections_it_contains(audit, zone):
 
 def test_complete_pdf_toc_still_lists_all_seven_in_order(audit, zone):
     text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN))
-    expected = ["1. Executive Summary", "2. Email Security Roadmap", "3. DMARC Deep Dive",
+    expected = ["1. Executive Summary", "2. Priorities", "3. DMARC Deep Dive",
                 "4. Attack Surface Analysis", "5. Protocol Details", "6. Migration Path",
                 "7. About This Report"]
     positions = [text.find(e) for e in expected]

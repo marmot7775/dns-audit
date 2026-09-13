@@ -317,3 +317,26 @@ def test_transport_scope_does_not_assert_email_authentication_is_configured(audi
     assert "has email authentication configured" not in verdict, (
         f"scope=transport never runs DMARC, SPF or DKIM either: {verdict!r}"
     )
+
+
+# ---------------------------------------------------------------
+# Doc 38: absent and unavailable are different facts
+# ---------------------------------------------------------------
+
+def test_absent_dnssec_stays_in_the_denominator_and_unavailable_leaves_it(audit):
+    answered = audit(FakeZone(dict(_DNSSEC_BASE)), DNSSEC_DOMAIN)
+    failed = audit(FakeZone(dict(_DNSSEC_BASE)).fail(DNSSEC_DOMAIN, "DNSKEY")
+                   .fail(DNSSEC_DOMAIN, "DS"), DNSSEC_DOMAIN)
+
+    def _dnssec(result):
+        return next(c for c in result["checks"] if c["name"] == "DNSSEC")
+
+    assert _dnssec(answered)["status"] == "absent"
+    assert _dnssec(failed)["status"] == "unavailable"
+
+    pc_answered = _summary(answered)["protocol_coverage"]
+    pc_failed = _summary(failed)["protocol_coverage"]
+    assert pc_failed["total"] == pc_answered["total"] - 1, (
+        "an absent protocol is scored as not configured; an unread one is not scored"
+    )
+    assert pc_failed["configured"] == pc_answered["configured"]

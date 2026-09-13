@@ -18,6 +18,18 @@
 
 ## Rules
 - NEVER use em-dashes (—) or double-hyphens ( -- ) in user-facing text. Rewrite the sentence instead.
+- Card statuses (Doc 38) are four states plus "unavailable". fail, red: an
+  essential record (DMARC, SPF, DKIM when a selector is named, MX on a mail
+  domain, nameservers) is missing, or any record is broken. warn, amber:
+  published and working but weak (p=none, pct below 100, SPF ~all, a 1024-bit
+  DKIM key). pass, green: published and correct. absent, grey: an optional
+  protocol (MTA-STS, TLS-RPT, DNSSEC, CAA, DANE, BIMI) is not published; its
+  pill says "Not configured", it has its own counter, and it is never counted
+  as a warning. unavailable, grey with its own icon and "Not checked": the
+  lookup did not complete. The neutral state adds no colour: on the web it
+  uses the existing --text-tertiary (text and icons) and --border (tag
+  background) tokens, and in the PDF NEUTRAL_CLR (#5a6678, --text-tertiary
+  light) and NEUTRAL_BG (#f1f3f6) in pdf_report.py.
 - Fail color is --fail (dark #e5484d, light #c93a3f) for fills, borders and
   icons. Doc 35 moved it off #ef4444: the stock red-500 was chosen for
   clarity in isolation and fought the rest of the palette once the greens

@@ -224,10 +224,10 @@ GOLDEN_VERDICTS = {
     "BIMI": ("pass", "Logo configured"),
     "CAA": ("pass", "Restricted to letsencrypt.org"),
     "Certificate Transparency": ("pass", "1 active cert from 1 issuer"),
-    "DANE": ("warn", "No DANE TLSA records"),
+    "DANE": ("absent", "No DANE TLSA records"),
     "DKIM": ("pass", "1 DKIM public key published in DNS"),
     "DMARC": ("pass", "p=reject (authentication failures are rejected)"),
-    "DNSSEC": ("warn", "DNSSEC not configured"),
+    "DNSSEC": ("absent", "DNSSEC not configured"),
     "MTA-STS": ("pass", "Inbound email must use encryption"),
     "MX Records": ("warn", "Single MX host"),
     "Nameservers": ("pass", "2 nameservers"),
@@ -358,7 +358,7 @@ def test_every_card_renders_a_body(golden):
     name, result = golden
     for card_name, card in _cards(result).items():
         where = f"{name}/{card_name}"
-        assert card.get("status") in {"pass", "warn", "fail", "info", "unavailable"}, where
+        assert card.get("status") in {"pass", "warn", "fail", "absent", "info", "unavailable"}, where
         assert (card.get("verdict") or "").strip(), f"{where}: empty verdict"
         assert (card.get("explanation") or "").strip(), f"{where}: empty explanation"
 

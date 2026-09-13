@@ -74,13 +74,28 @@ def test_an_unavailable_check_counts_as_neither_pass_warn_nor_fail(audit):
 
     counted = sum(1 for c in checks if c["status"] in ("pass", "warn", "fail"))
     unavailable = [c["name"] for c in checks if c["status"] == "unavailable"]
+    absent = [c["name"] for c in checks if c["status"] == "absent"]
 
     # DKIM joined Certificate Transparency under Doc 15, by a different route:
     # its lookups complete and still cannot settle the question, because
     # selectors are not enumerable from DNS. Blocklist left the set entirely
     # under Doc 17 item 7, along with the check itself.
     assert set(unavailable) == {"Certificate Transparency", "DKIM"}
-    assert counted == len(checks) - len(unavailable)
+    # Doc 38: an optional protocol the zone does not publish is absent. That
+    # is an answer about the domain, where unavailable is the lack of one, so
+    # the two are separate states and never share a card.
+    assert set(absent) == {"MTA-STS", "TLS-RPT", "DNSSEC", "CAA", "DANE", "BIMI"}
+    assert not set(absent) & set(unavailable)
+    assert counted == len(checks) - len(unavailable) - len(absent)
+
+
+def test_a_real_negative_answer_is_absent_and_a_failed_lookup_is_unavailable(audit):
+    answered = _card(audit(FakeZone(dict(BASE)), DOMAIN), "DNSSEC")
+    failed = _card(audit(FakeZone(dict(BASE)).fail(DOMAIN, "DNSKEY").fail(DOMAIN, "DS"),
+                         DOMAIN), "DNSSEC")
+
+    assert (answered["status"], answered["pill_label"]) == ("absent", "Not configured")
+    assert (failed["status"], failed["pill_label"]) == ("unavailable", "Not confirmed")
 
 
 # ---------------------------------------------------------------

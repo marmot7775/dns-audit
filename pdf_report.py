@@ -59,6 +59,17 @@ WARN_CLR    = colors.HexColor("#9a5a10")   # --warn (light)
 WARN_BG     = colors.HexColor("#faf3e8")
 FAIL_CLR    = colors.HexColor("#c93a3f")   # --fail (light)
 FAIL_BG     = colors.HexColor("#fbeeee")
+NEUTRAL_CLR = colors.HexColor("#5a6678")   # --text-tertiary (light)
+NEUTRAL_BG  = colors.HexColor("#f1f3f6")
+
+# Spacing scale (Doc 38). XS only inside a list or between a label and its
+# value; SM between paragraphs of one block; MD between blocks in a section;
+# LG between cards; XL before a section header. No gap between blocks under 8.
+SP_XS = 4
+SP_SM = 8
+SP_MD = 12
+SP_LG = 18
+SP_XL = 28
 FIX_BG      = colors.HexColor("#eaf5ef")
 FIX_BORDER  = colors.HexColor("#177245")
 RECORD_BG   = colors.HexColor("#0b1220")   # --bg (dark)
@@ -82,28 +93,33 @@ PROTOCOL_SECTION_ORDER = [
 ]
 PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
 
-STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR}
-STATUS_BG  = {"pass": PASS_BG,  "warn": WARN_BG,  "fail": FAIL_BG}
-STATUS_LBL = {"pass": "PASS",   "warn": "WARNING", "fail": "FAIL",
-              "unavailable": "NOT CHECKED"}
+STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
+STATUS_BG  = {"pass": PASS_BG,  "warn": WARN_BG,  "fail": FAIL_BG,  "absent": NEUTRAL_BG}
+STATUS_LBL = {"pass": "Pass",   "warn": "Warning", "fail": "Issue",
+              "absent": "Not configured", "unavailable": "Not checked"}
 # Colours deliberately not mapped for "unavailable": every lookup falls
 # back to TEXT_SEC, which is the neutral grey this state should carry.
 # Helvetica has no glyph for U+26A0 (warning sign), so it rendered as a
 # filled .notdef box on every warning line. A bold "!" needs no font.
 WARN_ICON = "<b>!</b>"
 DETAIL_ICON = {"good": "\u2713", "error": "\u2717", "warning": WARN_ICON, "info": "\u2022"}
+# The card statuses in the same four glyphs; absent and info share the bullet
+# and are told apart by colour.
+STATUS_GLYPH = {"pass": "\u2713", "fail": "\u2717", "warn": WARN_ICON, "absent": "\u2022"}
 
+# Tiers use the status tokens, as the web tags do: critical fail, high warn,
+# medium and low neutral.
 PRIORITY_CLR = {
     "critical": FAIL_CLR,
-    "high": colors.HexColor("#f97316"),
-    "medium": WARN_CLR,
-    "low": BLUE_ACCENT,
+    "high": WARN_CLR,
+    "medium": NEUTRAL_CLR,
+    "low": NEUTRAL_CLR,
 }
 PRIORITY_BG = {
     "critical": FAIL_BG,
-    "high": colors.HexColor("#fff7ed"),
-    "medium": WARN_BG,
-    "low": LIGHT_BLUE_BG,
+    "high": WARN_BG,
+    "medium": NEUTRAL_BG,
+    "low": NEUTRAL_BG,
 }
 
 METRIC_COLORS = {
@@ -131,7 +147,7 @@ def _safe(t):
     return str(t).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
 def _sev(c):
-    return {"fail":0,"warn":1,"pass":2}.get(c.get("status","pass"),3)
+    return {"fail":0,"warn":1,"pass":2,"absent":3}.get(c.get("status","pass"),4)
 
 def _get_check(data, name):
     for c in data.get("checks", []):
@@ -153,7 +169,7 @@ def _alt_rows(cmds, row_count):
 
 
 def _tally(checks):
-    """Split checks into (passes, warns, fails, unavailable), summing to len(checks).
+    """Split checks into (passes, warns, fails, absent, unavailable), summing to len(checks).
 
     Every check has to land in exactly one counter or the cover page stops
     describing the document it introduces. "unavailable" exists because a
@@ -169,6 +185,7 @@ def _tally(checks):
     passes = counts.pop("pass", 0)
     warns = counts.pop("warn", 0)
     fails = counts.pop("fail", 0)
+    absent = counts.pop("absent", 0)
     unavailable = counts.pop("unavailable", 0)
     if counts:
         log.warning(
@@ -177,11 +194,11 @@ def _tally(checks):
             sorted(counts),
         )
         unavailable += sum(counts.values())
-    assert passes + warns + fails + unavailable == len(checks)
-    return passes, warns, fails, unavailable
+    assert passes + warns + fails + absent + unavailable == len(checks)
+    return passes, warns, fails, absent, unavailable
 
 
-def _findings_summary(passes, warns, fails, unavailable=0):
+def _findings_summary(passes, warns, fails, absent=0, unavailable=0):
     """Return a stacked tally of the cover counts as a list of Paragraphs.
 
     Drops into a Table cell in place of the old donut gauge. Each line is a
@@ -189,7 +206,7 @@ def _findings_summary(passes, warns, fails, unavailable=0):
     checked). The "not checked" line only appears when there is something to
     report, so a clean run reads the same as it always did.
     """
-    total = passes + warns + fails + unavailable
+    total = passes + warns + fails + absent + unavailable
     line = ParagraphStyle("FS", fontName="Helvetica-Bold", fontSize=11, leading=16)
     # The 22pt total needs its own leading; on the 11pt line style its
     # descenders printed over the "checks total" label beneath it.
@@ -198,10 +215,11 @@ def _findings_summary(passes, warns, fails, unavailable=0):
     els = [
         Paragraph(f'<font color="{TEXT_PRI.hexval()}">{total}</font>', big),
         Paragraph(f"check{'s' if total != 1 else ''} total", label),
-        Spacer(1, 6),
+        Spacer(1, SP_SM),
         Paragraph(f'<font color="{FAIL_CLR.hexval()}"><b>{fails}</b></font> issue{"s" if fails != 1 else ""}', line),
         Paragraph(f'<font color="{WARN_CLR.hexval()}"><b>{warns}</b></font> warning{"s" if warns != 1 else ""}', line),
         Paragraph(f'<font color="{PASS_CLR.hexval()}"><b>{passes}</b></font> passing', line),
+        Paragraph(f'<font color="{NEUTRAL_CLR.hexval()}"><b>{absent}</b></font> not configured', line),
     ]
     if unavailable:
         els.append(Paragraph(
@@ -229,8 +247,6 @@ def _styles():
     s["record_sm"]   = ParagraphStyle("RS", fontName="Courier",           fontSize=8.5, textColor=RECORD_FG, leading=12)
     s["fix_label"]   = ParagraphStyle("FL", fontName="Helvetica-Bold",    fontSize=10, textColor=PASS_CLR, leading=13, spaceAfter=3)
     s["fix_text"]    = ParagraphStyle("FT", fontName="Helvetica",         fontSize=11, textColor=TEXT_PRI, leading=16)
-    s["pfix_num"]    = ParagraphStyle("PN", fontName="Helvetica-Bold",    fontSize=11, textColor=FAIL_CLR, leading=16)
-    s["pfix_txt"]    = ParagraphStyle("PT", fontName="Helvetica",         fontSize=11, textColor=TEXT_PRI, leading=16)
     s["toc"]         = ParagraphStyle("TOC", fontName="Helvetica",        fontSize=11, textColor=NAVY, leading=18)
     s["callout"]     = ParagraphStyle("CO", fontName="Helvetica-Bold",    fontSize=11, textColor=FAIL_CLR, leading=16)
     s["callout_body"]= ParagraphStyle("CB", fontName="Helvetica",         fontSize=11, textColor=TEXT_PRI, leading=16)
@@ -280,7 +296,7 @@ def _cover_page(data, S, toc_items=None):
     """
     domain = data.get("domain", "unknown")
     checks = data.get("checks", []) or []
-    passes, warns, fails, unavailable = _tally(checks)
+    passes, warns, fails, absent, unavailable = _tally(checks)
     es = data.get("executive_summary", {})
     now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
 
@@ -316,15 +332,15 @@ def _cover_page(data, S, toc_items=None):
         ("ROUNDEDCORNERS", [0,0,6,6]),
     ]))
     els.append(sub_tbl)
-    els.append(Spacer(1, 16))
+    els.append(Spacer(1, SP_LG))
 
     # Findings summary tally + verdict
-    summary_cell = _findings_summary(passes, warns, fails, unavailable)
+    summary_cell = _findings_summary(passes, warns, fails, absent, unavailable)
 
     verdict_text = es.get("verdict", "")
     verdict_cell = [
         Paragraph("Overall Findings", S["subheading"]),
-        Spacer(1, 4),
+        Spacer(1, SP_XS),
         Paragraph(_safe(verdict_text), S["body_large"]),
     ]
 
@@ -340,7 +356,7 @@ def _cover_page(data, S, toc_items=None):
         ("ROUNDEDCORNERS", [6,6,6,6]),
     ]))
     els.append(summary_row)
-    els.append(Spacer(1, 16))
+    els.append(Spacer(1, SP_LG))
 
     # Three key metrics
     sp = es.get("spoofing_protection", {})
@@ -384,17 +400,17 @@ def _cover_page(data, S, toc_items=None):
         ("ROUNDEDCORNERS", [6,6,6,6]),
     ]))
     els.append(metrics)
-    els.append(Spacer(1, 20))
+    els.append(Spacer(1, SP_LG))
 
     # Table of contents, built by generate_pdf from the sections it actually
     # emitted and numbered consecutively. A fixed seven-item list promised a
     # DMARC Deep Dive, Attack Surface and Migration Path that a scoped
     # audit does not produce, and left gaps in the numbering.
     els.append(Paragraph("Table of Contents", S["subheading"]))
-    els.append(Spacer(1, 4))
+    els.append(Spacer(1, SP_XS))
     for item in (toc_items or []):
         els.append(Paragraph(item, S["toc"]))
-    els.append(Spacer(1, 12))
+    els.append(Spacer(1, SP_MD))
 
     # Scope line. A scoped report that does not say it is scoped implies
     # coverage the reader has no way to know is missing: dns_infra runs five
@@ -411,7 +427,7 @@ def _cover_page(data, S, toc_items=None):
             "the checks listed above and makes no claim about the rest.",
             S["body_small"],
         ))
-        els.append(Spacer(1, 4))
+        els.append(Spacer(1, SP_SM))
 
     # Audit date line
     els.append(Paragraph(f"Audit performed: {now}", S["body_small"]))
@@ -443,7 +459,7 @@ def _section_header(number, title, S):
         ("TOPPADDING", (0,0), (-1,-1), 0),
         ("BOTTOMPADDING", (0,0), (-1,-1), 0),
     ]))
-    return [row, HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=10)]
+    return [row, HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=SP_MD)]
 
 
 # ================================================================
@@ -470,7 +486,7 @@ def _executive_summary_page(data, S, number=1):
             ("ROUNDEDCORNERS", [4,4,4,4]),
         ]))
         els.append(vt)
-        els.append(Spacer(1, 12))
+        els.append(Spacer(1, SP_MD))
 
     # Biggest risk callout. Framed in fail red only when it names a risk: the
     # unconditional red box read "YOUR BIGGEST RISK RIGHT NOW: No urgent risks
@@ -508,13 +524,13 @@ def _executive_summary_page(data, S, number=1):
             ("ROUNDEDCORNERS", [0,4,4,0]),
         ]))
         els.append(rt)
-        els.append(Spacer(1, 14))
+        els.append(Spacer(1, SP_MD))
 
     # Summary table: pass/warn/fail counts
     checks = data.get("checks", [])
     # Same four buckets as the cover. Counting only three here would put a
     # total on page 2 that disagrees with the one on page 1.
-    pc, wc, fc, uc = _tally(checks)
+    pc, wc, fc, ac, uc = _tally(checks)
     def _count_cell(label, val, clr):
         return [
             Paragraph(f'<font color="{clr.hexval()}" size="20"><b>{val}</b></font>',
@@ -526,6 +542,7 @@ def _executive_summary_page(data, S, number=1):
         _count_cell("Passing", str(pc), PASS_CLR),
         _count_cell("Warnings", str(wc), WARN_CLR),
         _count_cell("Issues", str(fc), FAIL_CLR),
+        _count_cell("Not configured", str(ac), NEUTRAL_CLR),
     ]
     if uc:
         count_cells.append(_count_cell("Not checked", str(uc), TEXT_TER))
@@ -538,7 +555,7 @@ def _executive_summary_page(data, S, number=1):
         ("LINEAFTER", (0,0), (len(count_cells)-2,0), 0.5, BORDER),
     ]))
     els.append(count_tbl)
-    els.append(Spacer(1, 14))
+    els.append(Spacer(1, SP_MD))
 
     # Attack surface overview
     dmarc = _get_check(data, "DMARC")
@@ -574,27 +591,27 @@ def _executive_summary_page(data, S, number=1):
             _alt_rows(cmds, len(rows))
             vt.setStyle(TableStyle(cmds))
             els.append(vt)
-        els.append(Spacer(1, 14))
+        els.append(Spacer(1, SP_MD))
 
     return els
 
 
 # ================================================================
-# Page 3: Email Security Roadmap
+# Page 3: Priorities
 # ================================================================
 
 def _roadmap_page(data, S, number=2):
-    """Build the email security roadmap page."""
+    """Build the Priorities section: the one prioritized list, as on the web."""
     roadmap = data.get("security_roadmap", {})
     items = roadmap.get("items", [])
-    els = [CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "Email Security Roadmap", S))
+    els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
+    els.extend(_section_header(str(number), "Priorities", S))
 
     # Summary
     summary = roadmap.get("summary", "")
     if summary:
         els.append(Paragraph(_safe(summary), S["body"]))
-        els.append(Spacer(1, 8))
+        els.append(Spacer(1, SP_SM))
 
     # Tier summary bar
     tiers = roadmap.get("tiers", {})
@@ -620,23 +637,26 @@ def _roadmap_page(data, S, number=2):
             ("ROUNDEDCORNERS", [4,4,4,4]),
         ]))
         els.append(tier_bar)
-        els.append(Spacer(1, 12))
+        els.append(Spacer(1, SP_MD))
 
     # Roadmap items table
     if items:
         header = [
-            Paragraph("<b>#</b>", S["body_small"]),
+            Paragraph("", S["body_small"]),
             Paragraph("<b>Priority</b>", S["body_small"]),
             Paragraph("<b>Protocol</b>", S["body_small"]),
             Paragraph("<b>Action</b>", S["body_small"]),
             Paragraph("<b>Business Impact</b>", S["body_small"]),
         ]
         rows = [header]
-        for i, item in enumerate(items, 1):
+        for item in items:
             p = item.get("priority", "low")
             p_clr = PRIORITY_CLR.get(p, TEXT_SEC)
+            st = item.get("status")
+            s_clr = STATUS_CLR.get(st, NEUTRAL_CLR)
+            glyph = STATUS_GLYPH.get(st, "\u2022")
             rows.append([
-                Paragraph(str(i), S["body_small"]),
+                Paragraph(f'<font color="{s_clr.hexval()}">{glyph}</font>', S["body"]),
                 Paragraph(f'<font color="{p_clr.hexval()}"><b>{p.upper()}</b></font>', S["body_small"]),
                 Paragraph(_safe(item.get("protocol", "")), S["body"]),
                 Paragraph(_safe(item.get("action", "")), S["body"]),
@@ -663,27 +683,6 @@ def _roadmap_page(data, S, number=2):
     # all-clear"). A hardcoded line here either repeated that or contradicted
     # it on the same page.
 
-    # Priority fixes (legacy format)
-    fixes = data.get("priority_fixes", [])
-    if fixes:
-        els.append(Spacer(1, 14))
-        els.append(Paragraph("Priority Fixes", S["heading2"]))
-        for i, fix in enumerate(fixes, 1):
-            r = Table(
-                [[Paragraph(f"<b>{i}</b>", S["pfix_num"]),
-                  Paragraph(_safe(fix), S["pfix_txt"])]],
-                colWidths=[0.3*inch, 6.2*inch]
-            )
-            r.setStyle(TableStyle([
-                ("VALIGN", (0,0), (-1,-1), "TOP"),
-                ("TOPPADDING", (0,0), (-1,-1), 4),
-                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-                ("BACKGROUND", (0,0), (-1,-1), FAIL_BG),
-                ("ROUNDEDCORNERS", [3,3,3,3]),
-            ]))
-            els.append(r)
-            els.append(Spacer(1, 3))
-
     return els
 
 
@@ -702,13 +701,13 @@ def _dmarc_deep_dive(data, S, number=3):
 
     status = dmarc.get("status", "pass")
     s_clr = STATUS_CLR.get(status, TEXT_SEC)
-    s_lbl = STATUS_LBL.get(status, "INFO")
+    s_lbl = dmarc.get("pill_label") or STATUS_LBL.get(status, "Info")
 
     # Status + verdict
     hdr = Table([
         [Paragraph("<b>DMARC</b>", S["heading"]),
          Paragraph(f'<font color="{s_clr.hexval()}" size="10"><b> {s_lbl} </b></font>', S["body"])],
-    ], colWidths=[5.5*inch, 1.0*inch])
+    ], colWidths=[5.0*inch, 1.5*inch])
     hdr.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("ALIGN", (1,0), (1,0), "RIGHT"),
@@ -743,11 +742,11 @@ def _dmarc_deep_dive(data, S, number=3):
     if explanation:
         exp_text = _strip_html(explanation)
         if exp_text and exp_text != verdict:
-            els.append(Spacer(1, 2))
+            els.append(Spacer(1, SP_SM))
             els.append(Paragraph(_safe(exp_text), S["body_small"]))
 
     fix = dmarc.get("fix", "")
-    if fix and status in ("warn", "fail"):
+    if fix and status in ("warn", "fail", "absent"):
         fp = _strip_html(fix)
         fs = _safe(fp).replace("\n", "<br/>")
         fc = [Paragraph("<b>RECOMMENDED FIX</b>", S["fix_label"]),
@@ -762,14 +761,14 @@ def _dmarc_deep_dive(data, S, number=3):
             ("LINEBEFORE", (0,0), (0,-1), 2.5, FIX_BORDER),
             ("ROUNDEDCORNERS", [0,4,4,0]),
         ]))
-        els.append(Spacer(1, 6))
+        els.append(Spacer(1, SP_SM))
         els.append(ft)
 
     # RFC 9989 Health Verdict
     tb = dmarc.get("tag_breakdown") or {}
     health = tb.get("health")
     if health:
-        els.append(Spacer(1, 8))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("RFC 9989 Health Verdict", S["heading2"]))
         h_clr = _clr(health.get("color", "red"))
         h_label = health.get("label", "")
@@ -796,7 +795,7 @@ def _dmarc_deep_dive(data, S, number=3):
     # Strict validation results
     sv = dmarc.get("strict_validation")
     if sv:
-        els.append(Spacer(1, 10))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("RFC 9989 Strict Validation", S["heading2"]))
         p_count = sv.get("pass_count", 0)
         f_count = sv.get("fail_count", 0)
@@ -808,7 +807,7 @@ def _dmarc_deep_dive(data, S, number=3):
             f'<font color="{FAIL_CLR.hexval()}">{f_count} fail</font>  |  '
             f'{t_count} total checks', S["body"]
         ))
-        els.append(Spacer(1, 4))
+        els.append(Spacer(1, SP_XS))
 
         for cat in sv.get("categories", []):
             els.append(Paragraph(f"<b>{_safe(cat.get('label', ''))}</b>", S["body"]))
@@ -822,7 +821,7 @@ def _dmarc_deep_dive(data, S, number=3):
     # Tag-by-tag breakdown
     tags_list = tb.get("tags", [])
     if tags_list:
-        els.append(Spacer(1, 10))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Tag-by-Tag Breakdown", S["heading2"]))
 
         header = [
@@ -872,7 +871,7 @@ def _dmarc_deep_dive(data, S, number=3):
     # Dangerous combinations
     config_warnings = tb.get("config_warnings", [])
     if config_warnings:
-        els.append(Spacer(1, 10))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Configuration Warnings", S["heading2"]))
         for w in config_warnings:
             level = w.get("level", "advisory")
@@ -899,12 +898,12 @@ def _dmarc_deep_dive(data, S, number=3):
                 ("ROUNDEDCORNERS", [0,4,4,0]),
             ]))
             els.append(wt)
-            els.append(Spacer(1, 4))
+            els.append(Spacer(1, SP_SM))
 
     # Record Builder: current vs recommended
     rb = tb.get("record_builder") or dmarc.get("record_builder")
     if rb and rb.get("mode") != "ready":
-        els.append(Spacer(1, 10))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Record Builder: Current vs. Recommended", S["heading2"]))
 
         current = rb.get("current_record")
@@ -920,7 +919,7 @@ def _dmarc_deep_dive(data, S, number=3):
 
         changes = rb.get("changes", [])
         if changes:
-            els.append(Spacer(1, 4))
+            els.append(Spacer(1, SP_SM))
             els.append(Paragraph("Changes:", S["body_small"]))
             for ch in changes:
                 action = ch.get("action", "")
@@ -970,7 +969,7 @@ def _attack_surface_page(data, S, number=4):
         ("ROUNDEDCORNERS", [4,4,4,4]),
     ]))
     els.append(overall_row)
-    els.append(Spacer(1, 12))
+    els.append(Spacer(1, SP_MD))
 
     # Detailed vectors
     vectors = attack_surface.get("vectors", [])
@@ -1005,12 +1004,12 @@ def _attack_surface_page(data, S, number=4):
             ("ROUNDEDCORNERS", [0,4,4,0]),
         ]))
         els.append(vt)
-        els.append(Spacer(1, 6))
+        els.append(Spacer(1, SP_SM))
 
     # Attacker perspective
     attacker_path = attack_surface.get("attacker_path", "")
     if attacker_path:
-        els.append(Spacer(1, 8))
+        els.append(Spacer(1, SP_SM))
         els.append(Paragraph("Attacker Perspective", S["heading2"]))
         ap = Table([[Paragraph(_safe(attacker_path), S["body"])]], colWidths=[6.5*inch])
         ap.setStyle(TableStyle([
@@ -1029,7 +1028,7 @@ def _attack_surface_page(data, S, number=4):
     if tw:
         steps = tw.get("steps", [])
         if steps and len(steps) > 1:
-            els.append(Spacer(1, 12))
+            els.append(Spacer(1, SP_MD))
             els.append(Paragraph("DMARC DNS Tree Walk (Subdomain Audit)", S["heading2"]))
             header = [
                 Paragraph("<b>Domain</b>", S["body_small"]),
@@ -1064,7 +1063,7 @@ def _attack_surface_page(data, S, number=4):
     # Subdomain audit results
     sa = data.get("subdomain_audit")
     if sa and sa.get("subdomains"):
-        els.append(Spacer(1, 12))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Subdomain Security Audit", S["heading2"]))
 
         # Summary lines
@@ -1084,10 +1083,10 @@ def _attack_surface_page(data, S, number=4):
                 ("RIGHTPADDING", (0,0), (-1,-1), 10),
                 ("ROUNDEDCORNERS", [0,4,4,0]),
             ]))
-            els.append(Spacer(1, 4))
+            els.append(Spacer(1, SP_SM))
             els.append(ct)
 
-        els.append(Spacer(1, 6))
+        els.append(Spacer(1, SP_SM))
 
         # Table
         header = [
@@ -1101,7 +1100,8 @@ def _attack_surface_page(data, S, number=4):
         rows = [header]
         for sub in sa["subdomains"]:
             s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(sub.get("status", ""), TEXT_SEC)
-            status_icon = {"protected": "\u2713", "partial": "!", "exposed": "\u2717"}.get(sub.get("status", ""), "")
+            status_icon = {"protected": STATUS_GLYPH["pass"], "partial": STATUS_GLYPH["warn"],
+                           "exposed": STATUS_GLYPH["fail"]}.get(sub.get("status", ""), "")
             exists_text = "Yes" if sub.get("exists") else "No"
             mail_text = "-"
             if sub.get("exists"):
@@ -1222,7 +1222,7 @@ def _protocol_card(check, S):
     details = check.get("details", [])
     fix = check.get("fix", "")
     s_clr = STATUS_CLR.get(status, TEXT_SEC)
-    s_lbl = STATUS_LBL.get(status, "INFO")
+    s_lbl = STATUS_LBL.get(status, "Info")
     pill_label = check.get("pill_label")
     if pill_label:
         s_lbl = pill_label
@@ -1233,7 +1233,7 @@ def _protocol_card(check, S):
     hdr = Table([
         [Paragraph(f"<b>{_safe(name)}</b>", S["heading"]),
          Paragraph(f'<font color="{s_clr.hexval()}" size="10"><b> {_safe(s_lbl)} </b></font>', S["body"])],
-    ], colWidths=[5.5*inch, 1.0*inch])
+    ], colWidths=[5.0*inch, 1.5*inch])
     hdr.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("ALIGN", (1,0), (1,0), "RIGHT"),
@@ -1261,11 +1261,11 @@ def _protocol_card(check, S):
     if explanation:
         exp_text = _strip_html(explanation)
         if exp_text and exp_text != verdict:
-            els.append(Spacer(1, 2))
+            els.append(Spacer(1, SP_SM))
             els.append(Paragraph(_safe(exp_text), S["body_small"]))
 
     # Fix block
-    if fix and status in ("warn", "fail"):
+    if fix and status in ("warn", "fail", "absent"):
         fp = _strip_html(fix)
         fs = _safe(fp).replace("\n", "<br/>")
         fc = [Paragraph("<b>RECOMMENDED FIX</b>", S["fix_label"]),
@@ -1280,13 +1280,13 @@ def _protocol_card(check, S):
             ("LINEBEFORE", (0,0), (0,-1), 2.5, FIX_BORDER),
             ("ROUNDEDCORNERS", [0,4,4,0]),
         ]))
-        els.append(Spacer(1, 6))
+        els.append(Spacer(1, SP_SM))
         els.append(ft)
 
     # Fix records (copy-paste DNS records)
     fix_records = check.get("fix_records")
     if fix_records:
-        els.append(Spacer(1, 4))
+        els.append(Spacer(1, SP_SM))
         els.append(Paragraph("DNS records to add:", S["body_small"]))
         for fr in fix_records:
             rec_str = f"{fr.get('host','')}  {fr.get('type','')}  {fr.get('value','')}"
@@ -1295,7 +1295,7 @@ def _protocol_card(check, S):
                 rec_str += f"  ; {comment}"
             els.extend(_record_block(rec_str, S, small=True))
 
-    els.extend([Spacer(1, 6), HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=6)])
+    els.extend([Spacer(1, SP_LG), HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=SP_LG)])
     return [KeepTogether(els)]
 
 
@@ -1312,7 +1312,7 @@ def _record_block(record, S, small=False):
         ("RIGHTPADDING", (0,0), (-1,-1), 9),
         ("ROUNDEDCORNERS", [4,4,4,4]),
     ]))
-    return [Spacer(1, 3), rt, Spacer(1, 3)]
+    return [Spacer(1, SP_SM), rt, Spacer(1, SP_SM)]
 
 
 def _spf_deep_section(spf_deep, S):
@@ -1378,7 +1378,7 @@ def _spf_deep_section(spf_deep, S):
             f'{_safe(mc.get("text", ""))}', S["body_small"]
         ))
 
-    els.append(Spacer(1, 6))
+    els.append(Spacer(1, SP_SM))
     return els
 
 
@@ -1438,7 +1438,7 @@ def _dkim_deep_section(dkim_deep, S):
     for rec in recs:
         els.append(Paragraph(f"\u2022  {_safe(rec)}", S["body_small"]))
 
-    els.append(Spacer(1, 6))
+    els.append(Spacer(1, SP_SM))
     return els
 
 
@@ -1447,7 +1447,7 @@ def _vendors(data, S):
     vs = data.get("vendors", [])
     if not vs:
         return []
-    els = [Spacer(1, 8), Paragraph("Detected Email Services", S["heading2"])]
+    els = [Spacer(1, SP_MD), Paragraph("Detected Email Services", S["heading2"])]
     header = [
         Paragraph("<b>Provider</b>", S["body_small"]),
         Paragraph("<b>Detected via</b>", S["body_small"]),
@@ -1479,7 +1479,7 @@ def _vendors(data, S):
     _alt_rows(cmds, len(rows))
     vt.setStyle(TableStyle(cmds))
     els.append(vt)
-    els.append(Spacer(1, 8))
+    els.append(Spacer(1, SP_MD))
     return els
 
 
@@ -1495,7 +1495,7 @@ def _migration_page(data, S, number=6):
     if not migration:
         return []
 
-    els = [CondPageBreak(4*inch)]
+    els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
     els.extend(_section_header(str(number), "Migration Path to RFC 9989 Ready", S))
 
     status = migration.get("status", "")
@@ -1514,7 +1514,7 @@ def _migration_page(data, S, number=6):
     els.append(Paragraph(
         f"{total_steps} step{'s' if total_steps != 1 else ''} to reach RFC 9989 Ready status:",
         S["body"]))
-    els.append(Spacer(1, 8))
+    els.append(Spacer(1, SP_MD))
 
     for step in steps:
         step_num = step.get("step", 0)
@@ -1551,12 +1551,12 @@ def _migration_page(data, S, number=6):
             els.append(Paragraph("Record after this step:", S["body_tiny"]))
             els.extend(_record_block(record_after, S, small=True))
 
-        els.append(Spacer(1, 4))
+        els.append(Spacer(1, SP_MD))
 
     # Target record
     target = migration.get("target_record", "")
     if target:
-        els.append(Spacer(1, 8))
+        els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Target RFC 9989-Ready Record", S["heading2"]))
         els.extend(_record_block(target, S))
 
@@ -1581,7 +1581,7 @@ def _about_page(data, S, number=7):
             '<font size="14"><b>Generated by dns-audit.com</b></font>',
             ParagraphStyle("BR", alignment=TA_CENTER, leading=20)
         ),
-        Spacer(1, 4),
+        Spacer(1, SP_XS),
         Paragraph(
             '<font size="10" color="#2dd4bf">DMARC audited against RFC 9989, 9990, and 9991</font>',
             ParagraphStyle("BR2", alignment=TA_CENTER, leading=14)
@@ -1595,7 +1595,7 @@ def _about_page(data, S, number=7):
         ("ROUNDEDCORNERS", [6,6,6,6]),
     ]))
     els.append(bt)
-    els.append(Spacer(1, 16))
+    els.append(Spacer(1, SP_LG))
 
     # Report details. The check list is read off the report's own checks
     # rather than hardcoded: a scoped audit runs fewer than the full set, and
@@ -1626,14 +1626,14 @@ def _about_page(data, S, number=7):
     es = data.get("executive_summary", {}) or {}
     pc_total = (es.get("protocol_coverage") or {}).get("total")
     if _performed and pc_total:
-        els.append(Spacer(1, 4))
+        els.append(Spacer(1, SP_SM))
         els.append(Paragraph(
             f"The Protocol Coverage figure on the cover scores {pc_total} of the "
             f"{len(_performed)} checks performed, the ones a domain owner configures. "
             "The rest observe what is already published rather than something to "
             "switch on, so they are reported here but not scored.", S["body_small"]
         ))
-    els.append(Spacer(1, 14))
+    els.append(Spacer(1, SP_MD))
 
     # Methodology
     els.append(Paragraph("Methodology", S["subheading"]))
@@ -1645,7 +1645,7 @@ def _about_page(data, S, number=7):
         "void lookup detection. DANE validation checks TLSA records per RFC 7672 with DNSSEC "
         "dependency verification.", S["body_small"]
     ))
-    els.append(Spacer(1, 14))
+    els.append(Spacer(1, SP_MD))
 
     # Disclaimer
     els.append(Paragraph("Disclaimer", S["subheading"]))
@@ -1656,7 +1656,7 @@ def _about_page(data, S, number=7):
         "not constitute professional security advice. Organizations should validate "
         "findings with their IT security team before making changes.", S["body_small"]
     ))
-    els.append(Spacer(1, 14))
+    els.append(Spacer(1, SP_MD))
 
     # Re-test link
     retest = Table([
@@ -1697,7 +1697,7 @@ def _build_sections(audit_result: dict, S):
     _protocols = ", ".join(PROTOCOL_TOC_LABELS.get(n, n) for n in _rendered)
     builders = [
         ("Executive Summary", _executive_summary_page),
-        ("Email Security Roadmap", _roadmap_page),
+        ("Priorities", _roadmap_page),
         ("DMARC Deep Dive", _dmarc_deep_dive),
         ("Attack Surface Analysis", _attack_surface_page),
         (f"Protocol Details ({_protocols})" if _protocols else "Protocol Details",
@@ -1756,7 +1756,7 @@ if __name__ == "__main__":
     sample = {
         "domain": "example.com",
         "executive_summary": {
-            "verdict": "Your domain has email authentication but attackers can still exploit subdomain spoofing.",
+            "verdict": "Your domain has email authentication, but subdomain spoofing is still open.",
             "spoofing_protection": {"label": "Partial", "color": "amber", "detail": "2/4 vectors protected"},
             "dmarcbis_readiness": {"label": "In Progress", "color": "amber"},
             "protocol_coverage": {"configured": 5, "total": 9, "color": "amber"},
