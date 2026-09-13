@@ -148,8 +148,8 @@
     <main class="container" id="main-content">
         <section class="audit-input-section">
             <div class="audit-input-card">
-                <h1 class="audit-title">Find what is wrong with your domain's email and DNS</h1>
-                <p class="audit-subtitle">Most DNS tools show you your records. This one tells you what is wrong with them, cites the RFC section it checked against, and gives you the corrected record to paste. Includes <a href="/articles/dmarcbis" class="audit-subtitle-link">RFC 9989 readiness</a> and DNSSEC chain validation.</p>
+                <h1 class="audit-title">Check the DNS records mail servers use to verify your email</h1>
+                <p class="audit-subtitle">Enter a domain and it reads the public DNS records that control email authentication, transport security, and DNS integrity: SPF, DKIM, DMARC, MTA-STS, DNSSEC, and seven more, plus the public policy files they point to. It tells you what is missing or misconfigured, cites the RFC it checked against, including <a href="/articles/dmarcbis" class="audit-subtitle-link">RFC 9989 readiness</a>, and gives you the corrected record to paste. Nothing to install, nothing to send.</p>
                 <form id="audit-form" class="audit-form" autocomplete="off">
                     <div class="input-row input-unified">
                         <div class="input-wrapper">
@@ -203,7 +203,6 @@
                     </div>
                     <p class="scope-desc" id="scope-desc" aria-live="polite"></p>
                 </div>
-                <p class="audit-privacy-note">No account. No cookies. Open source.</p>
             </div>
         </section>
 
