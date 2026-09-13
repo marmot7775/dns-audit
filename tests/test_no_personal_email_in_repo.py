@@ -30,10 +30,26 @@ ADDRESS_RE = re.compile(
 # runtime so no literal address lives in this file.
 _FIXTURE = "user" + "@" + "gmail" + ".com"
 
+# Doc 41: the public contact alias, allowed only in the eight page footers,
+# the results note in app.js, and the doc that asked for it.
+ALIAS = "dns" + "@" + "dns-audit" + ".com"
+ALIAS_FILES = (
+    "static/index.html",
+    "static/about.html",
+    "static/privacy.html",
+    "static/404.html",
+    "static/articles/dane.html",
+    "static/articles/dmarcbis.html",
+    "static/articles/dnssec.html",
+    "static/articles/index.html",
+    "static/app.js",
+    "docs/prompts/doc-41.md",
+)
+
 ALLOWED = {
     ("tests/test_dns_tools.py", _FIXTURE),
     ("docs/prompts/doc-37.md", _FIXTURE),
-}
+} | {(rel, ALIAS) for rel in ALIAS_FILES}
 
 
 def _tracked_files():
