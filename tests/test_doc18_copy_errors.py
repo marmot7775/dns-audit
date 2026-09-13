@@ -81,4 +81,4 @@ def test_dane_roadmap_impact_states_a_risk_not_a_feature():
     assert len(dane_items) == 1
     impact = dane_items[0]["impact"].lower()
     assert "provides" not in impact
-    assert "relies solely on the ca system" in impact
+    assert "trusts whichever certificate authority issued it" in impact

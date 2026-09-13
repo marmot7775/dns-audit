@@ -297,7 +297,8 @@ def test_nothing_found_names_the_limitation_and_both_ways_to_settle_it(nothing_f
         "the card must say why probing cannot answer this, not merely that it "
         "did not"
     )
-    assert "enter your selector" in text, "the direct-lookup path is not offered"
+    assert "re-run the audit at dns-audit.com with the selector entered" in text, (
+        "the direct-lookup path is not offered")
     assert "s=" in text and "dkim-signature" in text, (
         "the header path is not offered: the s= tag of a DKIM-Signature or "
         "Authentication-Results header is the other thing that settles it"
