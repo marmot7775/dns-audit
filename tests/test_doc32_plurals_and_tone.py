@@ -233,3 +233,97 @@ def test_no_generated_string_shows_the_placeholder_domain_when_one_was_supplied(
         src = f.read()
     assert "l=https://yourdomain.com" not in src
     assert "l=https://{domain}/logo.svg" in src
+
+
+# ---------------------------------------------------------------------------
+# Doc 40: no generated string states what attackers do. The singular
+# "an attacker" stays allowed for conditional scenarios. Comments excluded.
+# ---------------------------------------------------------------------------
+
+def _python_strings(path):
+    import ast
+    with open(path, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    # Docstrings count as comments, so skip them.
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                docstrings.add(id(body[0].value))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in docstrings):
+            yield node.lineno, node.value
+
+
+def _js_without_comments(src):
+    # Drop // line comments and /* */ blocks, leaving string literals intact.
+    out, i, n = [], 0, len(src)
+    quote = None
+    while i < n:
+        c = src[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(src[i + 1])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "'\"`":
+            quote = c
+            out.append(c)
+        elif src.startswith("//", i):
+            j = src.find("\n", i)
+            i = n if j == -1 else j
+            continue
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j == -1 else j + 2
+            continue
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def test_no_generated_string_uses_the_plural_attackers():
+    hits = []
+    for name in ("result_transformer.py", "audit_engine.py", "checks_extra.py", "pdf_report.py"):
+        for lineno, value in _python_strings(os.path.join(REPO_ROOT, name)):
+            if re.search(r"\battackers\b", value, re.I):
+                hits.append(f"{name}:{lineno}: {value[:80]!r}")
+    with open(os.path.join(REPO_ROOT, "static", "app.js"), encoding="utf-8") as f:
+        js = _js_without_comments(f.read())
+    for m in re.finditer(r"\battackers\b", js, re.I):
+        hits.append(f"app.js: ...{js[max(0, m.start() - 40):m.end() + 20]!r}")
+    assert not hits, "\n".join(hits)
+
+
+def test_np_and_sp_notes_agree_with_rfc_9989_appendix_c():
+    from result_transformer import _build_dmarc_tag_breakdown
+    bd = _build_dmarc_tag_breakdown("v=DMARC1; p=reject; sp=none; rua=mailto:a@example.com",
+                                    {"domain": "example.com"})
+    rows = {t["tag"]: t for t in bd}
+    # psd and t really are new in RFC 9989; only np and sp are checked here.
+    blob = json_dumps({k: rows[k] for k in ("np", "sp")})
+    assert "NEW in RFC 9989" not in blob
+    assert "had no concept of" not in blob
+    assert "RFC 9091" in rows["np"]["dmarcbis_note"]
+    assert "RFC 9091" in rows["sp"]["dmarcbis_note"]
+    # The sp row gets its own one-line explanation, not the p=none paragraph.
+    assert rows["sp"]["explanation"] == (
+        "Subdomain policy none. Applies to mail from subdomains of this domain "
+        "that have no DMARC record of their own."
+    )
+
+
+def json_dumps(obj):
+    import json
+    return json.dumps(obj)
+
+
+def test_rua_destination_count_pluralizes():
+    src = inspect.getsource(result_transformer)
+    assert "destination(s)" not in src

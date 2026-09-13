@@ -8295,12 +8295,9 @@ body {
     .article-card-title { font-size: var(--font-2xl); }
 }
 
-/* Audit form privacy note */
-.audit-privacy-note { font-family: var(--font-body); font-size: var(--font-sm); color: var(--text-muted); text-align: left; margin: var(--space-md) 0 0; line-height: 1.5; }
-
 /* Prompt 26: quiet contact note under the results, shown only when the
    audit found something. Deliberately not a call-to-action: no border, no
-   accent colour, same muted tone as .audit-privacy-note above, sized to the
+   accent colour, muted text, sized to the
    results column it sits in rather than to its own content. */
 .results-contact-note {
     font-size: var(--font-sm);

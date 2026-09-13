@@ -453,6 +453,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
             configured += 1
 
     total_protocols = assessed
+    # Doc 40: the web ring and the PDF cover no longer read this colour
+    # (coverage is a count, not a defect). Kept in the JSON for one release.
     # Thresholds stay proportional so they mean the same thing when the
     # denominator shrinks. At the full nine these are the original 7 and 4.
     ratio = (configured / total_protocols) if total_protocols else 0.0
@@ -1989,14 +1991,14 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 details.append({
                     "type": "error",
                     "text": (
-                        f"Aggregate reporting (rua): {len(rua_dests)} destination(s), "
+                        f"Aggregate reporting (rua): {len(rua_dests)} destination{'s' if len(rua_dests) != 1 else ''}, "
                         f"{len(unauthorized)} NOT authorized (reports silently dropped)"
                     ),
                 })
             else:
                 details.append({
                     "type": "good",
-                    "text": f"Aggregate reporting (rua): {len(rua_dests)} destination(s), all authorized",
+                    "text": f"Aggregate reporting (rua): {len(rua_dests)} destination{'s' if len(rua_dests) != 1 else ''}, all authorized",
                 })
         elif raw.get("rua") and raw.get("report_auth_indeterminate"):
             details.append({
@@ -2502,8 +2504,8 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
             "name": "Non-Existent Subdomain Spoofing",
             "status": "exposed",
             "color": "red",
-            "summary": "Attackers can invent any subdomain.",
-            "detail": f"An attacker could create secure-portal.{domain}, a domain that doesn't exist, and send password phishing emails from it. Attackers prefer non-existent subdomains because they look convincing and many organizations don't realize they need to protect domains that don't exist in DNS.",
+            "summary": "Invented subdomains are unprotected.",
+            "detail": f"A subdomain that was never created, such as secure-portal.{domain}, has no record of its own, so mail claiming to come from it is judged by the policy it inherits. Here that policy is not enforcing. RFC 9091 added the np tag for exactly this case.",
         }
     vectors.append(v3)
 
@@ -2578,11 +2580,11 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     attacker_path = ""
     if weakest:
         if weakest["name"] == "Direct Domain Spoofing":
-            attacker_path = f"If an attacker wanted to spoof this domain, they would send directly as user@{domain} since the policy is p={policy} and no mail is blocked."
+            attacker_path = f"The easiest path to spoofing this domain is direct: mail sent as user@{domain} is not blocked, because the policy is p={policy}."
         elif weakest["name"] == "Subdomain Spoofing":
-            attacker_path = f"If an attacker wanted to spoof this domain, they would target subdomains like mail.{domain} since subdomain policy is weaker than the root."
+            attacker_path = f"The easiest path to spoofing this domain is through a subdomain such as mail.{domain}, because the subdomain policy is weaker than the root."
         elif weakest["name"] == "Non-Existent Subdomain Spoofing":
-            attacker_path = f"If an attacker wanted to spoof this domain, they would target non-existent subdomains like secure-login.{domain} since there is no np= policy to prevent it."
+            attacker_path = f"The easiest path to spoofing this domain is an invented subdomain such as secure-login.{domain}, because there is no np policy."
         elif weakest["name"] == "Reporting Intelligence":
             if raw.get("report_auth_indeterminate"):
                 attacker_path = "This audit did not finish verifying where aggregate reports are sent, so it cannot say whether an unauthorized party is receiving them."
@@ -2702,12 +2704,15 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
     # ── sp= ─────────────────────────────────────────────────
     if tag == "sp":
         note = (
-            "RFC 9989 clarifies inheritance behavior. The new np= tag extends subdomain protection "
-            "to cover non-existent subdomains, something RFC 7489 had no concept of."
+            "RFC 9989 clarifies inheritance. sp covers subdomains that have no DMARC record of "
+            "their own; np, imported from RFC 9091, lets non-existent subdomains carry a stricter "
+            "policy than real ones."
         )
         if present:
             e = _entry(tag, value, False, False, "Subdomain Policy",
-                       _explain_policy_value(value), "current", dmarcbis_note=note)
+                       f"Subdomain policy {value}. Applies to mail from subdomains of this "
+                       f"domain that have no DMARC record of their own.",
+                       "current", dmarcbis_note=note)
             if value == "none" and policy in ("reject", "quarantine"):
                 e["warnings"].append({
                     "level": "warning",
@@ -2728,8 +2733,10 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
     # ── np= (RFC 9989) ─────────────────────────────────────
     if tag == "np":
         note = (
-            "This tag is NEW in RFC 9989. RFC 7489 had no way to set policy for subdomains that "
-            "don't exist in DNS. Attackers exploit this by inventing subdomains. np= closes that gap."
+            "RFC 9989 brings np in from RFC 9091. Under RFC 7489 a subdomain that does not exist "
+            "inherited sp, or p when sp was absent, so it could not be set separately. np lets you "
+            "hold sp=none while a real subdomain is still being aligned and reject mail from names "
+            "that were never created at the same time."
         )
         if present:
             e = _entry(tag, value, False, False, "Non-Existent Subdomain Policy",
@@ -2739,8 +2746,8 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
                     "level": "warning",
                     "text": (
                         "Critical gap. Non-existent subdomains have no enforcement while your root "
-                        "domain rejects. Attackers can invent subdomains like "
-                        f"secure-login.{_dom} and spoof mail from them."
+                        f"domain rejects. Mail from an invented name like secure-login.{_dom} "
+                        "is delivered as if no policy existed."
                     ),
                 })
             return e
@@ -2765,9 +2772,9 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
                 e["warnings"].append({
                     "level": "warning",
                     "text": (
-                        f"Attackers can invent non-existent subdomains like "
-                        f"secure-login.{_dom}. Without np=, the policy for these is "
-                        f"{resolved_via}={resolved}. Consider adding np=reject."
+                        f"Non-existent subdomains such as secure-login.{_dom} currently "
+                        f"fall to {resolved_via}={resolved}, so mail from an invented name is "
+                        f"not rejected. Consider adding np=reject."
                     ),
                 })
             return e
@@ -3683,7 +3690,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         steps.append({
             "step": step_num,
             "action": "Align subdomain policy: change sp=none to sp=reject",
-            "why": "Close the subdomain policy gap. Attackers target subdomains to bypass your root policy.",
+            "why": "Close the subdomain policy gap. With sp=none, mail from any subdomain is delivered as if no policy existed.",
             "tags_changed": ["sp"],
         })
 
@@ -6631,8 +6638,8 @@ def _build_dane_deep(tlsa_records: List[Dict], dnssec_ok: bool) -> Optional[Dict
         dnssec_status = {"status": "pass", "text": "DANE fully functional."}
     elif not dnssec_ok and any(r.get("found") for r in tlsa_records):
         dnssec_status = {"status": "fail", "text": (
-            "DANE is INEFFECTIVE. Without DNSSEC, attackers can forge TLSA records. "
-            "Senders implementing RFC 7672 will ignore non-DNSSEC TLSA records."
+            "DANE is ineffective here. Without DNSSEC, TLSA records cannot be authenticated, "
+            "and senders implementing RFC 7672 ignore TLSA records from unsigned zones."
         )}
     elif dnssec_ok:
         dnssec_status = {"status": "partial", "text": (

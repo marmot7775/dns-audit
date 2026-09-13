@@ -127,6 +127,7 @@ METRIC_COLORS = {
     "amber": WARN_CLR,
     "red": FAIL_CLR,
     "blue": BLUE_ACCENT,
+    "neutral": NEUTRAL_CLR,
 }
 
 
@@ -387,7 +388,10 @@ def _cover_page(data, S, toc_items=None):
     metrics = Table([
         [_metric_cell("Spoofing Protection", sp_val, sp.get("color", "red"), detail=sp_detail),
          _metric_cell("RFC 9989 Readiness", dr_val, dr.get("color", "red")),
-         _metric_cell("Protocol Coverage", f"{pc_conf}/{pc_total}", pc.get("color", "red"))],
+         # Coverage is a count of what is adopted, not a defect: primary
+         # when assessable, neutral when not. pc["color"] is no longer read.
+         _metric_cell("Protocol Coverage", f"{pc_conf}/{pc_total}",
+                      "blue" if pc_total else "neutral")],
     ], colWidths=[2.17*inch]*3)
     metrics.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -1010,7 +1014,7 @@ def _attack_surface_page(data, S, number=4):
     attacker_path = attack_surface.get("attacker_path", "")
     if attacker_path:
         els.append(Spacer(1, SP_SM))
-        els.append(Paragraph("Attacker Perspective", S["heading2"]))
+        els.append(Paragraph("Easiest path to spoofing", S["heading2"]))
         ap = Table([[Paragraph(_safe(attacker_path), S["body"])]], colWidths=[6.5*inch])
         ap.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#fef3cd")),
@@ -1801,7 +1805,7 @@ if __name__ == "__main__":
                       "detail": "An attacker can send email as @example.com and it will be delivered."},
                      {"name": "Subdomain Spoofing", "status": "exposed", "color": "red",
                       "summary": "No subdomain policy enforcement.",
-                      "detail": "Attackers can spoof any subdomain."},
+                      "detail": "Any subdomain can be spoofed."},
                      {"name": "Non-Existent Subdomain Spoofing", "status": "exposed", "color": "red",
                       "summary": "np= tag is absent.",
                       "detail": "Non-existent subdomains fall back to root policy (p=none)."},
