@@ -54,7 +54,7 @@ function sentenceCase(text) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function statusIcon(st) {
+function statusIconHtml(st) {
     return `<span class="status-icon ${safeClass(st)}">${ICON[st] || ICON.info}</span>`;
 }
 
@@ -1620,7 +1620,6 @@ function renderAttackSurface(as) {
     const statusIcons = { protected: ICON.pass, partial: ICON.warn, exposed: ICON.fail };
 
     // Overall score
-    const overallClass = `as-overall-${safeClass(as.overall.color)}`;
 
     // Vectors
     let vectorsHtml = '';
@@ -1650,7 +1649,7 @@ function renderAttackSurface(as) {
                 <div class="as-header-left">
                     <span class="as-title">Email Spoofing Attack Surface</span>
                 </div>
-                <span class="as-overall ${overallClass}">${escapeHtml(as.overall.label)}</span>
+                <span class="${tagClass(COLOR_STATE[as.overall.color])}">${escapeHtml(as.overall.label)}</span>
             </div>
             <div class="as-overall-summary">${escapeHtml(as.overall.summary)}</div>
             ${attackerHtml}
@@ -1665,7 +1664,7 @@ function renderAttackSurface(as) {
 function renderSubdomainAudit(sa) {
     if (!sa || !sa.subdomains || sa.subdomains.length === 0) return '';
 
-    const statusIcons = { protected: statusIcon('pass'), partial: statusIcon('warn'), exposed: statusIcon('fail') };
+    const statusIcons = { protected: statusIconHtml('pass'), partial: statusIconHtml('warn'), exposed: statusIconHtml('fail') };
 
     // Summary stats
     let summaryHtml = '';
@@ -1807,7 +1806,7 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
                     <span class="sv-title">Strict Record Validation</span>
                 </div>
                 <div class="sv-header-right">
-                    <span class="sv-summary ${summaryClass}">${escapeHtml(sv.summary)}</span>
+                    <span class="sv-summary ${summaryClass}">${statusIconHtml(summaryClass.slice('sv-summary-'.length))}<span>${escapeHtml(sv.summary)}</span></span>
                     <span class="sv-score">${sv.pass_count}/${sv.total_count}</span>
                 </div>
             </div>
@@ -1855,7 +1854,7 @@ function renderDmarcTagBreakdown(bd) {
         verdictHtml = `
             <div class="rb-verdict ${cls}">
                 <div class="rb-verdict-top">
-                    <span class="rb-verdict-label">${escapeHtml(h.label)}</span>
+                    <span class="${tagClass({ ready: 'pass', monitoring: 'warn', attention: 'warn', misconfigured: 'fail' }[h.status])}">${escapeHtml(h.label)}</span>
                     <span class="rb-verdict-summary">${escapeHtml(h.summary)}</span>
                 </div>
                 ${reasonsHtml ? `<div class="rb-verdict-reasons">${reasonsHtml}</div>` : ''}
@@ -2527,7 +2526,7 @@ function renderDmarcbisReadiness(readiness) {
                     <span class="dbis-title">RFC 9989 Readiness</span>
                 </div>
                 <div class="dbis-header-right">
-                    <span class="dbis-status dbis-status-${statusClass}">${escapeHtml(statusLabel)}</span>
+                    <span class="${tagClass(statusClass)}">${escapeHtml(statusLabel)}</span>
                     <span class="dbis-score">${readiness.pass_count}/${readiness.total_count}</span>
                 </div>
             </div>
@@ -3513,12 +3512,12 @@ function _renderProviderCard(provider, showScorecard) {
                 </thead>
                 <tbody>`;
         for (const row of provider.scorecard) {
-            const supportsIcon = row.provider_supports ? statusIcon('pass') : statusIcon('fail');
+            const supportsIcon = row.provider_supports ? statusIconHtml('pass') : statusIconHtml('fail');
             let domainIcon;
-            if (row.domain_status === 'yes') domainIcon = statusIcon('pass');
-            else if (row.domain_status === 'no') domainIcon = statusIcon('warn');
+            if (row.domain_status === 'yes') domainIcon = statusIconHtml('pass');
+            else if (row.domain_status === 'no') domainIcon = statusIconHtml('warn');
             else if (row.domain_status === 'n/a') domainIcon = 'N/A';
-            else domainIcon = statusIcon('unavailable');
+            else domainIcon = statusIconHtml('unavailable');
             html += `<tr>
                 <td>${escapeHtml(row.feature)}</td>
                 <td class="pi-sc-center">${supportsIcon}</td>
