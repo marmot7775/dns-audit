@@ -1038,7 +1038,7 @@ main {
 /* Summary grid */
 .summary-grid {
     display: grid;
-    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 0.75rem;
     margin-bottom: var(--space-lg);
 }
@@ -1075,6 +1075,14 @@ main {
     animation-delay: 0.2s;
 }
 
+.summary-card:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+.summary-grid:has(.unavailable-card:not(.is-hidden)) {
+    grid-template-columns: repeat(5, 1fr);
+}
+
 .pass-card {
     border-top-color: var(--pass);
 }
@@ -1085,6 +1093,12 @@ main {
 
 .fail-card {
     border-top-color: var(--fail);
+}
+
+/* Optional protocols the domain has not published. Neutral: nothing is
+   wrong, so it takes neither the warning amber nor the pass green. */
+.absent-card {
+    border-top-color: var(--text-tertiary);
 }
 
 /* Checks whose lookup never completed. Neutral on purpose: not a finding,
@@ -1122,15 +1136,18 @@ main {
     color: var(--fail-text);
 }
 
-.unavailable-value {
+.unavailable-value,
+.absent-value {
     color: var(--text-tertiary);
 }
 
-/* Priority fixes */
+/* Priorities: the one prioritized list. A plain surface; each row's icon
+   carries the severity, so the box is not red when the worst finding is a
+   warning. */
 .priority-section {
     display: none;
-    background: var(--fail-bg);
-    border: 1px solid var(--fail-border);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     margin-bottom: var(--space-lg);
@@ -1139,43 +1156,133 @@ main {
 
 .priority-header {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
     font-weight: 600;
     font-size: var(--font-base);
-    color: var(--fail-text);
-    margin-bottom: 0.85rem;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-md);
+}
+
+.priority-summary {
+    font-size: var(--font-xs);
+    font-weight: 500;
+    color: var(--text-tertiary);
 }
 
 .priority-list {
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: var(--space-xs);
 }
 
-.priority-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.65rem;
-    font-size: var(--font-sm);
-    color: var(--text-primary);
-    line-height: 1.55;
-}
-
-.priority-number {
-    flex-shrink: 0;
-    width: 22px;
-    height: 22px;
-    background: var(--fail-solid);
-    color: var(--text-inverse);
-    border-radius: 50%;
-    display: flex;
+.priority-row {
+    display: grid;
+    grid-template-columns: 16px auto auto 1fr;
     align-items: center;
-    justify-content: center;
-    font-size: var(--font-xs);
-    font-weight: 700;
-    margin-top: 2px;
+    column-gap: var(--space-sm);
+    min-height: 44px;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius);
+    font-size: var(--font-sm);
+    line-height: 1.5;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background var(--duration) var(--ease);
 }
+
+.priority-row:hover,
+.priority-row:focus-visible {
+    background: var(--surface-hover);
+}
+
+.priority-protocol {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .priority-row {
+        grid-template-columns: 16px auto 1fr;
+        row-gap: var(--space-xs);
+        padding-block: var(--space-sm);
+    }
+
+    .priority-row .tag {
+        justify-self: start;
+    }
+
+    .priority-action {
+        grid-column: 2 / -1;
+    }
+}
+
+/* Status icons (static/app.js ICON). One shape per status; the colour comes
+   from the status class on the wrapper. */
+.status-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.status-icon .icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* An icon inline with text sits on the text's centre line. */
+.icon {
+    display: inline-block;
+    vertical-align: -3px;
+    flex-shrink: 0;
+}
+
+.status-icon.pass { color: var(--pass); }
+.status-icon.warn { color: var(--warn); }
+.status-icon.fail { color: var(--fail); }
+.status-icon.absent,
+.status-icon.unavailable,
+.status-icon.info { color: var(--text-tertiary); }
+
+/* One tag component for every pill, badge and chip. */
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+    background: var(--border);
+    color: var(--text-tertiary);
+}
+
+.tag-pass { background: var(--pass-bg); color: var(--pass); }
+.tag-warn { background: var(--warn-bg); color: var(--warn); }
+.tag-fail { background: var(--fail-bg); color: var(--fail-text); }
+.tag-absent,
+.tag-unavailable { background: var(--border); color: var(--text-tertiary); }
+.tag-critical { background: var(--fail-bg); color: var(--fail-text); }
+.tag-high { background: var(--warn-bg); color: var(--warn); }
+.tag-medium,
+.tag-low { background: var(--border); color: var(--text-tertiary); }
+
+/* Tiers are ranks, not sentences: the one uppercase exception. */
+.tag-critical,
+.tag-high,
+.tag-medium,
+.tag-low { text-transform: uppercase; }
+
+.tag-mono { font-family: var(--font-mono); }
 
 /* Results toolbar */
 .results-toolbar {
@@ -1283,22 +1390,26 @@ main {
     contain-intrinsic-size: auto 300px;
 }
 
-.result-card:has(.status-dot.pass) {
+.result-card[data-status="pass"] {
     border-left-color: var(--pass);
 }
 
-.result-card:has(.status-dot.warn) {
+.result-card[data-status="warn"] {
     border-left-color: var(--warn);
 }
 
-.result-card:has(.status-dot.fail) {
+.result-card[data-status="fail"] {
     border-left-color: var(--fail);
 }
 
 /* A check that did not run. Deliberately neutral: it is not a finding
    about the domain, so it must not read as pass, warn or fail. */
-.result-card:has(.status-dot.unavailable) {
+.result-card[data-status="unavailable"] {
     border-left-color: var(--border-strong);
+}
+
+.result-card[data-status="absent"] {
+    border-left-color: var(--text-tertiary);
 }
 
 .result-card:nth-child(1) { animation-delay: 0ms; }
@@ -1343,32 +1454,6 @@ main {
 
 .result-header:hover {
     background: rgba(255, 255, 255, 0.02);
-}
-
-/* Status dot */
-.status-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.status-dot.pass {
-    background: var(--pass);
-}
-
-.status-dot.warn {
-    background: var(--warn);
-    box-shadow: 0 0 0 3px var(--warn-bg);
-}
-
-.status-dot.fail {
-    background: var(--fail);
-    box-shadow: 0 0 0 3px var(--fail-bg);
-}
-
-.status-dot.unavailable {
-    background: var(--text-secondary);
 }
 
 /* Check name */
@@ -1416,6 +1501,7 @@ h3.result-title,
     border: 1px solid var(--fail-border);
 }
 
+.status-pill.absent,
 .status-pill.unavailable {
     background: var(--border-light);
     color: var(--text-secondary);
@@ -1435,8 +1521,8 @@ h3.result-title,
 
 /* Chevron */
 .result-chevron {
+    display: inline-flex;
     color: var(--text-tertiary);
-    font-size: var(--font-xs);
     transition: transform var(--duration-slow) var(--ease-out);
     flex-shrink: 0;
     margin-left: 0.25rem;
@@ -2769,9 +2855,9 @@ details.st-node>summary:hover {
 }
 
 .detail-icon {
-    flex-shrink: 0;
-    margin-top: 0.18rem;
-    font-size: var(--font-sm);
+    display: inline-flex;
+    flex: 0 0 16px;
+    margin-top: 2px;
 }
 
 /* The text beside the icon. With a flex-basis of 0 it never asks for more
@@ -3032,8 +3118,13 @@ details.st-node>summary:hover {
 }
 
 .pi-chevron {
-    font-size: var(--font-xs);
+    display: inline-flex;
     flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.pi-guidance-toggle[aria-expanded="true"] .pi-chevron {
+    transform: rotate(180deg);
 }
 
 .pi-guidance-body {
@@ -3485,7 +3576,7 @@ details.st-node>summary:hover {
         padding: 1rem 1.1rem;
     }
 
-    .summary-card:first-child {
+    .summary-card.unavailable-card {
         grid-column: 1 / -1;
     }
 
@@ -4582,7 +4673,7 @@ body {
 
     .priority-section {
         border: 1px solid #ccc;
-        background: #fff8f8;
+        background: #fff;
     }
 }
 
@@ -5095,105 +5186,6 @@ body {
     }
 }
 
-/* ── Security Roadmap ─────────────────────────────────────── */
-
-.sr-block {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-}
-
-.sr-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.sr-title {
-    font-size: var(--font-base);
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.sr-summary {
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-}
-
-.sr-tier {
-    margin-bottom: 0.5rem;
-}
-
-.sr-tier-label {
-    font-size: var(--font-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.15rem 0.5rem;
-    border-radius: 3px;
-    display: inline-block;
-    margin-bottom: 0.3rem;
-}
-
-.sr-tier-fail { background: var(--fail-bg); color: var(--fail-text); }
-.sr-tier-warn { background: var(--warn-bg); color: var(--warn); }
-.sr-tier-info { background: var(--primary-subtle); color: var(--primary-light); }
-.sr-tier-pass { background: var(--pass-bg); color: var(--pass); }
-
-.sr-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.4rem 0.6rem;
-    border-radius: 5px;
-    margin-bottom: 0.25rem;
-    transition: background 0.15s var(--ease);
-}
-
-.sr-item:hover {
-    background: var(--surface);
-}
-
-.sr-item-fail { border-left: 3px solid var(--fail); }
-.sr-item-warn { border-left: 3px solid var(--warn); }
-.sr-item-info { border-left: 3px solid var(--primary); }
-.sr-item-pass { border-left: 3px solid var(--pass); }
-
-.sr-protocol {
-    font-size: var(--font-xs);
-    font-weight: 700;
-    background: var(--code-bg);
-    color: #79c0ff;
-    padding: 0.1rem 0.4rem;
-    border-radius: 3px;
-    flex-shrink: 0;
-    margin-top: 0.1rem;
-}
-
-.sr-item-body {
-    flex: 1;
-    min-width: 0;
-}
-
-.sr-action {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.sr-impact {
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-    line-height: 1.4;
-}
-
 /* ── DKIM Key Analysis ────────────────────────────────────── */
 
 .dk-block {
@@ -5215,7 +5207,7 @@ body {
 .dk-rating-amber { border-left: 3px solid var(--warn); }
 .dk-rating-red { border-left: 3px solid var(--fail); }
 /* A retired key (empty p=, RFC 6376 3.6.1) is correctly published, so it takes
-   the same neutral grey as .status-dot.unavailable rather than a verdict
+   the same neutral grey as .status-icon.unavailable rather than a verdict
    colour. Without this rule the row rendered with no stripe at all. */
 .dk-rating-neutral { border-left: 3px solid var(--text-secondary); }
 
@@ -5617,14 +5609,14 @@ body {
 }
 
 .sua-toggle-icon {
-    display: inline-block;
+    display: inline-flex;
+    vertical-align: -3px;
     transition: transform 0.2s ease;
     margin-right: 0.3rem;
-    font-size: var(--font-xs);
 }
 
 .sua-details[open] .sua-toggle-icon {
-    transform: rotate(90deg);
+    transform: rotate(180deg);
 }
 
 .sua-table-wrap {
@@ -5954,10 +5946,9 @@ body {
 }
 
 .sv-icon {
+    display: inline-flex;
     flex-shrink: 0;
-    font-size: var(--font-xs);
-    width: 1rem;
-    text-align: center;
+    width: 16px;
 }
 
 .sv-pass { color: var(--pass); }
@@ -7273,7 +7264,7 @@ body {
     margin-left: auto;
 }
 .cd-chevron {
-    font-size: 0.75em;
+    display: inline-flex;
     color: var(--text-tertiary);
     transition: transform 0.2s ease;
     margin-left: 0.3em;
@@ -8332,9 +8323,9 @@ body {
 
 @media (min-width: 769px) and (max-width: 1024px) {
     .summary-grid {
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(4, 1fr);
     }
-    .summary-card:first-child {
+    .summary-card.unavailable-card {
         grid-column: 1 / -1;
     }
 }
@@ -8343,7 +8334,7 @@ body {
     .summary-grid {
         grid-template-columns: 1fr 1fr;
     }
-    .summary-card:first-child {
+    .summary-card.unavailable-card {
         grid-column: 1 / -1;
     }
 
@@ -9084,11 +9075,6 @@ body {
 }
 .record-block.record-block-inset-lg {
     margin: 0.5rem 0;
-}
-
-/* Roadmap rows are click-to-scroll targets. */
-.sr-item[data-scroll-to] {
-    cursor: pointer;
 }
 
 /* SPF deep-analysis note sits directly above the record it annotates. */

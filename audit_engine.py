@@ -231,9 +231,8 @@ BUSINESS_RISK = {
         "so spoofing protections you intended to publish are not actually applied."
     ),
     "DMARC_P_NONE": (
-        "DMARC monitoring-only mode collects data but does not block spoofing. "
-        "Attackers can still impersonate your domain in phishing attacks against "
-        "customers and staff."
+        "DMARC monitoring-only mode collects reports but does not block anything. "
+        "Mail that fails authentication is still delivered as if it came from you."
     ),
     "DMARC_NO_RUA": (
         "Without aggregate reporting, you have no visibility into who is sending "
@@ -5145,8 +5144,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     if is_defensive:
         _defensive_override = {"MTA-STS", "TLS-RPT", "BIMI", "DKIM", "DANE"}
         for check in checks:
-            if check.get("name") in _defensive_override and check.get("status") != "pass":
-                check["status"] = "pass"
+            if check.get("name") in _defensive_override and check.get("status") not in ("pass", "absent"):
+                # DKIM is essential, so its waiver stays a pass. The optional
+                # protocols are absent, the same as their own non-mail cards.
+                check["status"] = "pass" if check["name"] == "DKIM" else "absent"
                 check["pill_label"] = "N/A"
                 check["verdict"] = "Not applicable (non-mail domain)"
                 check["fix"] = None
