@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in dns-security-auditor, please report it responsibly.
 
-**Email:** neil@dns-audit.com
+**Report privately:** use GitHub's private vulnerability reporting on this repository (Security tab, Report a vulnerability). If that is not available to you, message me on https://www.linkedin.com/in/neilanuskiewicz/ and I will open a private channel.
 
 **What to include:**
 - Description of the vulnerability
