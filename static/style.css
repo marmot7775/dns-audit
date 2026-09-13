@@ -3178,6 +3178,11 @@ details.st-node>summary:hover {
     font-size: inherit;
 }
 
+.footer-attribution .footer-link {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
 .footer-version {
     color: var(--text-muted);
     font-family: var(--font-mono);
@@ -3204,16 +3209,9 @@ details.st-node>summary:hover {
 .footer-attribution {
     font-size: var(--font-sm);
     color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 0.35em;
-}
-.footer-email {
-    color: var(--text-muted);
-    text-decoration: underline;
-}
-.footer-email:hover {
-    color: var(--primary-light);
+    /* Doc 39: one sentence with an inline link. The flex row only existed
+       to sit the LinkedIn icon beside the text. */
+    display: block;
 }
 .footer-linkedin {
     color: #9ca3af;
