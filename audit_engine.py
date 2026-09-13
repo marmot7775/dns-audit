@@ -5153,6 +5153,15 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 check["fix"] = None
                 check["fix_records"] = None
 
+    # An absent card says nothing is wrong, so its rows cannot carry the
+    # warning icon: "No DNSKEY records found" is the card's own fact, not a
+    # second finding. Error rows stay, since they report something broken.
+    for check in checks:
+        if check.get("status") == "absent":
+            for detail in check.get("details") or []:
+                if detail.get("type") == "warning":
+                    detail["type"] = "info"
+
     # --- Re-transform DMARC card now that is_defensive is known ---
     if is_defensive:
         raw_dmarc = raw_results.get("dmarc")
