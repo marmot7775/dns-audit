@@ -89,6 +89,8 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
     bimi = raw_results.get("bimi") or {}
     nameservers_raw = raw_results.get("nameservers") or {}
     dnssec = raw_results.get("dnssec") or {}
+    # The audited domain, for fix text that would otherwise print a placeholder.
+    domain = dmarc.get("domain") or spf.get("domain") or raw_results.get("domain") or ""
 
     # Determine effective DMARC policy, including inherited from org domain
     _dmarc_inherited = not dmarc.get("record") and dmarc.get("is_subdomain") and dmarc.get("inherited_policy")
@@ -163,7 +165,7 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
                 "severity": "medium",
                 "recommendation": (
                     "Add a TLS-RPT record (_smtp._tls.<domain> TXT "
-                    "\"v=TLSRPTv1; rua=mailto:tls-reports@yourdomain.com\") "
+                    f"\"v=TLSRPTv1; rua=mailto:tls-reports@{domain}\") "
                     "so that sending servers can report TLS negotiation failures."
                 ),
             })
@@ -282,16 +284,17 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
             anomalies.append({
                 "title": "DMARC reports sent to unauthorized destinations",
                 "description": (
-                    "DMARC aggregate or forensic reports are addressed to "
-                    "destination(s) that have not published the required "
+                    "DMARC aggregate or forensic reports are addressed to {} "
+                    "that {} not published the required "
                     "authorization record: {}. Those reports will be silently "
                     "dropped by compliant receivers."
-                ).format(dest_list),
+                ).format("destinations" if len(unauthorized) != 1 else "a destination",
+                         "have" if len(unauthorized) != 1 else "has", dest_list),
                 "severity": "critical",
                 "recommendation": (
                     "For each third-party report address, the destination domain "
                     "must publish a TXT record at "
-                    "<yourdomain.com>._report._dmarc.<destination-domain> "
+                    f"{domain}._report._dmarc.<destination-domain> "
                     "containing \"v=DMARC1\" to authorize receipt."
                 ),
             })

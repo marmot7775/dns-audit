@@ -140,7 +140,7 @@ const PROTOCOL_TOOLTIPS = {
     'SPF': 'Lists which servers are authorized to send email for your domain',
     'DKIM': 'Cryptographic signature proving emails haven\'t been tampered with',
     'BIMI': 'Displays your brand logo in email clients that support it',
-    'MTA-STS': 'Forces encrypted TLS connections between mail servers',
+    'MTA-STS': 'Tells sending servers that support it to require TLS when delivering to your domain',
     'TLS-RPT': 'Receives reports when TLS connections to your domain fail',
     'DANE': 'Uses DNSSEC to verify mail server TLS certificates',
     'DNSSEC': 'Cryptographically signs DNS records to prevent spoofing',
@@ -148,7 +148,7 @@ const PROTOCOL_TOOLTIPS = {
     'MX Records': 'Specifies which mail servers accept email for your domain',
     'MX': 'Specifies which mail servers accept email for your domain',
     'Nameservers': 'The DNS servers that answer queries about your domain',
-    'Certificate Transparency': 'Public log of all certificates issued for your domain',
+    'Certificate Transparency': 'Public logs of certificates issued for your domain',
 };
 
 // -- Check URL for domain parameter on load --
@@ -1271,7 +1271,7 @@ function renderCheckBody(check) {
 
     // Structural errors banner for subsequent sections
     if (check.strict_validation && check.strict_validation.has_structural_errors) {
-        html += `<div class="sv-error-banner spec-dmarcbis">Results below may be unreliable &mdash; this record has structural errors that affect parsing.</div>`;
+        html += `<div class="sv-error-banner spec-dmarcbis">This record has structural errors that affect parsing, so the results below may be unreliable.</div>`;
     }
 
     // Attack Surface View (Prompt 6)
@@ -1356,7 +1356,7 @@ function renderCheckBody(check) {
     } else if (check._change_status === 'first_audit') {
         html += `<div class="cd-first-audit">
             <span class="cd-first-icon">&#128203;</span>
-            We are now tracking this domain. Run another audit later to detect changes.
+            This domain is now tracked; run another audit later to see what changed.
         </div>`;
     }
 
@@ -1618,7 +1618,7 @@ document.addEventListener('click', function(e) {
 function renderAttackSurface(as) {
     if (!as || !as.vectors || as.vectors.length === 0) return '';
 
-    const statusLabels = { protected: 'Protected', partial: 'Partially Protected', exposed: 'Exposed' };
+    const statusLabels = { protected: 'Protected', partial: 'Partly protected', exposed: 'Exposed' };
     const statusIcons = { protected: ICON.pass, partial: ICON.warn, exposed: ICON.fail };
 
     // Overall score
@@ -1685,11 +1685,11 @@ function renderSubdomainAudit(sa) {
     sa.subdomains.forEach(s => {
         const icon = statusIcons[s.status] || '';
         const existsText = s.exists ? 'Yes' : 'No';
-        let mailText = '\u2014';
+        let mailText = 'n/a';
         if (s.exists) {
             mailText = s.sends_mail ? `Yes (${escapeHtml(s.mail_signals || '')})` : 'No';
         }
-        const dmarcText = s.exists ? (s.has_own_dmarc ? 'Yes' : 'No') : '\u2014';
+        const dmarcText = s.exists ? (s.has_own_dmarc ? 'Yes' : 'No') : 'n/a';
 
         rowsHtml += `
             <tr class="sua-row sua-row-${safeClass(s.color)}">
@@ -1925,9 +1925,11 @@ function renderDmarcTagBreakdown(bd) {
 
     // --- Configuration Warnings (Prompt 2) ---
     let configWarningsHtml = '';
-    if (bd.config_warnings && bd.config_warnings.length > 0) {
+    // A hidden warning is already said by the card's explanation and details.
+    const shownWarnings = (bd.config_warnings || []).filter(w => !w.hidden);
+    if (shownWarnings.length > 0) {
         let items = '';
-        bd.config_warnings.forEach(w => {
+        shownWarnings.forEach(w => {
             const cls = w.level === 'critical' ? 'rb-cw-critical'
                 : w.level === 'info' ? 'rb-cw-info' : 'rb-cw-advisory';
             const icon = w.level === 'critical' ? ICON.fail
@@ -2867,7 +2869,7 @@ function renderDmarcEvaluation(ev) {
     const dkimAlignIcon = ev.dkim_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
     const dkimAlignClass = ev.dkim_aligned ? 'de-aligned' : 'de-not-aligned';
 
-    const dispLabel = ev.disposition === 'none' ? 'delivered'
+    const dispLabel = ev.disposition === 'none' ? 'no action requested'
         : ev.disposition === 'quarantine' ? 'quarantined'
             : ev.disposition === 'reject' ? 'rejected'
                 : escapeHtml(ev.disposition);
@@ -2991,7 +2993,7 @@ function renderSpfTree(tree) {
     const limit = tree.limit || 10;
     const pct = Math.min((used / limit) * 100, 100);
     const barClass = used > limit ? 'st-bar-over' : used >= 8 ? 'st-bar-warn' : 'st-bar-ok';
-    const statusLabel = used > limit ? 'OVER LIMIT' : used >= 8 ? 'NEAR LIMIT' : '';
+    const statusLabel = used > limit ? 'Over limit' : used >= 8 ? 'Near limit' : '';
 
     let html = `
         <div class="spf-tree st-animated">
