@@ -30,7 +30,7 @@ def _free_port() -> int:
     return port
 
 
-def _slow_audit(domain, dkim_selector=None, scope=None, progress_callback=None):
+def _slow_audit(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
     time.sleep(3)
     return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
 
