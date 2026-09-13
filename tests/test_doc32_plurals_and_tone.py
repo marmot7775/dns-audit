@@ -5,6 +5,7 @@ count of exactly 1, which is the case every "{n} things" string got wrong.
 Also pins the tone fixes: no card predicts what attackers will do, and the
 subdomain-gap warnings name the audited domain rather than yourdomain.com.
 """
+import inspect
 import io
 import os
 import re
@@ -14,6 +15,7 @@ from pypdf import PdfReader
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import audit_engine
 import pdf_report
 import result_transformer
 from result_transformer import (
@@ -108,14 +110,16 @@ def test_no_warning_predicts_what_attackers_will_do_and_the_real_domain_is_used(
     tags = {"v": "DMARC1", "p": "reject", "sp": "none", "rua": "mailto:a@example.com"}
     warnings = _detect_dangerous_combinations(tags, "reject", domain="example.com")
     blob = " ".join(w["text"] for w in warnings)
-    assert "attackers will" not in blob.lower()
+    for phrase in ("attackers will", "attackers can", "attackers could"):
+        assert phrase not in blob.lower()
     assert "yourdomain.com" not in blob
     assert "mail.example.com" in blob
 
     tags = {"v": "DMARC1", "p": "none", "np": "reject", "rua": "mailto:a@example.com"}
     warnings = _detect_dangerous_combinations(tags, "none", domain="example.com")
     blob = " ".join(w["text"] for w in warnings)
-    assert "attackers will" not in blob.lower()
+    for phrase in ("attackers will", "attackers can", "attackers could"):
+        assert phrase not in blob.lower()
     assert "The root domain is the easier target" in blob
 
 
@@ -126,6 +130,17 @@ def test_transformer_source_has_no_attacker_predictions_left():
         "a card still predicts what attackers will do"
     )
     assert "technical checkbox" not in src
+
+    # Doc 38 section 2: the last two, in the executive summary verdict and the
+    # p=none business impact.
+    with open(os.path.join(REPO_ROOT, "audit_engine.py"), encoding="utf-8") as f:
+        engine_src = f.read()
+    for phrase in ("attackers can still exploit", "Attackers can still impersonate"):
+        assert phrase not in src and phrase not in engine_src, phrase
+    summary_src = inspect.getsource(result_transformer.build_executive_summary)
+    assert not re.search(r"[Aa]ttackers (will|can|could)", summary_src)
+    assert not re.search(r"[Aa]ttackers? (will|can|could)",
+                         audit_engine.BUSINESS_RISK["DMARC_P_NONE"])
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +189,7 @@ def test_app_js_share_text_and_strict_count_pluralize_on_one():
     with open(os.path.join(REPO_ROOT, "static", "app.js"), encoding="utf-8") as f:
         src = f.read()
     assert "${failCount} issues`" not in src
-    assert "${failCount} issue${failCount !== 1 ? 's' : ''}" in src
+    assert "${counts.fail} issue${counts.fail !== 1 ? 's' : ''}" in src
     assert "found that only appear under strict" not in src, (
         "the verb did not agree with a pluralized noun on a count of 1"
     )

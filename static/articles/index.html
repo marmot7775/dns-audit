@@ -19,8 +19,8 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
-    <link rel="stylesheet" href="/static/style.css?v=5b2dd3a">
-    <script src="/static/theme.js?v=5b2dd3a"></script>
+    <link rel="stylesheet" href="/static/style.css?v=0be682f">
+    <script src="/static/theme.js?v=0be682f"></script>
 </head>
 <body>
     <header class="site-header">
@@ -59,18 +59,18 @@
             </header>
             <div class="articles-controls">
                 <div class="articles-tag-bar" role="group" aria-label="Filter articles by tag">
-                    <button type="button" class="articles-tag-pill is-active" data-filter="all" aria-pressed="true">All</button>
-                    <button type="button" class="articles-tag-pill" data-filter="dmarc" aria-pressed="false">DMARC</button>
-                    <button type="button" class="articles-tag-pill" data-filter="dnssec" aria-pressed="false">DNSSEC</button>
-                    <button type="button" class="articles-tag-pill" data-filter="dane" aria-pressed="false">DANE</button>
+                    <button type="button" class="tag tag-hit articles-filter is-active" data-filter="all" aria-pressed="true">All</button>
+                    <button type="button" class="tag tag-hit articles-filter" data-filter="dmarc" aria-pressed="false">DMARC</button>
+                    <button type="button" class="tag tag-hit articles-filter" data-filter="dnssec" aria-pressed="false">DNSSEC</button>
+                    <button type="button" class="tag tag-hit articles-filter" data-filter="dane" aria-pressed="false">DANE</button>
                 </div>
             </div>
             <div class="articles-list">
                 <article class="article-card article-card-dane" data-tags="dane">
                     <div class="article-card-accent"></div>
                     <div class="article-card-content">
-                        <div class="article-card-tags">
-                            <span class="article-card-tag">DANE</span>
+                        <div class="article-card-labels">
+                            <span class="tag">DANE</span>
                         </div>
                         <h2 class="article-card-title"><a href="/articles/dane">DANE didn't fail. The web version did.</a></h2>
                         <p class="article-card-description">DANE for browsers and DANE for SMTP got buried in the same obituary. Only one of them was actually dead.</p>
@@ -84,8 +84,8 @@
                 <article class="article-card article-card-dmarcbis" data-tags="dmarc">
                     <div class="article-card-accent"></div>
                     <div class="article-card-content">
-                        <div class="article-card-tags">
-                            <span class="article-card-tag">DMARC</span>
+                        <div class="article-card-labels">
+                            <span class="tag">DMARC</span>
                         </div>
                         <h2 class="article-card-title"><a href="/articles/dmarcbis">RFC 9989</a></h2>
                         <p class="article-card-description">DMARC has been leaning on a volunteer-maintained text file for a decade. RFC 9989 replaces the Public Suffix List with the DNS itself.</p>
@@ -99,8 +99,8 @@
                 <article class="article-card article-card-dnssec" data-tags="dnssec">
                     <div class="article-card-accent"></div>
                     <div class="article-card-content">
-                        <div class="article-card-tags">
-                            <span class="article-card-tag">DNSSEC</span>
+                        <div class="article-card-labels">
+                            <span class="tag">DNSSEC</span>
                         </div>
                         <h2 class="article-card-title"><a href="/articles/dnssec">DNSSEC stopped being hard</a></h2>
                         <p class="article-card-description">The reputation never caught up. The DNSSEC you can deploy at a major provider in 2026 is a checkbox, and most of what changed since 2017 went unnoticed.</p>
@@ -115,7 +115,7 @@
             <p class="articles-empty" role="status">No articles in this category yet.</p>
         </div>
     </main>
-    <script src="/static/articles.js?v=5b2dd3a" defer></script>
+    <script src="/static/articles.js?v=0be682f" defer></script>
     <footer class="site-footer">
         <div class="container footer-inner">
             <div class="footer-left">

@@ -22,6 +22,7 @@ Each card looks like:
 }
 """
 
+import re
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from html import escape as _e
@@ -94,6 +95,28 @@ def _lookup_unavailable_card(name: str, raw: Dict, subject: str, pill_label: str
         # reader holding either dict cannot tell which it has.
         "unavailable_kind": "lookup_failed",
     }
+
+
+_DETAIL_TAG_RE = re.compile(r"\b(pct|np|sp|p|rua|ruf|adkim|aspf|fo|rf|ri|t|psd)(?:=|\s+tag\b)")
+
+
+def _dedupe_details(details: List[Dict]) -> List[Dict]:
+    """Drop a detail row that repeats an earlier one: same DMARC tag, same severity.
+
+    The tag breakdown and the engine's issue list both describe p=none and
+    pct, so the card said each of them twice. Rows that name no tag are kept.
+    """
+    seen = set()
+    kept = []
+    for d in details:
+        m = _DETAIL_TAG_RE.search(d.get("text") or "")
+        key = (m.group(1), d.get("type")) if m else None
+        if key in seen:
+            continue
+        if key:
+            seen.add(key)
+        kept.append(d)
+    return kept
 
 
 def _issue_to_detail(issue: Dict) -> Dict[str, str]:
@@ -311,7 +334,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
     elif exposed_count == 1:
         weakest = [v for v in vectors if v.get("status") == "exposed"]
         vec_name = weakest[0]["name"].lower() if weakest else "one vector"
-        verdict = f"Your domain has email authentication but attackers can still exploit {vec_name}."
+        verdict = f"Your domain has email authentication, but {vec_name} is still open."
     elif partial_count > 0:
         verdict = "Your domain partially blocks spoofed email but enforcement could be stronger."
     else:
@@ -350,6 +373,14 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
         spoof_label, spoof_color = "None", "red"
         protected_count = 0
         _vector_total = 0
+
+    # Red is for a DMARC record that is missing or unusable, which is the DMARC
+    # card failing. p=none is published and weak, amber on the card and in the
+    # counters, so the tile cannot be redder than the card beside it.
+    if spoof_color == "red" and dmarc_status != "fail":
+        if spoof_label == "None":
+            spoof_label = "Monitoring only"
+        spoof_color = "amber"
 
     spoofing_protection = {
         "label": spoof_label,
@@ -463,7 +494,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
             top = risk_candidates[0]
             biggest_risk = top.get("impact", top.get("action", ""))
         else:
-            biggest_risk = "No urgent risks found. The roadmap below lists smaller improvements."
+            biggest_risk = "No urgent risks found. The Priorities list below names smaller improvements."
 
     # ── Part 4: has_record_builder flag ──────────────────────
     has_record_builder = dmarc.get("record_builder") is not None
@@ -751,7 +782,12 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False) -> Dict
     # otherwise. Stable sort by rank so the web roadmap and the PDF agree
     # with their own counts; ties keep check order.
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    items.sort(key=lambda i: _rank.get(i.get("priority"), 4))
+    # Each row carries its card's status so the Priorities list can show it.
+    # Within a tier, rows about something wrong come before rows about
+    # something not yet adopted.
+    for item in items:
+        item["status"] = check_map.get(item["protocol"], {}).get("status")
+    items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), i["status"] == "absent"))
 
     # Count by tier
     tiers = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -2027,6 +2063,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     else:
         for issue in raw.get("issues", []):
             details.append(_issue_to_detail(issue))
+
+    details = _dedupe_details(details)
 
     # Fix
     domain_name = raw.get("domain", "")
@@ -5470,7 +5508,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         if non_mail:
             return {
                 "name": "MTA-STS",
-                "status": "pass",
+                "status": "absent",
                 "pill_label": "N/A",
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
@@ -5492,7 +5530,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         sts_id = datetime.now(timezone.utc).strftime('%Y%m%d')
         return {
             "name": "MTA-STS",
-            "status": "warn",
+            "status": "absent",
             "pill_label": "Not configured",
             "verdict": "No MTA-STS record found",
             "record": None,
@@ -5654,7 +5692,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         if non_mail:
             return {
                 "name": "TLS-RPT",
-                "status": "pass",
+                "status": "absent",
                 "pill_label": "N/A",
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
@@ -5674,7 +5712,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
 
         return {
             "name": "TLS-RPT",
-            "status": "warn",
+            "status": "absent",
             "pill_label": "Not configured",
             "verdict": "No TLS-RPT record found",
             "record": None,
@@ -5774,7 +5812,7 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         if non_mail:
             return {
                 "name": "BIMI",
-                "status": "pass",
+                "status": "absent",
                 "pill_label": "N/A",
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
@@ -5813,13 +5851,10 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         return {
             "name": "BIMI",
             # BIMI is optional brand display, not a security control, and a
-            # domain that has not adopted it has done nothing wrong. A warning
-            # is a thing the owner should act on; this is a thing they may
-            # choose to. Kept out of the warnings tally with the same
-            # pass-with-a-pill idiom used elsewhere for "nothing to answer for
-            # here", rather than a fifth status the front end and the PDF would
-            # both have to learn. The wording is unchanged from 08e6ac3.
-            "status": "pass",
+            # domain that has not adopted it has done nothing wrong. It used to
+            # be a pass with a "Not configured" pill, which claimed something
+            # was correct when nothing was published. Doc 38: absent.
+            "status": "absent",
             "pill_label": "Not configured",
             "verdict": "No BIMI record at the default selector",
             "record": None,
@@ -5982,8 +6017,8 @@ def transform_dnssec(raw: Dict, domain: str = "") -> Dict:
 
         return {
             "name": "DNSSEC",
-            "status": "warn",
-            "pill_label": "Not enabled",
+            "status": "absent",
+            "pill_label": "Not configured",
             "verdict": "DNSSEC not configured",
             "record": None,
             "configured": False,
@@ -6122,7 +6157,7 @@ def transform_caa(raw: Dict, domain: str) -> Dict:
 
         return {
             "name": "CAA",
-            "status": "warn",
+            "status": "absent",
             "pill_label": "Not configured",
             "verdict": "No CAA records found",
             "record": None,
@@ -6235,7 +6270,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
     if mx_checked == 0:
         return {
             "name": "DANE",
-            "status": "pass",
+            "status": "absent",
             "pill_label": "N/A",
             "verdict": "No MX hosts to check",
             "record": None,
@@ -6433,7 +6468,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
         # own. MTA-STS is the transport protection that applies instead.
         return {
             "name": "DANE",
-            "status": "pass",
+            "status": "absent",
             "pill_label": "N/A",
             "verdict": "DANE is not available on Google Workspace",
             "record": None,
@@ -6473,7 +6508,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
         # inferred: the two-stage priority change in particular is theirs.
         return {
             "name": "DANE",
-            "status": "warn",
+            "status": "absent",
             "pill_label": "Available, not enabled",
             "verdict": "DANE is available through Exchange Online but not enabled",
             "record": None,
@@ -6539,7 +6574,7 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
 
     return {
         "name": "DANE",
-        "status": "warn",
+        "status": "absent",
         "pill_label": "Not configured",
         "verdict": "No DANE TLSA records",
         "record": None,

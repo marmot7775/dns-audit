@@ -45,7 +45,8 @@ def _card(result, name):
 
 
 def _is_waived(card):
-    return card["status"] == "pass" and card.get("pill_label") == "N/A"
+    # DKIM is essential, so its waiver is a pass; the optional protocols are absent.
+    return card["status"] in ("pass", "absent") and card.get("pill_label") == "N/A"
 
 
 # --- unit: the transformers no longer waive on has_mx=False alone ---------

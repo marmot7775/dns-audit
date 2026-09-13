@@ -54,7 +54,7 @@ def test_absent_bimi_is_not_a_warning(audit):
     result = _run(audit, None)
     card = _card(result)
 
-    assert card["status"] == "pass", (
+    assert card["status"] == "absent", (
         f"declining an optional branding feature is not a finding; got "
         f"{card['status']!r}"
     )

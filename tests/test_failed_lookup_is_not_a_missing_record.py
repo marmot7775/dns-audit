@@ -190,7 +190,7 @@ def test_an_unavailable_check_is_neither_pass_warn_nor_fail(audit):
     assert {"SPF", "DMARC"} <= unavailable
 
     counted = sum(1 for c in checks if c["status"] in ("pass", "warn", "fail"))
-    assert counted == len([c for c in checks if c["status"] != "unavailable"])
+    assert counted == len([c for c in checks if c["status"] not in ("unavailable", "absent")])
 
 
 def test_no_part_of_the_report_tells_the_operator_to_publish_spf(audit):
