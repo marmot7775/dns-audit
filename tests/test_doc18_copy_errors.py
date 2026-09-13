@@ -64,10 +64,12 @@ def test_missing_vmc_fix_names_no_specific_vendor():
     tags, issues = checks_extra._validate_bimi_record(
         "v=BIMI1; l=https://example.com/logo.svg"
     )
-    fix_texts = " ".join(i.get("fix") or "" for i in issues)
-    assert "DigiCert" not in fix_texts
-    assert "Entrust" not in fix_texts
-    assert "VMC or CMC" in fix_texts
+    text = " ".join((i.get("fix") or "") + (i.get("plain_english") or "") for i in issues)
+    assert "DigiCert" not in text
+    assert "Entrust" not in text
+    # Doc 46: the certificate note is stated once, on the BIMI card, and the
+    # old "Gmail requires a VMC" issue (a CMC is accepted too) is gone.
+    assert not any("VMC" in (i.get("issue") or "") for i in issues)
 
 
 def test_dane_roadmap_impact_states_a_risk_not_a_feature():

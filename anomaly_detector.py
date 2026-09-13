@@ -139,7 +139,7 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
                 "description": (
                     "SPF is using 9 of the allowed 10 DNS lookups. "
                     "Adding one more include, a, or mx mechanism will push it "
-                    "over the limit and cause a PermError, which most receivers treat as an SPF failure."
+                    "over the limit. Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."
                 ),
                 "severity": "medium",
                 "recommendation": (
