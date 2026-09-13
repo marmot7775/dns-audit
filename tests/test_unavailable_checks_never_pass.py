@@ -190,9 +190,12 @@ def test_signed_unanchored_dnssec_reaches_the_dane_card_correctly(audit):
 
     assert "unanchored" in dnssec["verdict"].lower()
     assert dane["status"] == "warn"
-    assert "unanchored" in dane["verdict"].lower(), (
+    # Doc 45: the verdict is about the TLSA answer (FakeZone sets no AD, so it
+    # did not validate); the domain's unanchored state is its own statement.
+    texts = " ".join(d["text"] for d in dane["details"])
+    assert "signed but has no DS record at the parent" in texts, (
         f"DANE still describes this as DNSSEC being missing rather than "
-        f"unanchored: {dane['verdict']!r}"
+        f"unanchored: {texts!r}"
     )
     fix = (dane.get("fix") or "").lower()
     assert "ds record" in fix, (

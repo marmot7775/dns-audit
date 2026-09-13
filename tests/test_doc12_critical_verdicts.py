@@ -72,14 +72,14 @@ def test_no_check_is_counted_on_the_cover_without_a_body_section():
 # Finding 3: a failed DNSSEC lookup must not become a DANE finding
 # ---------------------------------------------------------------------------
 
-def _dane_raw(dnssec_validated):
+def _dane_raw(dnssec_validated, validated=True):
     return {
         "has_tlsa": True,
         "dnssec_validated": dnssec_validated,
         "mx_hosts_checked": 1,
         "mx_hosts_with_tlsa": 1,
         "tlsa_records": [{
-            "mx_host": "mx.example.com", "found": True,
+            "mx_host": "mx.example.com", "found": True, "validated": validated,
             "records": [{"usage_name": "DANE-EE", "selector_name": "SPKI",
                          "matching_type_name": "SHA-256"}],
         }],
@@ -102,14 +102,21 @@ def test_dane_does_not_claim_dnssec_is_off_when_the_lookup_failed():
     ]).lower()
     assert "dnssec is not enabled" not in blob
     assert "enable dnssec" not in blob
-    assert "not confirmed" in card["verdict"].lower()
+    # Doc 45: the verdict rests on the MX host's own TLSA validation, and an
+    # unread domain DNSSEC state adds no statement about the domain's zone.
+    assert card["verdict"] == "DANE-protected (1/1 MX hosts)"
+    assert "this domain's zone" not in blob
 
 
 def test_dane_still_flags_a_genuinely_unsigned_domain():
     """Control: DNSSEC confirmed absent must still produce the finding."""
     card = result_transformer.transform_dane(_dane_raw(False), "example.com")
-    assert "dnssec missing" in card["verdict"].lower()
-    assert "Enable DNSSEC" in (card.get("fix") or "")
+    # Doc 45: an unsigned domain no longer voids TLSA that validates in the MX
+    # host's zone. It gets its own statement: its MX records can be forged.
+    texts = " ".join(d["text"] for d in card["details"])
+    assert "This domain's zone is not DNSSEC-signed" in texts
+    unvalidated = result_transformer.transform_dane(_dane_raw(False, validated=False), "example.com")
+    assert unvalidated["verdict"] == "TLSA present but not DNSSEC validated"
 
 
 def test_dane_still_passes_a_signed_domain():

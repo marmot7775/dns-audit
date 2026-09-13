@@ -714,7 +714,8 @@ function renderResults(data) {
             // 'inconclusive' has to be listed: the final fallback is 'pass', so a
             // mechanism nobody could read used to render green.
             const sClass = info.status === 'missing' || info.status === 'broken' ? 'fail'
-                : info.status === 'not_detected' || info.status === 'none' ? 'warn'
+                : info.status === 'not_detected' || info.status === 'none'
+                    || info.status === 'no_mail' ? 'warn'
                 : info.status === 'inconclusive' ? 'info' : 'pass';
             mechHtml += `<div class="resilience-mech">
                 <span class="resilience-mech-name">${escapeHtml(name.toUpperCase())}</span>
