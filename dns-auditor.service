@@ -1,12 +1,17 @@
+# TEMPLATE. DEPLOY_USER is a placeholder for the account the service runs
+# as: replace it on every line below before installing this file as
+# /etc/systemd/system/dns-auditor.service. The real value lives in the
+# untracked deploy.local.md (see CLAUDE.md, "Deploy").
+
 [Unit]
 Description=DNS Security Auditor - FastAPI (Full)
 After=network.target
 
 [Service]
 Type=simple
-User=marmot7
-WorkingDirectory=/home/marmot7/dns-security-auditor
-Environment="PATH=/home/marmot7/.venv/bin"
+User=DEPLOY_USER
+WorkingDirectory=/home/DEPLOY_USER/dns-security-auditor
+Environment="PATH=/home/DEPLOY_USER/.venv/bin"
 # SINGLE WORKER BY DESIGN. Do not add --workers. Do not set WEB_CONCURRENCY.
 # Every piece of coordination state in server.py is a module-level global,
 # private to one process:
@@ -32,7 +37,7 @@ Environment="PATH=/home/marmot7/.venv/bin"
 # --host 127.0.0.1 is also deliberate: nginx terminates TLS in front of this
 # and proxies to loopback, so the app must never accept connections directly.
 # --proxy-headers is deliberately absent; see _get_client_ip in server.py.
-ExecStart=/home/marmot7/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000
+ExecStart=/home/DEPLOY_USER/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
 LimitNOFILE=65535
@@ -43,7 +48,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/marmot7/dns-security-auditor
+ReadWritePaths=/home/DEPLOY_USER/dns-security-auditor
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

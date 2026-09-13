@@ -3351,7 +3351,9 @@ function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    // innerHTML escapes &, < and > but leaves quotes alone, and this helper
+    // also fills attributes (data-domain, title).
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /** Sanitize a server value for use in a CSS class name. Only allows [a-z0-9-]. */

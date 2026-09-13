@@ -38,13 +38,13 @@ def test_error_card_does_not_leak_exception_text():
     leaky_exc = OSError(
         30,
         "Read-only file system",
-        "/home/marmot7/.cache/python-tldextract/3.12.3.final__.venv__"
+        "/home/deployuser/.cache/python-tldextract/3.12.3.final__.venv__"
         "862318__tldextract-5.3.1/publicsuffix.org-tlds/abc.tldextract.json.lock",
     )
     card = audit_engine._error_card("DMARC", leaky_exc)
 
     rendered = repr(card)
-    forbidden = ["/home/", "Errno", "Read-only", "tldextract", "marmot7"]
+    forbidden = ["/home/", "Errno", "Read-only", "tldextract", "deployuser"]
     for token in forbidden:
         assert token not in rendered, (
             f"_error_card leaked {token!r} to the user response: {rendered}"
