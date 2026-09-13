@@ -48,7 +48,7 @@
                 "name": "What does this DNS security audit check?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "It runs 12 checks: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency. Each one reports pass, warning, or fail with the specific finding and a copy-paste fix where one applies."
+                    "text": "It runs 12 checks: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency. Each one reports pass, warning, fail, not configured, or not checked with the specific finding and a copy-paste fix where one applies."
                 }
             },
             {
@@ -72,7 +72,7 @@
                 "name": "What is the most important DNS record for email security?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "DMARC with a policy of reject is the highest-impact change. Set p=reject only after monitoring with rua reports for 30 or more days to confirm legitimate mail is aligning. SPF and DKIM provide the underlying authentication that DMARC enforces."
+                    "text": "DMARC with a policy of reject is the highest-impact change. Set p=reject only after the aggregate reports stop showing new legitimate senders and every one of them aligns. SPF and DKIM provide the underlying authentication that DMARC enforces."
                 }
             }
         ]
@@ -84,7 +84,7 @@
         "@type": "WebPage",
         "speakable": {
             "@type": "SpeakableSpecification",
-            "cssSelector": [".hero-description", ".faq-section"]
+            "cssSelector": [".audit-title", ".audit-subtitle"]
         }
     }
     </script>

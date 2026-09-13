@@ -513,7 +513,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         result["summary"] = (
             f"{total} DNS lookups found (limit: 10). "
             f"Over by {total - limit}. "
-            f"SPF record may be completely ignored by receivers."
+            f"Receivers must return PermError."
         )
         result["issues"].append({
             "severity": "error",
@@ -521,10 +521,9 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             "issue": f"SPF exceeds 10-lookup limit ({total} lookups)",
             "plain_english": (
                 f"Your SPF record requires {total} DNS lookups when fully resolved. "
-                f"RFC 7208 limits this to 10. Receivers that enforce this limit "
-                f"will return a PermError, treating your SPF as if it doesn't exist."
+                f"Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."
             ),
-            "impact": "Email authentication fails entirely for strict receivers.",
+            "impact": "SPF cannot satisfy DMARC for any message from this domain.",
             "fix": (
                 f"Reduce lookups by {total - limit}. Audit your includes: "
                 "remove services you no longer use and consolidate senders where possible."

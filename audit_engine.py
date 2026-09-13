@@ -224,8 +224,9 @@ BUSINESS_RISK = {
     # ── DMARC ────────────────────────────────────────────────
     "DMARC_NO_RECORD": (
         "No DMARC record means receivers have no guidance on what to do with "
-        "unauthenticated mail. Google and Yahoo deprioritize or reject mail "
-        "from bulk senders without DMARC, harming legitimate deliverability."
+        "unauthenticated mail. Google and Yahoo require a DMARC record from senders "
+        "of 5,000 or more messages a day to their users. They say non-compliant mail "
+        "may be rate limited, blocked, or sent to spam."
     ),
     "DMARC_MULTIPLE_RECORDS": (
         "When multiple DMARC records exist, receivers ignore the policy entirely, "
@@ -617,7 +618,7 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
             "severity": "info",
             "issue": "Forensic reporting (ruf) configured",
             "plain_english": (
-                "Forensic reporting (ruf) is configured. Most mailbox providers no longer send "
+                "Forensic reporting (ruf) is configured. Most mailbox providers do not send "
                 "failure reports because of PII concerns."
             ),
             "fix": "No action needed. ruf is optional and most providers do not honor it.",
@@ -1064,8 +1065,9 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
             "error",
             "No DMARC record found",
             f"No DMARC record exists at '_dmarc.{domain}'. "
-            "Since February 2024, Google and Yahoo require at least a DMARC record "
-            "(even p=none) from bulk senders, and may throttle or deprioritize mail without one. "
+            "Google and Yahoo require a DMARC record from senders of 5,000 or more messages "
+            "a day to their users, and say non-compliant mail may be rate limited, blocked, "
+            "or sent to spam. "
             "You also have no aggregate reporting visibility into who is sending as your domain.",
             f"Publish a DMARC record at _dmarc.{domain} starting with p=none and an rua address for aggregate reporting.",
             business_risk_key="DMARC_NO_RECORD",
@@ -1507,7 +1509,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                     "warning",
                     f"ruf address missing 'mailto:' prefix: {addr}",
                     "DMARC requires report addresses to be written as URIs with "
-                    "a mailto: prefix. Note: most mailbox providers no longer send "
+                    "a mailto: prefix. Note: most mailbox providers do not send "
                     "failure reports because of PII concerns, so this is low priority.",
                     f"Change to: ruf=mailto:{addr}",
                 )
@@ -2727,8 +2729,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             f"lookups: DNS queries that come back NXDOMAIN or with an empty answer, "
             f"such as an a:, mx: or exists: mechanism pointing at a name that does "
             f"not resolve. This record triggers {void_lookup_count}. Receivers "
-            f"enforcing the limit will return a PermError, treating your SPF as if "
-            f"it doesn't exist.",
+            f"enforcing the limit return PermError, which is not a pass, so SPF "
+            f"cannot satisfy DMARC for any message from this domain.",
             "Remove or correct the a:, mx: and exists: mechanisms whose targets do "
             "not resolve.",
             business_risk_key="SPF_PERMERROR",
@@ -4964,6 +4966,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     # only DNS call in the audit that skipped the shared answer
                     # cache and the shared timeout.
                     answers = _get_resolver().resolve(_fqdn, "TXT")
+                    # The alias target, if any: the evidence that attributes a
+                    # selector1/selector2 key to Microsoft 365.
+                    _canon = str(getattr(answers, "canonical_name", "") or "").rstrip(".").lower()
                     # One joined string per rdata. Joining a record's own
                     # strings is right, that is how a TXT value over 255
                     # bytes is reassembled, but joining across records merges
@@ -4988,6 +4993,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                         key_analysis = analyze_dkim_key_strength(txt)
                         _raw["found_selectors"].append({
                             "selector": _dkim_sel, "record": txt,
+                            "cname_target": _canon if _canon and _canon != _fqdn.lower() else None,
                             "key_type": key_analysis.get("key_type"),
                             "key_bits": key_analysis.get("key_bits"),
                         })
@@ -5984,6 +5990,16 @@ def _build_resilience_analysis(
             "No action needed. The inherited DMARC policy protects this subdomain against spoofing. "
             "SPF and DKIM are not required because this subdomain does not send email."
         )
+    elif not has_mx and spf_status == "no_mail":
+        # No MX and no SPF: the domain sends and receives nothing, so SPF
+        # includes and DKIM keys are the wrong advice. The one thing that
+        # matters is stopping others from sending as it.
+        level = "not_applicable"
+        summary = (
+            "This domain does not send or receive mail. Publish v=spf1 -all and a DMARC "
+            "record at p=reject to stop others sending as it."
+        )
+        risk = ""
     elif dmarc_status == "missing":
         level = "none"
         summary = (

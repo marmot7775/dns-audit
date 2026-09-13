@@ -123,6 +123,23 @@ def _dedupe_details(details: List[Dict]) -> List[Dict]:
     return kept
 
 
+_GOOGLE_YAHOO_RE = re.compile(
+    r"\s*Google and Yahoo require a DMARC record from senders of 5,000 or more messages "
+    r"a day to their users(?:, and say|\. They say) non-compliant mail may be rate "
+    r"limited, blocked, or sent to spam\.")
+
+
+def _without_google_yahoo(detail: Dict) -> Dict:
+    """A detail with the Google and Yahoo requirement sentence taken out."""
+    out = dict(detail)
+    for key in ("text", "business_risk"):
+        if isinstance(out.get(key), str):
+            out[key] = _GOOGLE_YAHOO_RE.sub("", out[key]).strip()
+    if not out.get("business_risk"):
+        out.pop("business_risk", None)
+    return out
+
+
 def _issue_to_detail(issue: Dict) -> Dict[str, str]:
     """Convert a module issue dict to a frontend detail item."""
     severity = issue.get("severity", "info").lower()
@@ -1916,9 +1933,10 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         explanation = (
             f"No DMARC record was found at <strong>_dmarc.{_e(raw.get('domain', ''))}</strong>. "
             f"Without DMARC, there is no policy telling receivers how to handle messages that fail authentication. "
-            f"Google and Yahoo require bulk senders to publish a "
-            f"<a href=\"https://datatracker.ietf.org/doc/html/rfc7489\" target=\"_blank\" rel=\"noopener\">DMARC</a> "
-            f"record, and messages without one are more likely to be throttled or sent to spam."
+            f"Google and Yahoo require a "
+            f"<a href=\"https://www.rfc-editor.org/rfc/rfc9989.html\" target=\"_blank\" rel=\"noopener\">DMARC</a> "
+            f"record from senders of 5,000 or more messages a day to their users, and say "
+            f"non-compliant mail may be rate limited, blocked, or sent to spam."
         )
     elif policy == "none":
         explanation = (
@@ -2041,7 +2059,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         if report_dests and raw.get("ruf"):
             details.append({
                 "type": "info",
-                "text": "Forensic reporting (ruf) configured (note: most mailbox providers no longer send failure reports because of PII concerns)",
+                "text": "Forensic reporting (ruf) configured (note: most mailbox providers do not send failure reports because of PII concerns)",
             })
         elif raw.get("ruf"):
             details.append({"type": "good", "text": "Forensic reporting (ruf) is configured"})
@@ -2092,6 +2110,11 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             details.append(_issue_to_detail(issue))
 
     details = _dedupe_details(details)
+    if not record and not inherited:
+        # The no-record explanation states the Google and Yahoo requirement,
+        # and the engine's issue and its business-risk callout carry the same
+        # sentence. The card showed it three times; once is enough.
+        details = [_without_google_yahoo(d) for d in details]
 
     # Fix
     domain_name = raw.get("domain", "")
@@ -2735,9 +2758,8 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
                       "Valid DMARC version identifier. Required as the first tag.",
                       "current",
                       dmarcbis_note=(
-                          "RFC 9989 tightens parsing. This MUST be the first tag. Records that place "
-                          "it elsewhere will be rejected by RFC 9989-compliant receivers, even though some "
-                          "legacy receivers were lenient about tag ordering."
+                          "Both RFC 7489 and RFC 9989 require v=DMARC1 to be the first tag. A "
+                          "record with it anywhere else is not a DMARC record."
                       ))
 
     # ── p= ──────────────────────────────────────────────────
@@ -2797,7 +2819,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
         )
         if present:
             e = _entry(tag, value, False, False, "Non-Existent Subdomain Policy",
-                       _explain_policy_value(value), "new", dmarcbis_note=note)
+                       _explain_policy_value(value), "imported", dmarcbis_note=note)
             if value == "none" and policy == "reject":
                 e["warnings"].append({
                     "level": "warning",
@@ -2816,7 +2838,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
             e = _entry(tag, None, False, True, "Non-Existent Subdomain Policy",
                        f"No non-existent subdomain policy. Falls back to sp= (if set), then p=. "
                        f"Current effective policy for non-existent subdomains: {resolved_via}={resolved}.",
-                       "new", dmarcbis_note=note)
+                       "imported", dmarcbis_note=note)
             chain = [{"tag": "np", "value": None, "active": False}]
             if sp_val:
                 chain.append({"tag": "sp", "value": sp_val, "active": True})
@@ -2866,7 +2888,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
     if tag == "aspf":
         note = (
             "RFC 9989 explicitly states that DMARC evaluates SPF against the MAIL FROM identity "
-            "only, not HELO. RFC 7489 was ambiguous about this."
+            "only, not HELO. RFC 7489 let receivers fall back to HELO when MAIL FROM was empty."
         )
         if present:
             explanation = {
@@ -2887,7 +2909,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
         note = (
             "The fo tag is defined in RFC 9989 Section 4.7, but the reports it "
             "governs are specified in RFC 9991. Most large receivers, Google and "
-            "Microsoft among them, no longer send failure reports at all."
+            "Microsoft among them, do not send failure reports at all."
         )
         if present:
             explanation = {
@@ -2913,10 +2935,9 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
     # ── rua= ────────────────────────────────────────────────
     if tag == "rua":
         note = (
-            "Reporting moved into its own documents: RFC 9990 for aggregate reports, RFC 9991 for "
-            "failure reports. URI validation is tighter. The mailto: "
-            "prefix is now strictly required. Bare email addresses are rejected. RFC 9989 also "
-            "strengthens external reporting authorization checks."
+            "Reporting moved into its own documents: RFC 9990 for aggregate reports and RFC 9991 "
+            "for failure reports. The size suffix on a URI (such as !10m) was removed (RFC 9989 "
+            "Appendix C.4). URI syntax is otherwise unchanged."
         )
         if present:
             base = (
@@ -2963,7 +2984,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
         if present:
             return _entry(tag, value, False, False, "Forensic Report Recipients",
                           f"Failure reports sent to {value}. Most providers including Google and "
-                          f"Microsoft no longer send failure reports due to PII concerns.",
+                          f"Microsoft do not send failure reports due to PII concerns.",
                           "current", dmarcbis_note=note)
         else:
             return _entry(tag, None, False, True, "Forensic Report Recipients",
@@ -3044,8 +3065,8 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
                     "This is the correct value for most domains."
                 ),
                 "u": (
-                    "Undeclared, which is the RFC 9989 default and the right value for "
-                    "almost every domain. Receivers fall back to the Public Suffix List. "
+                    "Undeclared, the RFC 9989 default and the right value for almost every "
+                    "domain. Receivers determine the organizational domain with the tree walk. "
                     "Declare psd=y only if this domain really is a public suffix."
                 ),
             }.get(value, f"Unknown psd value '{value}'.")
@@ -3063,7 +3084,8 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
         else:
             return _entry(tag, "u", True, True, "Public Suffix Domain",
                           "Not declared, which is the RFC 9989 default ('u') and correct for "
-                          "almost every domain. Receivers fall back to the Public Suffix List. "
+                          "almost every domain. Receivers determine the organizational domain "
+                          "with the tree walk. "
                           "Publish psd= only if this domain is a public suffix.",
                           "new", dmarcbis_note=note)
 
@@ -3390,7 +3412,10 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
             "level": "info",
             "title": "Mailing list participation",
             "text": (
-                "p=reject may cause issues with mailing lists that rewrite the From header. "
+                "p=reject can cause mail sent through mailing lists to be rejected: the list "
+                "relays from its own servers, which breaks SPF alignment, and often edits the "
+                "subject or footer, which breaks the DKIM signature. Lists that rewrite the From "
+                "header avoid this. "
                 "ARC (Authenticated Received Chain) helps, but not all receivers support it yet."
             ),
             "tags": ["p"],
@@ -3573,9 +3598,9 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
 
     if "np" not in tags:
         whats_new.append(
-            f"Your record doesn't have an np= tag. This is a new RFC 9989 tag that sets policy for "
-            f"non-existent subdomains, domains like secure-login.{domain or 'yourdomain.com'} that "
-            f"don't exist but can be spoofed. Under RFC 7489, there was no way to control this."
+            "Your record doesn't have an np= tag. np, brought into RFC 9989 from RFC 9091, sets "
+            "a policy for subdomains that were never created. Under RFC 7489 they inherited sp, "
+            "or p when sp was absent, so the two could not be set separately."
         )
 
     dep_in_record = [t for t in ("rf", "ri") if t in tags]
@@ -3676,6 +3701,24 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
 
     rua_placeholder = rua if rua else "mailto:dmarc@yourdomain.com"
 
+    # Every step starts from the record as it stands and changes only the tags
+    # the step is about. Rebuilding each record from p, t and rua dropped sp,
+    # adkim, aspf and the rest, so step 2 silently changed the subdomain policy.
+    _tag_order = ["v", "p", "sp", "np", "adkim", "aspf", "fo", "rua", "ruf",
+                  "pct", "rf", "ri", "psd", "t"]
+    _working = dict(tags)
+    _working["v"] = "DMARC1"
+
+    def _record(**changes):
+        for key, val in changes.items():
+            if val is None:
+                _working.pop(key, None)
+            else:
+                _working[key] = val
+        keys = [k for k in _tag_order if k in _working]
+        keys += [k for k in _working if k not in _tag_order]
+        return "; ".join(f"{k}={_working[k]}" for k in keys)
+
     # Step: Add reporting if missing
     if not rua:
         step_num += 1
@@ -3683,7 +3726,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "step": step_num,
             "action": "Add aggregate reporting",
             "why": "Without rua=, you have zero visibility into authentication results.",
-            "record_after": f"v=DMARC1; p={policy or 'none'}; rua={rua_placeholder}",
+            "record_after": _record(p=policy or "none", rua=rua_placeholder),
             "tags_changed": ["rua"],
         })
 
@@ -3706,8 +3749,13 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         steps.append({
             "step": step_num,
             "action": "Test quarantine with t=y",
-            "why": "t=y drops the effective policy one level, so p=quarantine with t=y acts like p=none. Safe to test.",
-            "record_after": f"v=DMARC1; p=quarantine; t=y; rua={rua_placeholder}",
+            "why": (
+                "t=y asks RFC 9989 receivers to apply one level below the published policy, "
+                "so they treat p=quarantine; t=y as p=none. Receivers still on RFC 7489 ignore "
+                "t and quarantine in full. Publish this step only when your reports already "
+                "show no legitimate failures."
+            ),
+            "record_after": _record(p="quarantine", t="y"),
             "tags_changed": ["p", "t"],
         })
 
@@ -3717,7 +3765,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "step": step_num,
             "action": "Enforce quarantine by removing t=y",
             "why": "Once reports show no legitimate mail failures, enforce quarantine.",
-            "record_after": f"v=DMARC1; p=quarantine; rua={rua_placeholder}",
+            "record_after": _record(t=None),
             "tags_changed": ["t"],
         })
 
@@ -3727,8 +3775,13 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         steps.append({
             "step": step_num,
             "action": "Test reject with t=y",
-            "why": "p=reject with t=y effectively acts as p=quarantine. Monitor for issues.",
-            "record_after": f"v=DMARC1; p=reject; t=y; rua={rua_placeholder}",
+            "why": (
+                "t=y asks RFC 9989 receivers to apply one level below the published policy, "
+                "so they treat p=reject; t=y as p=quarantine. Receivers still on RFC 7489 ignore "
+                "t and reject in full. Publish this step only when your reports already show no "
+                "legitimate failures."
+            ),
+            "record_after": _record(p="reject", t="y"),
             "tags_changed": ["p", "t"],
         })
 
@@ -3738,12 +3791,13 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "step": step_num,
             "action": "Enforce reject by removing t=y",
             "why": "Full protection. Mail failing authentication is blocked.",
-            "record_after": f"v=DMARC1; p=reject; rua={rua_placeholder}",
+            "record_after": _record(t=None),
             "tags_changed": ["t"],
         })
 
-    # Step: Fix sp=none gap if present
-    if sp == "none" and policy in ("reject", "quarantine"):
+    # Step: Fix sp=none gap if present. At any starting policy: the path ends
+    # at p=reject, and sp=none would leave subdomains out of it.
+    if sp == "none":
         step_num += 1
         steps.append({
             "step": step_num,
@@ -3769,19 +3823,30 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "tags_changed": ["fo"],
         })
 
-    # Step: Add RFC 9989 tags
+    # Step: make the subdomain policies explicit. Only tags that are absent:
+    # by this step the path is at p=reject, so both inherit reject and neither
+    # changes what receivers do (sp=none is the step above). sp is an RFC 7489
+    # tag and np comes from RFC 9091, so neither is an "RFC 9989 tag".
     dmarcbis_needed = []
+    if not sp:
+        dmarcbis_needed.append("sp=reject")
     if not np_val:
         dmarcbis_needed.append("np=reject")
-    if not sp or sp == "none":
-        dmarcbis_needed.append("sp=reject")
 
     if dmarcbis_needed:
         step_num += 1
         steps.append({
             "step": step_num,
-            "action": f"Add RFC 9989 tags: {', '.join(dmarcbis_needed)}",
-            "why": "These tags close gaps in the old standard and prepare for RFC 9989.",
+            "action": f"Make subdomain policy explicit: {', '.join(dmarcbis_needed)}",
+            "why": (
+                "Neither changes what receivers do here, since both already inherit p=reject. "
+                "They make the record say what it means, so a later change to p= cannot "
+                "loosen subdomains by accident."
+                if len(dmarcbis_needed) > 1 else
+                "It does not change what receivers do here, since it already inherits p=reject. "
+                "It makes the record say what it means, so a later change to p= cannot "
+                "loosen subdomains by accident."
+            ),
             "tags_changed": [t.split("=")[0] for t in dmarcbis_needed],
         })
 
@@ -3900,7 +3965,7 @@ def _build_record_builder(
         changes.append({
             "tag": "sp", "action": "changed" if cur_sp else "added",
             "old": old_val, "value": target_p,
-            "reason": "Closes subdomain policy gap. Matches root domain enforcement.",
+            "reason": "Makes the subdomain policy explicit; it already inherits the root policy.",
         })
 
     # 3. Add np=
@@ -3908,7 +3973,7 @@ def _build_record_builder(
         rec_tags["np"] = target_p
         changes.append({
             "tag": "np", "action": "added", "value": target_p,
-            "reason": "Protects non-existent subdomains from spoofing (new in RFC 9989).",
+            "reason": "Makes the non-existent subdomain policy explicit; the tag comes from RFC 9091.",
         })
     elif rec_tags.get("np", "").lower() == "none" and target_p == "reject":
         rec_tags["np"] = "reject"
@@ -4096,7 +4161,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         if all_mech == "+all":
             verdict = "Authorizes the entire internet to send as you"
         elif lookups > 10:
-            verdict = f"SPF is invalid ({lookups}/10 lookups). Fails at most receivers."
+            verdict = f"SPF is invalid ({lookups}/10 lookups, PermError)"
         elif not all_mech and raw.get("has_redirect"):
             verdict = "SPF configured (via redirect)"
         elif not all_mech:
@@ -4218,7 +4283,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         elif lookups <= 10:
             details.append({"type": "warning", "text": f"{lookups} DNS lookups ({'at' if lookups == 10 else 'near'} the 10-lookup limit)"})
         else:
-            details.append({"type": "error", "text": f"{lookups} DNS lookups. SPF is invalid and will fail at most receivers (PermError)."})
+            details.append({"type": "error", "text": f"{lookups} DNS lookups. Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."})
 
         all_mech = raw.get("all_mechanism") or ""
         if all_mech == "-all":
@@ -4423,10 +4488,14 @@ _SPF_PROVIDER_MAP = {
 
 _ALL_EXPLANATIONS = {
     "~all": (
-        "Unauthorized servers are flagged but mail is delivered. Under DMARC, the SPF result "
-        "feeds into alignment evaluation. The DMARC policy determines actual enforcement."
+        "Servers not listed are not authorized, and the receiver decides what that costs "
+        "the message. Under DMARC, the SPF result feeds into alignment evaluation."
     ),
-    "-all": "Unauthorized servers are explicitly rejected. Strongest SPF enforcement.",
+    "-all": (
+        "Servers not listed are not authorized. Some receivers reject on SPF fail before "
+        "DMARC runs (RFC 9989 section 7.1), so a message that would pass DMARC on DKIM "
+        "alone can still bounce."
+    ),
     "+all": (
         "This authorizes EVERY server on the internet to send as your domain. "
         "SPF provides zero protection. This is a critical misconfiguration."
@@ -5135,9 +5204,18 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
 # DKIM Key Strength & Rotation Advisory (Prompt 8)
 # ============================================================
 
+def _is_microsoft_dkim_cname(target) -> bool:
+    """Microsoft 365 DKIM selectors are CNAMEs into Microsoft's namespace: the
+    newer dkim.mail.microsoft, or the older <tenant>.onmicrosoft.com."""
+    t = (target or "").rstrip(".").lower()
+    return t.endswith(".dkim.mail.microsoft") or t.endswith(".onmicrosoft.com")
+
+
+# selector1 and selector2 are not here. Microsoft 365 publishes them only as
+# CNAMEs (a TXT key at the selector is not supported), so a TXT key under that
+# name is evidence against Microsoft; they are attributed from the CNAME.
 _DKIM_SELECTOR_PROVIDERS = {
     "google": "Google Workspace", "gapps": "Google Workspace",
-    "selector1": "Microsoft 365", "selector2": "Microsoft 365",
     "k1": "Mailchimp", "k2": "Mailchimp", "k3": "Mailchimp",
     "mandrill": "Mandrill",
     "s1": "Generic (Exchange)", "s2": "Generic (Exchange)",
@@ -5279,6 +5357,9 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
 
         # Provider from selector name
         provider = vendor or _DKIM_SELECTOR_PROVIDERS.get(selector.lower())
+        if not provider and selector.lower() in ("selector1", "selector2"):
+            provider = ("Microsoft 365" if _is_microsoft_dkim_cname(sel.get("cname_target"))
+                        else "Vendor: unknown")
 
         # Per-key rotation status, derived from the same signals that drive
         # the shared rotation_guidance text below.
@@ -5997,7 +6078,6 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
                 {"type": "info", "text": f"Queried default._bimi.{_e(domain)}, the selector receivers use by default"},
                 {"type": "info", "text": "A custom selector cannot be discovered from DNS. It is named by the BIMI-Selector header on a sent message, and receivers query <selector>._bimi instead"},
                 {"type": "info", "text": "Requires DMARC policy of p=quarantine or p=reject"},
-                {"type": "info", "text": "Gmail accepts a VMC (Verified Mark Certificate) or CMC (Common Mark Certificate). Apple Mail does not require either."},
             ],
             "fix": (
                 f"If this domain already publishes BIMI under a custom selector, no change is "
@@ -6005,7 +6085,7 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
                 f"To publish at the default selector, BIMI requires DMARC at p=quarantine or "
                 f"p=reject, an SVG logo in Tiny P/S format hosted at a public URL, and a BIMI "
                 f"TXT record at <strong>default._bimi.{_e(domain)}</strong>. "
-                f"Gmail requires a VMC (registered trademark) or CMC (domain-validated) certificate."
+                "Gmail requires a certificate in the a= tag: a VMC, which needs a registered trademark, or a CMC, which needs proof the logo has been in use for at least a year. Apple Mail and Yahoo Mail display the logo without one."
             ),
             "fix_records": None,
             "deliverability": (
@@ -6032,8 +6112,7 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
     elif not vmc_url:
         explanation += (
             " <strong>Note:</strong> No certificate is referenced in the <strong>a=</strong> tag. "
-            "Gmail requires either a VMC (registered trademark required) or CMC (domain validation only) "
-            "for logo display. Other clients like Apple Mail do not require a certificate."
+            "Gmail requires a certificate in the a= tag: a VMC, which needs a registered trademark, or a CMC, which needs proof the logo has been in use for at least a year. Apple Mail and Yahoo Mail display the logo without one."
         )
 
     details = [_issue_to_detail(i) for i in raw.get("issues", [])]
@@ -7216,19 +7295,22 @@ _PROVIDER_DKIM_SELECTORS: Dict[str, Tuple[str, str]] = {
     "fm3": ("fastmail", "mailbox"),
 }
 
+# Capabilities: True or False only where a vendor page (URL beside the value)
+# or a direct DNS check says so; None renders as "Not known". Doc 46 found
+# values here with no source, among them Google DKIM auto-rotation.
 _PROVIDER_META: Dict[str, Dict] = {
     "google_workspace": {
         "name": "Google Workspace",
         "category": "mailbox",
         "badge_class": "pi-badge-google",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": True,
-            "mta_sts": True,
-            "tls_rpt": True,
-            "dane": False,
-            "bimi": True,
+            "dkim_2048": True,  # https://knowledge.workspace.google.com/admin/security/set-up-dkim
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": True,  # https://knowledge.workspace.google.com/admin/gmail/advanced/about-mta-sts-and-tls-reporting
+            "tls_rpt": True,  # https://knowledge.workspace.google.com/admin/gmail/advanced/about-mta-sts-and-tls-reporting
+            "dane": False,  # DNS check 2026-09-13: no TLSA at _25._tcp of smtp.google.com, aspmx.l.google.com; google.com unsigned
+            "bimi": True,  # https://knowledge.workspace.google.com/admin/security/set-up-bimi
         },
         "guidance": [
             {
@@ -7241,8 +7323,8 @@ _PROVIDER_META: Dict[str, Dict] = {
             {
                 "topic": "DMARC",
                 "text": (
-                    "Google recommends setting up rua= first, monitoring for 2 weeks, "
-                    "then moving to enforcement."
+                    "Google's rollout guide starts at p=none with rua= and moves up only "
+                    "after the reports show every legitimate sender aligning."
                 ),
             },
             {
@@ -7259,13 +7341,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "mailbox",
         "badge_class": "pi-badge-microsoft",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": True,
-            "mta_sts": True,
-            "tls_rpt": True,
-            "dane": True,
-            "bimi": False,
+            "dkim_2048": True,  # https://learn.microsoft.com/en-us/defender-office-365/email-authentication-dkim-configure
+            "dkim_auto_rotation": True,  # https://learn.microsoft.com/en-us/defender-office-365/email-authentication-dkim-configure
+            "arc": True,  # https://learn.microsoft.com/exchange/reference/sender-rewriting-scheme
+            "mta_sts": True,  # https://learn.microsoft.com/exchange/security-and-compliance/enhance-mail-flow-using-strict-transport-security
+            "tls_rpt": True,  # https://learn.microsoft.com/exchange/security-and-compliance/how-dane-secures-email
+            "dane": True,  # https://learn.microsoft.com/exchange/security-and-compliance/how-dane-secures-email
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7279,15 +7361,16 @@ _PROVIDER_META: Dict[str, Dict] = {
             {
                 "topic": "DMARC",
                 "text": (
-                    "Microsoft DMARC reporting can be configured in the "
-                    "Microsoft 365 admin center."
+                    "Microsoft 365 sends aggregate reports and no failure reports. For a "
+                    "custom domain the DMARC record lives at your DNS host, not in the "
+                    "admin center."
                 ),
             },
             {
                 "topic": "Known issue",
                 "text": (
-                    "Microsoft 365 uses selector1 and selector2 DKIM selectors. "
-                    "Both must be rotated when key rotation is needed."
+                    "Microsoft alternates between selector1 and selector2 on rotation; "
+                    "both CNAMEs must stay published."
                 ),
             },
         ],
@@ -7297,13 +7380,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "gateway",
         "badge_class": "pi-badge-proofpoint",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": True,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": False,  # DNS check 2026-09-13: no TLSA at _25._tcp of pphosted.com MX hosts
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7328,13 +7411,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "gateway",
         "badge_class": "pi-badge-mimecast",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": True,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": True,  # https://mimecastsupport.zendesk.com/hc/en-us/articles/34000340541587
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": True,  # https://mimecastsupport.zendesk.com/hc/en-us/articles/34000614911635
+            "tls_rpt": True,  # https://mimecastsupport.zendesk.com/hc/en-us/articles/34000414937491
+            "dane": False,  # DNS check 2026-09-13: mimecast.com unsigned, no TLSA at _25._tcp of *-smtp-inbound-1
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7351,13 +7434,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "gateway",
         "badge_class": "pi-badge-barracuda",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": False,  # DNS check 2026-09-13: no TLSA at _25._tcp of ess.barracudanetworks.com MX hosts; zone unsigned
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7374,13 +7457,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "mailbox",
         "badge_class": "pi-badge-zoho",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": True,
-            "tls_rpt": True,
-            "dane": False,
-            "bimi": True,
+            "dkim_2048": True,  # https://www.zoho.com/mail/help/adminconsole/dkim-configuration.html
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": False,  # DNS check 2026-09-13: no TLSA at _25._tcp of mx.zoho.com, mx2.zoho.com; zoho.com unsigned
+            "bimi": True,  # https://www.zoho.com/mail/whats-new.html
         },
         "guidance": [
             {
@@ -7397,13 +7480,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "mailbox",
         "badge_class": "pi-badge-protonmail",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": False,
-            "mta_sts": True,
-            "tls_rpt": True,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": True,  # https://proton.me/support/anti-spoofing-custom-domain
+            "dkim_auto_rotation": True,  # https://proton.me/support/anti-spoofing-custom-domain
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": True,  # https://proton.me/blog/security-updates-2019 and DNS check 2026-09-13: TLSA at mail.protonmail.ch
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7420,13 +7503,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "mailbox",
         "badge_class": "pi-badge-fastmail",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": True,
-            "mta_sts": True,
-            "tls_rpt": True,
-            "dane": False,
-            "bimi": True,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": True,  # https://www.fastmail.help/hc/en-us/articles/1500000280461-Sender-authentication
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": False,  # DNS check 2026-09-13: no TLSA at _25._tcp of in1-smtp.messagingengine.com; zone unsigned
+            "bimi": True,  # https://www.fastmail.help/hc/en-us/articles/7002542139663-Using-BIMI-in-Fastmail
         },
         "guidance": [
             {
@@ -7443,13 +7526,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-ses",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7466,13 +7549,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-sendgrid",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7489,13 +7572,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-mailchimp",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [
             {
@@ -7512,13 +7595,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-mailgun",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": True,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7527,13 +7610,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-mandrill",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7542,13 +7625,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-hubspot",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7557,13 +7640,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-salesforce",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7572,13 +7655,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-zendesk",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7587,13 +7670,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-freshdesk",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7602,13 +7685,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-constantcontact",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7617,13 +7700,13 @@ _PROVIDER_META: Dict[str, Dict] = {
         "category": "sending",
         "badge_class": "pi-badge-campaignmonitor",
         "capabilities": {
-            "dkim_2048": True,
-            "dkim_auto_rotation": False,
-            "arc": False,
-            "mta_sts": False,
-            "tls_rpt": False,
-            "dane": False,
-            "bimi": False,
+            "dkim_2048": None,
+            "dkim_auto_rotation": None,
+            "arc": None,
+            "mta_sts": None,
+            "tls_rpt": None,
+            "dane": None,
+            "bimi": None,
         },
         "guidance": [],
     },
@@ -7685,6 +7768,12 @@ def _detect_providers(raw_results: Dict) -> Dict[str, Dict]:
         sel_name = (sel.get("selector") or "").lower()
         if sel_name in _PROVIDER_DKIM_SELECTORS:
             pid, cat = _PROVIDER_DKIM_SELECTORS[sel_name]
+            # selector1/selector2 count for Microsoft only on a CNAME into its
+            # namespace, or when MX or SPF above already found it. A TXT key
+            # under that name is evidence against Microsoft, not for it.
+            if (pid == "microsoft_365" and pid not in detected
+                    and not _is_microsoft_dkim_cname(sel.get("cname_target"))):
+                continue
             _add(pid, "DKIM", cat)
         # Amazon SES pattern: selectors containing "ses"
         if "ses" in sel_name and "amazon_ses" not in detected:
@@ -7738,7 +7827,7 @@ def _check_domain_features(raw_results: Dict, checks: List[Dict]) -> Dict[str, s
     mta_sts_status = mta_sts_check.get("status", "")
     if mta_sts_status == "pass":
         result["mta_sts"] = "yes"
-    elif mta_sts_status in ("fail", "warn"):
+    elif mta_sts_status in ("fail", "warn", "absent"):
         result["mta_sts"] = "no"
     else:
         result["mta_sts"] = "unknown"
@@ -7748,7 +7837,7 @@ def _check_domain_features(raw_results: Dict, checks: List[Dict]) -> Dict[str, s
     tls_rpt_status = tls_rpt_check.get("status", "")
     if tls_rpt_status == "pass":
         result["tls_rpt"] = "yes"
-    elif tls_rpt_status in ("fail", "warn"):
+    elif tls_rpt_status in ("fail", "warn", "absent"):
         result["tls_rpt"] = "no"
     else:
         result["tls_rpt"] = "unknown"
@@ -7758,7 +7847,7 @@ def _check_domain_features(raw_results: Dict, checks: List[Dict]) -> Dict[str, s
     dane_status = dane_check.get("status", "")
     if dane_status == "pass":
         result["dane"] = "yes"
-    elif dane_status in ("fail", "warn"):
+    elif dane_status in ("fail", "warn", "absent"):
         result["dane"] = "no"
     else:
         result["dane"] = "unknown"
@@ -7768,7 +7857,7 @@ def _check_domain_features(raw_results: Dict, checks: List[Dict]) -> Dict[str, s
     bimi_status = bimi_check.get("status", "")
     if bimi_status == "pass":
         result["bimi"] = "yes"
-    elif bimi_status in ("fail", "warn"):
+    elif bimi_status in ("fail", "warn", "absent"):
         result["bimi"] = "no"
     else:
         result["bimi"] = "unknown"
@@ -7808,7 +7897,8 @@ def _build_provider_intelligence(
         scorecard = []
         caps = meta.get("capabilities", {})
         for feat_id, feat_label in _FEATURE_LABELS.items():
-            provider_supports = caps.get(feat_id, False)
+            # None is "not known": a capability no vendor page was found for.
+            provider_supports = caps.get(feat_id)
             domain_status = domain_features.get(feat_id, "unknown")
 
             scorecard.append({
