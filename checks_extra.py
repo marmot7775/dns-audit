@@ -701,7 +701,7 @@ _TLSRPT_VALID_TAGS = {"v", "rua"}
 def _validate_tls_rpt_record(record: str, domain: str = "") -> Tuple[Dict[str, str], List[Dict]]:
     issues = []
     tags = {}
-    _dom = domain or "yourdomain.com"
+    _dom = domain
     parts = [p.strip() for p in record.split(";") if p.strip()]
 
     for part in parts:

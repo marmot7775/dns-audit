@@ -877,7 +877,8 @@ def _dmarc_deep_dive(data, S, number=3):
         els.append(tt)
 
     # Dangerous combinations
-    config_warnings = tb.get("config_warnings", [])
+    # A hidden warning is already said by the card's explanation and details.
+    config_warnings = [w for w in tb.get("config_warnings", []) if not w.get("hidden")]
     if config_warnings:
         els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Configuration Warnings", S["heading2"]))
@@ -986,7 +987,7 @@ def _attack_surface_page(data, S, number=4):
         v_status = v.get("status", "")
         v_color = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(v_status, TEXT_SEC)
         v_bg = {"protected": PASS_BG, "partial": WARN_BG, "exposed": FAIL_BG}.get(v_status, SURFACE_BG)
-        v_label = {"protected": "PROTECTED", "partial": "PARTIAL", "exposed": "EXPOSED"}.get(v_status, v_status.upper())
+        v_label = {"protected": "Protected", "partial": "Partly protected", "exposed": "Exposed"}.get(v_status, v_status.capitalize())
         v_summary = v.get("summary", "")
         v_detail = v.get("detail", "")
 
@@ -1624,7 +1625,7 @@ def _about_page(data, S, number=7):
     details = [
         ("Domain audited", domain),
         ("Date and time", now),
-        ("Audit type", "Comprehensive DNS Security Audit"),
+        ("Audit type", SCOPE_LABELS.get(data.get("scope") or "complete", "Complete Audit")),
         ("Checks performed", ", ".join(_performed) if _performed else "None"),
     ]
     if _not_checked:
@@ -1758,7 +1759,8 @@ def generate_pdf(audit_result: dict) -> bytes:
         rightMargin=0.75*inch,
         title=f"DNS Security Audit - {_strip_html(domain)}",
         author="dns-audit.com",
-        subject=f"Comprehensive security audit report for {_strip_html(domain)}",
+        subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Complete Audit')} "
+                 f"report for {_strip_html(domain)}"),
     )
 
     toc_items, sections = _build_sections(audit_result, S)
@@ -1777,19 +1779,19 @@ if __name__ == "__main__":
         "executive_summary": {
             "verdict": "Your domain has email authentication, but subdomain spoofing is still open.",
             "spoofing_protection": {"label": "Partial", "color": "amber", "detail": "2/4 vectors protected"},
-            "dmarcbis_readiness": {"label": "In Progress", "color": "amber"},
+            "dmarcbis_readiness": {"label": "In progress", "color": "amber"},
             "protocol_coverage": {"configured": 5, "total": 9, "color": "amber"},
-            "biggest_risk": "Domain is in monitoring mode (p=none), requesting no action from receivers, who each decide independently what to do with failing mail.",
+            "biggest_risk": "Nothing is blocked yet, and every receiver is making its own call on mail that fails.",
             "has_record_builder": True,
         },
         "security_roadmap": {
             "items": [
                 {"priority": "critical", "protocol": "DMARC", "action": "Progress from p=none to enforcement",
-                 "impact": "Domain is in monitoring mode, requesting no action from receivers, who each decide independently what to do with failing mail."},
-                {"priority": "high", "protocol": "DKIM", "action": "Rotate weak DKIM keys to 2048-bit",
-                 "impact": "These keys are below current recommendations and should be rotated."},
+                 "impact": "Nothing is blocked yet, and every receiver is making its own call on mail that fails."},
+                {"priority": "high", "protocol": "DKIM", "action": "Rotate the weak DKIM key to 2048-bit",
+                 "impact": "This key is below current recommendations and should be rotated."},
                 {"priority": "medium", "protocol": "MTA-STS", "action": "Configure MTA-STS for TLS enforcement",
-                 "impact": "Without MTA-STS, email encryption can be silently stripped."},
+                 "impact": "Without MTA-STS, a sending server that cannot reach your mail server over TLS falls back to plaintext and nothing tells you."},
                 {"priority": "low", "protocol": "BIMI", "action": "Consider adding BIMI for brand visibility",
                  "impact": "BIMI displays your logo in supported email clients."},
             ],
@@ -1817,7 +1819,7 @@ if __name__ == "__main__":
                  "vectors": [
                      {"name": "Direct Domain Spoofing", "status": "exposed", "color": "red",
                       "summary": "Policy p=none does not block spoofed email.",
-                      "detail": "An attacker can send email as @example.com and it will be delivered."},
+                      "detail": "p=none requests no action, so each receiver applies only its own filtering to mail that fails."},
                      {"name": "Subdomain Spoofing", "status": "exposed", "color": "red",
                       "summary": "No subdomain policy enforcement.",
                       "detail": "Any subdomain can be spoofed."},
