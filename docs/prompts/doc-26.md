@@ -22,7 +22,7 @@ Exact copy:
 
   Some of these are a five minute DNS change. Some are not. If you want a
   second opinion on which is which, this is what I do for a living.
-  neil@dns-audit.com
+  [contact address redacted]
 
 Style it as quiet text, not a call to action box. No button, no border, no
 accent colour, no exclamation. It should read like a note at the bottom of
@@ -57,7 +57,7 @@ The footer attribution on all eight pages currently says "Built by Neil
 Anuskiewicz" followed by the LinkedIn icon. Add the address after the name
 so every page has a contact path, not just the results:
 
-  Built by Neil Anuskiewicz  neil@dns-audit.com  [LinkedIn icon]
+  Built by Neil Anuskiewicz  [contact address redacted]  [LinkedIn icon]
 
 Same mailto treatment, same muted footer link styling as the existing
 footer links. Keep the LinkedIn icon and its 44px mobile target exactly as

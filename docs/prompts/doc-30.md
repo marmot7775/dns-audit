@@ -70,7 +70,7 @@ Replace the cell with: "Validation against RFC 9989 and against RFC 7489, side b
 
 ## 10. SECURITY.md
 
-SECURITY.md:7: "**Email:** nta345@icloud.com". Every other surface uses neil@dns-audit.com. Change it.
+SECURITY.md:7: "**Email:** [contact address redacted]". Every other surface uses [contact address redacted]. Change it.
 
 SECURITY.md:39: "Please do not publicly disclose vulnerabilities until a fix has been released. We are committed to addressing security issues promptly and will credit reporters in the fix commit unless they prefer anonymity." A one-person project written in the first person everywhere else. "We are committed to addressing security issues promptly" promises nothing beyond the response timeline already stated above it.
 

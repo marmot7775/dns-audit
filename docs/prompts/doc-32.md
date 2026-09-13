@@ -20,7 +20,7 @@ Replace everything inside `<main class="about-page">` in static/about.html with 
     <section class="dbis-section about-closing">
         <h2>If your audit turned up something</h2>
         <p>Some findings are a five-minute DNS change. Some are not, and the hard part is knowing which is which before you touch anything.</p>
-        <p>If you want a second opinion, email me at <a href="mailto:neil@dns-audit.com">neil@dns-audit.com</a> with your domain. I'll look at the audit and tell you plainly whether it needs a consultant or just a careful hour of your own time. When it does need one, the work is scoped in writing before anything starts: what is wrong, what the change is, and what could break. You approve it, and we make the change together. Longer work, like getting a domain with a dozen sending services to DMARC enforcement, is scoped the same way.</p>
+        <p>If you want a second opinion, email me at <a href="mailto:[contact address redacted]">[contact address redacted]</a> with your domain. I'll look at the audit and tell you plainly whether it needs a consultant or just a careful hour of your own time. When it does need one, the work is scoped in writing before anything starts: what is wrong, what the change is, and what could break. You approve it, and we make the change together. Longer work, like getting a domain with a dozen sending services to DMARC enforcement, is scoped the same way.</p>
     </section>
 
 Then:
