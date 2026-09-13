@@ -336,7 +336,7 @@ def test_pct_zero_verdict_names_both_receiver_populations(policy):
         # is the one thing those receivers do not do.
         assert "quarantine" in card["verdict"].lower(), card["verdict"]
         assert "no mail" not in card["verdict"].lower(), card["verdict"]
-        assert "quarantine all failing messages" in row, row
+        assert "reject the selected fraction and quarantine the rest" in row, row
 
 
 def test_out_of_range_pct_is_not_quoted_as_zero():

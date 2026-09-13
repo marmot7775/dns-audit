@@ -165,21 +165,14 @@ def test_missing_dmarc_spoofing_tile_is_red_none(audit):
     assert (sp["label"], sp["color"]) == ("None", "red")
 
 
-def test_spoofing_tile_is_never_red_unless_the_dmarc_card_fails():
-    checks = [
-        {"name": "DMARC", "status": "warn", "configured": True,
-         "record": "v=DMARC1; p=reject; sp=none; rua=mailto:a@example.com",
-         "tag_breakdown": {"health": {"status": "compatible"}, "config_warnings": []},
-         "attack_surface": {"vectors": [
-             {"name": "Direct Domain Spoofing", "status": "protected"},
-             {"name": "Subdomain Spoofing", "status": "exposed"},
-             {"name": "Non-Existent Subdomain Spoofing", "status": "exposed"},
-         ]}},
-        {"name": "SPF", "status": "pass", "configured": True, "record": "v=spf1 -all"},
-        {"name": "DKIM", "status": "pass", "configured": True},
-    ]
-    sp = build_executive_summary(checks, build_security_roadmap(checks))["spoofing_protection"]
+def test_spoofing_tile_is_never_red_unless_the_dmarc_card_fails(audit):
+    # Doc 44: a real audit, so the card's warn is the transformer's own
+    # grade rather than a hand-built one. sp weaker than p is warn.
+    result = audit(_zone(f"v=DMARC1; p=reject; sp=none; rua=mailto:d@{DOMAIN}"),
+                   DOMAIN, dkim_selector="s1")
+    sp = result["executive_summary"]["spoofing_protection"]
 
+    assert _by_name(result)["DMARC"]["status"] == "warn"
     assert sp["color"] != "red", sp
 
 
@@ -295,7 +288,7 @@ def test_p_none_is_mentioned_by_exactly_one_dmarc_detail_row(audit):
 def test_pct_is_mentioned_by_one_warning_row(audit):
     dmarc = _by_name(audit(_zone(MONITORING), DOMAIN, dkim_selector="s1"))["DMARC"]
     rows = [d for d in dmarc["details"]
-            if d["type"] == "warning" and re.search(r"\bpct(=|\s+tag\b)", d["text"])]
+            if d["type"] == "warning" and re.search(r"\bpct\b", d["text"])]
 
     assert len(rows) == 1, [d["text"] for d in rows]
 
@@ -334,20 +327,18 @@ def test_roadmap_rows_carry_their_status_and_run_fail_warn_absent():
         ("DMARC", "fail"), ("SPF", "warn"), ("MTA-STS", "absent")]
 
 
-def test_within_a_tier_a_warning_row_comes_before_an_absent_one():
-    checks = [
-        {"name": "DMARC", "status": "warn", "configured": True,
-         "record": "v=DMARC1; p=quarantine; rua=mailto:a@example.com",
-         "tag_breakdown": {"health": {"status": "compatible",
-                                      "reasons": ["Add an explicit np= tag"]},
-                           "config_warnings": []}},
-        {"name": "MTA-STS", "status": "absent", "pill_label": "Not configured",
-         "configured": False},
-    ]
-    medium = [(i["protocol"], i["status"]) for i in build_security_roadmap(checks)["items"]
+def test_within_a_tier_a_warning_row_comes_before_an_absent_one(audit):
+    # Doc 44: a real audit, so the DMARC warn is the transformer's own grade.
+    # p=reject with pct=50 is warn and lands in the medium tier beside the
+    # absent MTA-STS, TLS-RPT and DANE rows.
+    result = audit(_zone(f"v=DMARC1; p=reject; pct=50; rua=mailto:d@{DOMAIN}"),
+                   DOMAIN, dkim_selector="s1")
+    medium = [(i["protocol"], i["status"]) for i in result["security_roadmap"]["items"]
               if i["priority"] == "medium"]
 
-    assert medium == [("DMARC", "warn"), ("MTA-STS", "absent")]
+    assert _by_name(result)["DMARC"]["status"] == "warn"
+    assert medium == [("DMARC", "warn"), ("MTA-STS", "absent"), ("TLS-RPT", "absent"),
+                      ("DANE", "absent")], medium
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
