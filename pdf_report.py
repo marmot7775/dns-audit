@@ -95,8 +95,8 @@ PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
 
 STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
 STATUS_BG  = {"pass": PASS_BG,  "warn": WARN_BG,  "fail": FAIL_BG,  "absent": NEUTRAL_BG}
-STATUS_LBL = {"pass": "PASS",   "warn": "WARNING", "fail": "FAIL",
-              "absent": "NOT CONFIGURED", "unavailable": "NOT CHECKED"}
+STATUS_LBL = {"pass": "Pass",   "warn": "Warning", "fail": "Issue",
+              "absent": "Not configured", "unavailable": "Not checked"}
 # Colours deliberately not mapped for "unavailable": every lookup falls
 # back to TEXT_SEC, which is the neutral grey this state should carry.
 # Helvetica has no glyph for U+26A0 (warning sign), so it rendered as a
@@ -700,7 +700,7 @@ def _dmarc_deep_dive(data, S, number=3):
 
     status = dmarc.get("status", "pass")
     s_clr = STATUS_CLR.get(status, TEXT_SEC)
-    s_lbl = STATUS_LBL.get(status, "INFO")
+    s_lbl = dmarc.get("pill_label") or STATUS_LBL.get(status, "Info")
 
     # Status + verdict
     hdr = Table([
@@ -1221,7 +1221,7 @@ def _protocol_card(check, S):
     details = check.get("details", [])
     fix = check.get("fix", "")
     s_clr = STATUS_CLR.get(status, TEXT_SEC)
-    s_lbl = STATUS_LBL.get(status, "INFO")
+    s_lbl = STATUS_LBL.get(status, "Info")
     pill_label = check.get("pill_label")
     if pill_label:
         s_lbl = pill_label
