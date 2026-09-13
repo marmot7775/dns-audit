@@ -140,7 +140,7 @@ def _free_port() -> int:
     return port
 
 
-def _slow_audit(domain, dkim_selector=None, scope=None, progress_callback=None):
+def _slow_audit(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
     # One progress event so the client has something to read, then a long
     # block: the client gives up while the audit is still running.
     if progress_callback:

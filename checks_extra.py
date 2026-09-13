@@ -481,6 +481,10 @@ def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, A
     return policy, issues
 
 
+# RFC 8461 section 3.3 suggests 64 KB as the most a sender should accept.
+MTA_STS_POLICY_MAX_BYTES = 64 * 1024
+
+
 def check_mta_sts(domain: str) -> Dict[str, Any]:
     result = {
         "check": "MTA-STS", "domain": domain,
@@ -566,7 +570,7 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
     if REQUESTS_AVAILABLE:
         try:
             try:
-                resp = _safe_fetch(policy_url, timeout=10)
+                resp = _safe_fetch(policy_url, timeout=10, stream=True)
             except ValueError as e:
                 result["issues"].append(_make_issue(
                     "warning", "MTA-STS host resolves to a private/reserved IP",
@@ -585,12 +589,35 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
                         "RFC 8461 specifies text/plain.", "",
                         "Serve the file as text/plain.",
                     ))
-                policy_data, policy_issues = _validate_mta_sts_policy(resp.text, domain)
-                result["policy"] = policy_data
-                result["policy_mode"] = policy_data.get("mode")
-                result["policy_mx"] = policy_data.get("mx_patterns", [])
-                result["policy_max_age"] = policy_data.get("max_age")
-                result["issues"].extend(policy_issues)
+                # Streamed with a cap, the way the BIMI logo fetch is. resp.text
+                # loaded and gunzipped the whole body, so a domain serving a
+                # huge or gzip-bombed policy made every audit of it allocate
+                # the lot. iter_content yields decoded bytes, so the cap counts
+                # what lands in memory, not what crossed the wire.
+                body = bytearray()
+                too_large = False
+                for chunk in resp.iter_content(chunk_size=8192):
+                    body.extend(chunk)
+                    if len(body) > MTA_STS_POLICY_MAX_BYTES:
+                        too_large = True
+                        break
+                resp.close()
+                if too_large:
+                    result["issues"].append(_make_issue(
+                        "error", "Policy file larger than 64 KB, not read",
+                        "The policy file is over the 64 KB maximum RFC 8461 section 3.3 suggests, so this audit stopped reading it.",
+                        "Senders that apply the same limit will not use this policy.",
+                        "Reduce the policy file below 64 KB. A policy needs only the version, mode, mx and max_age lines.",
+                    ))
+                else:
+                    policy_text = bytes(body).decode(
+                        getattr(resp, "encoding", None) or "utf-8", errors="replace")
+                    policy_data, policy_issues = _validate_mta_sts_policy(policy_text, domain)
+                    result["policy"] = policy_data
+                    result["policy_mode"] = policy_data.get("mode")
+                    result["policy_mx"] = policy_data.get("mx_patterns", [])
+                    result["policy_max_age"] = policy_data.get("max_age")
+                    result["issues"].extend(policy_issues)
             elif resp.status_code == 404:
                 result["issues"].append(_make_issue(
                     "error", "MTA-STS policy file not found (HTTP 404)",

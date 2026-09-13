@@ -1924,7 +1924,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             "DKIM is the more resilient mechanism because it survives mail forwarding."
         )
     else:
-        explanation = f"DMARC record found but the policy value is unexpected: '{policy}'."
+        explanation = f"DMARC record found but the policy value is unexpected: '{_e(str(policy))}'."
 
     # Reporting note
     if record and not raw.get("rua") and not is_no_mail:
@@ -5381,7 +5381,7 @@ def transform_mx(raw: Dict) -> Dict:
             "delivery will fail until it recovers."
         )
     if providers:
-        explanation += f" Provider: {', '.join(providers)}."
+        explanation += f" Provider: {_e(', '.join(providers))}."
 
     # Details
     details = []
@@ -5751,7 +5751,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         "MTA-STS or DANE to detect delivery problems caused by TLS policy enforcement."
     )
     if destinations:
-        explanation += f" Reports are sent to: {', '.join(destinations[:3])}."
+        explanation += f" Reports are sent to: {_e(', '.join(destinations[:3]))}."
 
     details = [_issue_to_detail(i) for i in raw.get("issues", [])]
     if destinations:

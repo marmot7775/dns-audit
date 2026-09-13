@@ -3564,16 +3564,17 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
         )
         result["status"] = "error"
         return result
-    except dns.exception.DNSException as e:
+    except dns.exception.DNSException:
         # SERVFAIL, NoNameservers and a timeout mean the query never
         # completed, not that the domain has no nameservers. Downstream must
         # not report this as a missing-NS finding. NXDOMAIN and NoAnswer are
         # handled above and stay real findings; this is the catch-all for
         # everything else dnspython raises.
         result["lookup_failed"] = True
+        # Fixed wording: dnspython's error text can name the resolver address.
         _add_issue(
             "error",
-            f"NS lookup failed: {str(e)[:100]}",
+            "NS lookup failed",
             "Could not retrieve nameserver records. This may be a temporary DNS issue.",
             "Try again later. If persistent, check your DNS configuration.",
         )
@@ -3964,8 +3965,9 @@ def _raw_check_dane(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
             pass  # No TLSA
         except dns.resolver.LifetimeTimeout:
             host_result["error"] = "Query timed out"
-        except dns.exception.DNSException as e:
-            host_result["error"] = str(e)[:120]
+        except dns.exception.DNSException:
+            # Fixed wording: dnspython's error text can name the resolver address.
+            host_result["error"] = "Query failed"
 
         result["tlsa_records"].append(host_result)
 
@@ -4710,7 +4712,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             tree_walk_result = _run_with_timeout(dmarc_tree_walk, domain)
         except Exception as e:
             log.warning("Tree Walk failed: %s", e, exc_info=True)
-            errors.append(f"Tree Walk: {str(e)}")
+            errors.append("Tree Walk: check failed")
         _notify("Tree Walk")
 
     # --- 1. DMARC ---
@@ -4772,7 +4774,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 checks.append(_timeout_card("MX Records"))
         except Exception as e:
             log.warning("MX check failed: %s", e, exc_info=True)
-            errors.append(f"MX: {str(e)}")
+            errors.append("MX: check failed")
             if _should_include("mx", scope_set):
                 checks.append(_error_card("MX Records", e))
         _notify("MX")
@@ -4794,7 +4796,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 checks.append(_timeout_card("SPF"))
         except Exception as e:
             log.warning("SPF check failed: %s", e, exc_info=True)
-            errors.append(f"SPF: {str(e)}")
+            errors.append("SPF: check failed")
             if _should_include("spf", scope_set):
                 checks.append(_error_card("SPF", e))
         _notify("SPF")
@@ -5075,7 +5077,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 _p2_cards[key] = _timeout_card(label)
             except Exception as e:
                 log.warning("%s check failed: %s", label, e, exc_info=True)
-                errors.append(f"{label}: {str(e)}")
+                errors.append(f"{label}: check failed")
                 _p2_cards[key] = _error_card(label, e)
             _notify(label)
     except FuturesTimeoutError:

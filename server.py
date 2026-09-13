@@ -962,6 +962,12 @@ async def audit_stream(
                 msg["detail"] = f"{count} found so far"
             _emit(msg)
 
+        # The same budget /api/audit passes. _event_stream's 90s cutoff ends
+        # the response, but this thread only sees cancel_event at its next
+        # progress callback, so a check blocked between callbacks ran on
+        # regardless. The deadline lets the engine stop itself.
+        audit_deadline = time.monotonic() + AUDIT_WALL_CLOCK_BUDGET
+
         def _run_audit():
             # Note: the concurrency slot reserved above is released in
             # _event_stream's finally, not here. This thread can keep running
@@ -971,7 +977,8 @@ async def audit_stream(
             # long after the stream itself has closed.
             try:
                 result = run_full_audit(domain, dkim_selector=selector, scope=scope,
-                                        progress_callback=_progress_callback)
+                                        progress_callback=_progress_callback,
+                                        deadline=audit_deadline)
                 _emit({"_done": True, "_result": result})
             except InterruptedError:
                 log.info("SSE audit cancelled (client disconnect): %s", domain)
@@ -1192,9 +1199,13 @@ async def audit_pdf(
                     )
             else:
                 start = time.time()
+                # Same budget as /api/audit. Without it a slow domain requested
+                # as a PDF held its slot past Cloudflare's 100s origin timeout.
+                audit_deadline = time.monotonic() + AUDIT_WALL_CLOCK_BUDGET
                 try:
                     data = await anyio.to_thread.run_sync(
-                        functools.partial(run_full_audit, domain, dkim_selector=selector, scope=scope)
+                        functools.partial(run_full_audit, domain, dkim_selector=selector, scope=scope,
+                                          deadline=audit_deadline)
                     )
                 except Exception as e:
                     log.error("PDF audit failed for %s: %s", domain, str(e)[:200], exc_info=True)

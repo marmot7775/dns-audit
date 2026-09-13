@@ -10,7 +10,7 @@ from config import RATE_LIMIT_MAX
 client = TestClient(server_module.app)
 
 
-def _fast_audit(domain, dkim_selector=None, scope=None, progress_callback=None):
+def _fast_audit(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
     return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
 
 

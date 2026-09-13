@@ -20,6 +20,8 @@ ENV/
 .env
 .env.*
 !.env.example
+# Real deploy host and user; CLAUDE.md uses placeholders
+deploy.local.md
 
 # IDE / Editor / AI
 .claude/

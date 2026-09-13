@@ -27,7 +27,7 @@ def _free_port() -> int:
     return port
 
 
-def _slow_audit_no_progress(domain, dkim_selector=None, scope=None, progress_callback=None):
+def _slow_audit_no_progress(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
     # One progress checkpoint, then a long blocking span with no further
     # checkpoints -- mirrors a single slow DNS check in the real engine.
     if progress_callback:
