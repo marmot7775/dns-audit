@@ -700,7 +700,7 @@ function renderResults(data) {
     if (res) {
         resSection.style.display = 'block';
         const levelColors = { high: 'pass', moderate: 'warn', low: 'fail', none: 'fail',
-            inconclusive: 'info' };
+            inconclusive: 'info', not_applicable: 'info' };
         const levelClass = levelColors[res.level] || 'info';
 
         document.getElementById('resilience-summary').innerHTML = `
@@ -1827,12 +1827,15 @@ function renderDmarcTagBreakdown(bd) {
     const dmarcbisClasses = {
         'current': 'rb-bis-current',
         'deprecated': 'rb-bis-deprecated',
-        'new': 'rb-bis-new'
+        'new': 'rb-bis-new',
+        'imported': 'rb-bis-new'
     };
     const dmarcbisLabels = {
         'current': 'Current',
         'deprecated': 'Removed in RFC 9989',
-        'new': 'New in RFC 9989'
+        'new': 'New in RFC 9989',
+        // np is not new in RFC 9989: it was brought in from RFC 9091.
+        'imported': 'From RFC 9091'
     };
 
     // Health verdict colors (5 states)
@@ -2970,7 +2973,7 @@ function renderReportChain(rc) {
     html += '</div>';
 
     if (rc.ruf_provider_note) {
-        html += `<div class="rc-footnote">Note: Most mailbox providers no longer send failure reports (ruf) because they can contain PII (message headers, recipient addresses).</div>`;
+        html += `<div class="rc-footnote">Note: Most mailbox providers do not send failure reports (ruf) because they can contain PII (message headers, recipient addresses).</div>`;
     }
 
     html += '</div>';
@@ -3511,7 +3514,10 @@ function _renderProviderCard(provider, showScorecard) {
                 </thead>
                 <tbody>`;
         for (const row of provider.scorecard) {
-            const supportsIcon = row.provider_supports ? statusIconHtml('pass') : statusIconHtml('fail');
+            // null is "not known": no vendor page backs a check or a cross.
+            const supportsIcon = row.provider_supports === true ? statusIconHtml('pass')
+                : row.provider_supports === false ? statusIconHtml('fail')
+                : '<span class="pi-sc-unknown">Not known</span>';
             let domainIcon;
             if (row.domain_status === 'yes') domainIcon = statusIconHtml('pass');
             else if (row.domain_status === 'no') domainIcon = statusIconHtml('warn');

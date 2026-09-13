@@ -932,9 +932,10 @@ def _validate_bimi_record(record: str) -> Tuple[Dict[str, str], List[Dict]]:
             issues.append(_make_issue("error", "VMC URL is not HTTPS",
                 "Must use HTTPS.", "", "Change to HTTPS."))
     elif "a" not in tags:
-        issues.append(_make_issue("info", "No VMC tag",
-            "Gmail requires a VMC for BIMI logos.", "",
-            "Obtain a VMC or CMC from a certificate authority that issues them."))
+        # No issue here: the BIMI card states the Gmail certificate requirement
+        # once, in its explanation, and this detail repeated it wrongly
+        # ("requires a VMC"; a CMC is accepted too).
+        pass
 
     return tags, issues
 
