@@ -3204,9 +3204,16 @@ details.st-node>summary:hover {
 .footer-attribution {
     font-size: var(--font-sm);
     color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 0.35em;
+    /* Doc 39: one sentence with an inline link. It was a flex row with a
+       gap while an icon sat beside the text; as flex, the sentence's
+       trailing full stop became its own item with a gap before it. */
+}
+.footer-attribution a {
+    color: var(--text-muted);
+    text-decoration: underline;
+}
+.footer-attribution a:hover {
+    color: var(--text-secondary);
 }
 .footer-email {
     color: var(--text-muted);
