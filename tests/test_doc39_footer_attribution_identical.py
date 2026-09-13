@@ -8,6 +8,10 @@ wording or the link could land on seven and miss one. This test reads every
 .footer-attribution block and holds them byte-identical, and pins the facts
 the doc asked for: the three services, one LinkedIn link, no icon, no email,
 no mailto, and the results view's own closing line left as it was.
+
+Doc 41 added one mailto to the contact alias beside the LinkedIn link, in the
+footer and in the results note, so the pinned facts below follow Doc 41. The
+identical-footer check is unchanged.
 """
 import glob
 import os
@@ -25,6 +29,8 @@ PAGES = sorted(
 
 ATTRIBUTION_RE = re.compile(r'<div class="footer-attribution">.*?</div>', re.DOTALL)
 LINKEDIN = "https://www.linkedin.com/in/neilanuskiewicz/"
+ALIAS = "dns" + "@" + "dns-audit" + ".com"
+ADDRESS_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]+")
 
 
 def _read(path):
@@ -68,29 +74,32 @@ def test_footer_attribution_says_what_neil_does():
     assert block.startswith('<div class="footer-attribution">Built by Neil Anuskiewicz.')
     for service in ("email deliverability", "email security", "DNS"):
         assert service in block, service
-    assert block.count("<a ") == 1
+    assert block.count("<a ") == 2
     assert f'href="{LINKEDIN}"' in block
     assert 'target="_blank"' in block and 'rel="noopener"' in block
-    assert 'class="footer-link"' in block
-    assert ">Contact me on LinkedIn</a>." in block
+    assert block.count('class="footer-link"') == 2
+    assert f'<a href="mailto:{ALIAS}" class="footer-link">Email {ALIAS}</a> or ' in block
+    assert ">message me on LinkedIn</a>." in block
     assert "<svg" not in block
     assert "footer-linkedin" not in block
-    assert 'href="mailto:' not in block
-    assert "@" not in block
+    assert set(ADDRESS_RE.findall(block)) == {ALIAS}
     assert "—" not in block and "--" not in block
 
 
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
-def test_no_email_address_or_mailto_anywhere(path):
+def test_the_only_mailto_is_the_footer_alias(path):
     html = _read(path)
-    assert 'href="mailto:' not in html, os.path.relpath(path, STATIC)
+    rel = os.path.relpath(path, STATIC)
+    assert html.count('href="mailto:') == 1, rel
+    assert f'href="mailto:{ALIAS}"' in _attribution(path), rel
 
 
-def test_results_contact_note_is_unchanged():
-    """Doc 39 left the results view's closing line alone."""
+def test_results_contact_note_offers_email_and_linkedin():
+    """Doc 39 left the results view's closing line alone; Doc 41 added the alias."""
     index = _read(os.path.join(STATIC, "index.html"))
     assert '<p class="results-contact-note is-hidden" id="results-contact-note"></p>' in index
     app_js = _read(os.path.join(STATIC, "app.js"))
     assert "function _renderContactNote(failCount, warnCount)" in app_js
-    assert "Message me on LinkedIn</a>." in app_js
-    assert 'href="mailto:' not in app_js
+    assert f"'<a href=\"mailto:{ALIAS}\">Email {ALIAS}</a> or ' +" in app_js
+    assert "message me on LinkedIn</a>." in app_js
+    assert app_js.count('href="mailto:') == 1
