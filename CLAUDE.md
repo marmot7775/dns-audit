@@ -20,9 +20,15 @@
 - NEVER use em-dashes (—) or double-hyphens ( -- ) in user-facing text. Rewrite the sentence instead.
 - Card statuses (Doc 38) are four states plus "unavailable". fail, red: an
   essential record (DMARC, SPF, DKIM when a selector is named, MX on a mail
-  domain, nameservers) is missing, or any record is broken. warn, amber:
-  published and working but weak (p=none, pct below 100, SPF ~all, a 1024-bit
-  DKIM key). pass, green: published and correct. absent, grey: an optional
+  domain, nameservers) is missing, or any record is broken. A DMARC record is
+  broken only when v=DMARC1 is not first, it has no usable p= and no valid
+  rua=, more than one record is published, a tag is duplicated, or no parser
+  can read it (Doc 44). warn, amber: published and working but weak (p=none
+  with or without rua, pct below 100, sp weaker than p, DMARC without rua, a
+  DMARC tag receivers ignore under RFC 9989 section 4.8 such as an unknown
+  tag or a malformed optional value, SPF ~all, a 1024-bit DKIM key, MTA-STS
+  mode testing). The DMARC attack surface block goes red only when the card
+  fails. pass, green: published and correct. absent, grey: an optional
   protocol (MTA-STS, TLS-RPT, DNSSEC, CAA, DANE, BIMI) is not published; its
   pill says "Not configured", it has its own counter, and it is never counted
   as a warning. unavailable, grey with its own icon and "Not checked": the

@@ -840,7 +840,7 @@ def _dmarc_deep_dive(data, S, number=3):
             val = tag.get("value") or "(absent)" if tag.get("is_absent") else (tag.get("value") or "(default)")
             bis_status = tag.get("dmarcbis", "")
             bis_clr = {"current": PASS_CLR, "new": TEAL_ACCENT, "deprecated": FAIL_CLR}.get(bis_status, TEXT_SEC)
-            bis_label = {"current": "Current", "new": "New", "deprecated": "Deprecated"}.get(bis_status, bis_status)
+            bis_label = {"current": "Current", "new": "New", "deprecated": "Removed"}.get(bis_status, bis_status)
 
             explanation = tag.get("explanation", "")
             bis_note = tag.get("dmarcbis_note", "")

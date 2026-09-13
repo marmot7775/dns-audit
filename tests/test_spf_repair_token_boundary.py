@@ -82,4 +82,6 @@ def test_the_card_does_not_call_a_mail_all_include_malformed():
     assert "not space-delimited" not in issue_texts, (
         f"Nothing here is jammed together; got {issue_texts!r}"
     )
-    assert card["status"] == "pass"
+    # warn, not pass: ~all is one of Doc 38's warn rules (Doc 44 item 7).
+    # What this test guards is the absence of a malformed finding above.
+    assert card["status"] == "warn"

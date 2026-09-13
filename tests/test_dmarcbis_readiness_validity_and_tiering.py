@@ -38,9 +38,14 @@ def _build_card(record):
 def test_invalid_record_is_not_claimed_valid_under_either_spec():
     card = _build_card("v=DMARC1; p=bogus; rua=mailto:a@b.com")
 
-    assert card["status"] == "fail", (
-        f"p=bogus must fail the DMARC card; got status={card['status']!r}"
+    # A valid rua makes p=bogus recoverable: RFC 9989 receivers act as if
+    # p=none was published, so the record is usable and the card is warn
+    # with the Recovery pill (Doc 44 item 1). Without a valid rua there is
+    # no usable p and the card still fails.
+    assert (card["status"], card["pill_label"]) == ("warn", "Recovery"), (
+        f"p=bogus with a valid rua is recovered as p=none; got {card['status']!r}"
     )
+    assert _build_card("v=DMARC1; p=bogus")["status"] == "fail"
 
     readiness = card["dmarcbis_readiness"]
     assert readiness is not None
