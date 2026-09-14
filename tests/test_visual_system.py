@@ -100,3 +100,102 @@ def test_every_pdf_spacer_uses_the_spacing_scale():
     assert off_scale == [], f"Spacer heights off the scale: {off_scale}"
     assert (pdf_report.SP_XS, pdf_report.SP_SM, pdf_report.SP_MD,
             pdf_report.SP_LG, pdf_report.SP_XL) == (4, 8, 12, 18, 28)
+
+
+# ---------------------------------------------------------------
+# Doc 53: one focus ring in both themes, one pulse when the page opens
+# ---------------------------------------------------------------
+
+# Records when .input-wrapper gains and loses the hello class, relative to
+# DOMContentLoaded, so the timing can be read after the fact.
+HELLO_JS = """(() => {
+    window.__hello = {dcl: null, added: null, removed: null};
+    document.addEventListener('DOMContentLoaded', () => {
+        window.__hello.dcl = performance.now();
+        const w = document.querySelector('.input-wrapper');
+        new MutationObserver(() => {
+            const on = w.classList.contains('input-wrapper-hello');
+            if (on && window.__hello.added === null) window.__hello.added = performance.now();
+            if (!on && window.__hello.added !== null && window.__hello.removed === null)
+                window.__hello.removed = performance.now();
+        }).observe(w, {attributes: true, attributeFilter: ['class']});
+    }, true);
+})();"""
+
+
+@pytest.fixture(scope="module")
+def browser():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as p:
+        try:
+            b = p.chromium.launch()
+        except Exception as exc:  # no browser build or missing system libraries
+            pytest.skip(f"chromium is not available here: {exc}")
+        yield b
+        b.close()
+
+
+def _open(browser, theme, path="/", **ctx_kwargs):
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, **ctx_kwargs)
+    ctx.add_init_script(f"try{{localStorage.setItem('theme','{theme}')}}catch(e){{}}")
+    ctx.add_init_script(HELLO_JS)
+    page = ctx.new_page()
+    page.route("**/*", _serve_static)
+    page.goto("http://dns-audit.test" + path)
+    return ctx, page
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_the_field_pulses_once_when_the_page_opens(browser, theme):
+    ctx, page = _open(browser, theme)
+    page.wait_for_timeout(2500)
+    h = page.evaluate("window.__hello")
+    ctx.close()
+
+    assert h["added"] is not None, "the hello class was never added"
+    assert h["added"] - h["dcl"] < 100, h
+    assert h["removed"] is not None and h["removed"] - h["added"] < 2000, h
+
+
+def test_a_shared_result_link_does_not_pulse(browser):
+    ctx, page = _open(browser, "dark", path="/?d=example.com")
+    page.wait_for_timeout(1500)
+    h = page.evaluate("window.__hello")
+    ctx.close()
+
+    assert h["added"] is None, h
+
+
+def test_reduced_motion_gets_no_pulse(browser):
+    ctx, page = _open(browser, "dark", reduced_motion="reduce")
+    page.wait_for_timeout(300)
+    name = page.evaluate("getComputedStyle(document.querySelector('.input-wrapper')).animationName")
+    ctx.close()
+
+    assert name == "none", name
+
+
+def test_the_focus_ring_is_the_primary_token_in_both_themes(browser):
+    """Doc 53 asked for the same colour in both themes. --primary itself
+    differs by theme (#5b8def dark, #2f5fcc light), so the assertion is that
+    both themes draw the focused border from that one token."""
+    seen = {}
+    for theme in ("dark", "light"):
+        ctx, page = _open(browser, theme)
+        page.wait_for_timeout(1500)
+        seen[theme] = page.evaluate("""() => {
+            const w = document.querySelector('.input-wrapper');
+            const probe = document.createElement('div');
+            probe.style.color = 'var(--primary)';
+            document.body.appendChild(probe);
+            return {
+                focused: document.activeElement.id,
+                border: getComputedStyle(w).borderTopColor,
+                primary: getComputedStyle(probe).color,
+            };
+        }""")
+        ctx.close()
+
+    for theme, m in seen.items():
+        assert m["focused"] == "domain-input", (theme, m)
+        assert m["border"] == m["primary"], (theme, m)
