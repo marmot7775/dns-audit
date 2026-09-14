@@ -12,9 +12,14 @@ no mailto, and the results view's own closing line left as it was.
 Doc 41 added one mailto to the contact alias beside the LinkedIn link, in the
 footer and in the results note, so the pinned facts below follow Doc 41. The
 identical-footer check is unchanged.
+
+Doc 54 renamed the repo to dns-audit. Every GitHub link on the pages points
+at the new name, and the old name survives only where it names the droplet's
+checkout directory, plus the doc history.
 """
 import os
 import re
+import subprocess
 
 import pytest
 
@@ -82,3 +87,38 @@ def test_results_contact_note_offers_email_and_linkedin():
     assert f"'<a href=\"mailto:{ALIAS}\">Email {ALIAS}</a> or ' +" in app_js
     assert "message me on LinkedIn</a>." in app_js
     assert app_js.count('href="mailto:') == 1
+
+
+REPO_URL = "https://github.com/marmot7775/dns-audit"
+# Split so this file does not match its own search.
+OLD_NAME = "dns-security" + "-auditor"
+DEPLOY_LINE = f'ssh DEPLOY_USER@DROPLET_HOST "cd {OLD_NAME} && git pull'
+
+
+@pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
+def test_github_links_point_at_the_renamed_repo(path):
+    html = _read(path)
+    rel = os.path.relpath(path, STATIC)
+    links = re.findall(r'href="(https://github\.com/[^"]*)"', html)
+    assert links, rel
+    for link in links:
+        assert link == REPO_URL or link.startswith(REPO_URL + "/"), (rel, link)
+
+
+def test_old_repo_name_survives_only_in_the_droplet_path():
+    """The droplet's checkout keeps the old directory name (Doc 54)."""
+    repo = os.path.dirname(STATIC)
+    out = subprocess.run(
+        ["git", "grep", "-n", "-I", "-F", OLD_NAME, "--", ".", ":!docs/history"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    assert out.returncode in (0, 1), out.stderr
+    stray = []
+    for hit in out.stdout.splitlines():
+        path, _, text = hit.split(":", 2)
+        if path == "deploy/dns-auditor.service":
+            continue
+        if path == "CLAUDE.md" and DEPLOY_LINE in text:
+            continue
+        stray.append(hit)
+    assert not stray, stray
