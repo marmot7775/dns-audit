@@ -20,6 +20,8 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/static/style.css?v=f15cecf">
     <script src="/static/theme.js?v=f15cecf"></script>
     <script type="application/ld+json">
@@ -68,6 +70,7 @@
     </script>
 </head>
 <body>
+    <a href="#main-content" class="skip-to-content">Skip to content</a>
     <header class="site-header">
         <div class="container header-inner">
             <a href="/" class="logo">
@@ -96,7 +99,7 @@
             </div>
         </div>
     </header>
-    <main class="dbis-page">
+    <main class="dbis-page" id="main-content">
         <article class="dbis-article">
             <h1 class="dbis-article-title">DNSSEC stopped being hard</h1>
             <p class="dbis-article-sub">The reputation did not catch up. The DNSSEC you remember required hands-on work at every step. The DNSSEC you can deploy at a major provider in 2026 is a checkbox.</p>
@@ -185,7 +188,7 @@
         <div class="container footer-inner">
             <div class="footer-left">
                 <div class="footer-brand-name">dns-audit.com</div>
-                <div class="footer-brand-desc">Free, open-source DNS<br>&amp; email security auditing</div>
+                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
             </div>
             <div class="footer-right">
                 <div class="footer-nav">

@@ -1,6 +1,6 @@
 /* ==========================================================================
    DNS Security Auditor - Frontend Application
-   v2.0  --  Scoped audits, severity sorting, auto-collapse
+   v2.0: scoped audits, severity sorting, absent cards start collapsed
    ========================================================================== */
 
 const API_BASE = '/api';
@@ -35,6 +35,12 @@ const ICON = {
     unavailable: iconSvg('<circle cx="8" cy="8" r="5.75"/><path d="M4 12L12 4"/>'),
     info: iconSvg('<circle cx="8" cy="8" r="5.75"/><path d="M8 7.25v3.5"/><path d="M8 5.1h.01"/>'),
     chevron: iconSvg('<path d="M4 6l4 4 4-4"/>'),
+    mail: iconSvg('<rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5"/><path d="M2.25 4.25L8 8.75l5.75-4.5"/>'),
+    history: iconSvg('<path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.25 2.25v2.5h2.5"/><path d="M8 5.25V8l1.75 1.25"/>'),
+    book: iconSvg('<path d="M8 4.25C6.25 3 4 2.75 1.75 3.25v9c2.25-.5 4.5-.25 6.25 1"/><path d="M8 4.25c1.75-1.25 4-1.5 6.25-1v9c-2.25-.5-4.5-.25-6.25 1z"/>'),
+    'arrow-right': iconSvg('<path d="M2.75 8h10.5"/><path d="M9.25 4l4 4-4 4"/>'),
+    'arrow-up': iconSvg('<path d="M8 13.25V2.75"/><path d="M4 6.75l4-4 4 4"/>'),
+    swap: iconSvg('<path d="M2.75 5.25h10.5"/><path d="M10.75 2.75l2.5 2.5-2.5 2.5"/><path d="M13.25 10.75H2.75"/><path d="M5.25 8.25l-2.5 2.5 2.5 2.5"/>'),
 };
 
 const STATUS_LABELS = {
@@ -66,6 +72,9 @@ let auditController = null;
 let auditReader = null;
 let auditInFlight = false;
 let sessionAuditCount = 0;
+// Ids for the collapsible sections, so each toggle can name what it controls.
+let _cdSectionSeq = 0;
+let _piGuidanceSeq = 0;
 
 // -- DOM References --
 const auditForm = document.getElementById('audit-form');
@@ -177,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Back-to-top button
     const backToTop = document.createElement('button');
-    backToTop.innerHTML = '\u2191';
+    backToTop.innerHTML = ICON['arrow-up'];
     backToTop.className = 'back-to-top';
     backToTop.setAttribute('aria-label', 'Back to top');
     document.body.appendChild(backToTop);
@@ -550,6 +559,10 @@ function showError(message) {
 
 function renderResults(data) {
     lastAuditData = data;
+    // The spec toggle renders with RFC 9989 active on every audit, so the
+    // mode it tracks has to start there too, or the first click after a
+    // previous audit's RFC 7489 choice is swallowed as a no-op.
+    _specMode = 'dmarcbis';
 
     // Handle preflight / server errors returned inside the result object
     if (data.error && data.error_message) {
@@ -593,7 +606,10 @@ function renderResults(data) {
     document.getElementById('result-domain').textContent = data.domain;
 
     // Timestamp + duration
-    const auditDuration = ((performance.now() - auditStartTime) / 1000).toFixed(1);
+    // The API's own timing when it sent one. A cached result arrives in
+    // milliseconds, so the client-side clock read 0.0s for it.
+    const auditDuration = (typeof data.elapsed_seconds === 'number'
+        ? data.elapsed_seconds : (performance.now() - auditStartTime) / 1000).toFixed(1);
     const now = new Date();
     const tsText = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
         + ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
@@ -613,7 +629,7 @@ function renderResults(data) {
     const esSlot = document.getElementById('executive-summary-slot');
     if (esSlot) {
         if (data.executive_summary) {
-            esSlot.innerHTML = renderExecutiveSummary(data.executive_summary);
+            esSlot.innerHTML = renderExecutiveSummary(data.executive_summary, data.security_roadmap);
             esSlot.style.display = 'block';
             // Wire up scroll buttons
             esSlot.querySelectorAll('[data-scroll-to]').forEach(btn => {
@@ -755,7 +771,7 @@ function renderResults(data) {
         prioritySection.style.display = 'none';
     }
 
-    // -- Result cards (sorted, auto-collapse pass) --
+    // -- Result cards (sorted; absent cards start collapsed, the rest open) --
     const resultsList = document.getElementById('results-list');
     resultsList.innerHTML = '';
 
@@ -869,8 +885,8 @@ function renderResults(data) {
         resultsList.appendChild(createResultCard(check, i));
     });
 
-    // Cards render mixed: passing ones collapsed, failures, warnings and DMARC
-    // expanded. The button has to say what the next click will do.
+    // Cards render mixed: absent ones collapsed, every other state expanded.
+    // The button has to say what the next click will do.
     syncToggleAllLabel();
 
     // Vendors
@@ -972,7 +988,7 @@ function applyDeferredStyles(root) {
 }
 
 // ============================================================
-// Result card  --  auto-collapse passing, expand fail/warn
+// Result card: absent cards start collapsed, every other state starts open
 // ============================================================
 
 // A check can also come back "unavailable": it did not run, so it is neither
@@ -1012,23 +1028,29 @@ function shareTweetText(d) {
 
 function createResultCard(check, index) {
     const card = document.createElement('div');
-    // Auto-collapse: pass = collapsed, fail/warn = expanded
-    // DMARC is always expanded (important check + tree walk visualization)
-    const isDmarc = (check.name || '').toUpperCase() === 'DMARC';
-    const isExpanded = true;
-    card.className = 'result-card expanded';
+    // An absent card (an optional protocol that is not published) starts
+    // collapsed: nothing in it needs reading. Every other state starts open.
+    const isExpanded = check.status !== 'absent';
+    card.className = isExpanded ? 'result-card expanded' : 'result-card';
     card.id = `check-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.dataset.status = check.status;
     card.style.animationDelay = `${index * 60}ms`;
 
     const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
 
+    // The header is the one focusable control. The tooltip shows on hover,
+    // and on the header's keyboard focus, and reaches assistive technology
+    // through aria-describedby on the header, from a node outside it so it
+    // does not also become part of the button's name.
     const tooltipText = PROTOCOL_TOOLTIPS[check.name] || '';
     const titleHtml = tooltipText
-        ? `<h3 class="result-title protocol-name-tip" tabindex="0" data-tooltip="${escapeHtml(tooltipText)}">${escapeHtml(check.name)}</h3>`
+        ? `<h3 class="result-title protocol-name-tip" data-tooltip="${escapeHtml(tooltipText)}">${escapeHtml(check.name)}</h3>`
         : `<h3 class="result-title">${escapeHtml(check.name)}</h3>`;
 
     const bodyId = `body-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const tipId = `tip-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const tipHtml = tooltipText
+        ? `<span class="sr-only" id="${tipId}">${escapeHtml(tooltipText)}</span>` : '';
     card.innerHTML = `
         <div class="result-header">
             <span class="status-icon ${safeClass(check.status)}" title="${STATUS_TITLES[check.status] || 'Failed'}" aria-hidden="true">${ICON[check.status] || ICON.fail}</span>
@@ -1037,6 +1059,7 @@ function createResultCard(check, index) {
             <div class="result-verdict">${escapeHtml(check.verdict || '')}</div>
             <div class="result-chevron" aria-hidden="true">${ICON.chevron}</div>
         </div>
+        ${tipHtml}
         <div class="result-body" id="${bodyId}">
             <div class="result-body-inner">
                 ${renderCheckBody(check)}
@@ -1056,6 +1079,7 @@ function createResultCard(check, index) {
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
     header.setAttribute('aria-controls', bodyId);
+    if (tooltipText) header.setAttribute('aria-describedby', tipId);
     header.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -1085,7 +1109,7 @@ function createResultCard(check, index) {
     // Change history collapse/expand
     card.querySelectorAll('.cd-header').forEach(hdr => {
         const toggle = () => {
-            const body = hdr.nextElementSibling;
+            const body = hdr.closest('.cd-section').querySelector('.cd-body');
             // The collapsed state is a class, not a style attribute: the CSP
             // refuses inline styles, so markup cannot ship one. The chevron
             // rotation follows aria-expanded in the stylesheet.
@@ -1355,7 +1379,7 @@ function renderCheckBody(check) {
         html += renderChangeHistory(check._change_history);
     } else if (check._change_status === 'first_audit') {
         html += `<div class="cd-first-audit">
-            <span class="cd-first-icon">&#128203;</span>
+            <span class="cd-first-icon">${ICON.history}</span>
             This domain is now tracked; run another audit later to see what changed.
         </div>`;
     }
@@ -1409,7 +1433,7 @@ function renderDeliverabilityCallout(text) {
     return `
         <div class="deliv-callout">
             <div class="deliv-header">
-                <span class="deliv-icon">&#9993;</span>
+                <span class="deliv-icon">${ICON.mail}</span>
                 <span class="deliv-label">Email Deliverability</span>
             </div>
             <div class="deliv-text">${escapeHtml(text)}</div>
@@ -1445,14 +1469,20 @@ function renderTtlBadge(ttlInfo) {
 function renderChangeHistory(changes) {
     if (!changes || changes.length === 0) return '';
 
+    // The heading wraps the toggle (a button cannot contain a heading), so
+    // Change History is reachable by heading navigation like the other
+    // sections of the card.
+    const cdBodyId = `cd-body-${++_cdSectionSeq}`;
     let html = `<div class="cd-section">
-        <div class="cd-header" role="button" tabindex="0" aria-expanded="false">
-            <span class="cd-header-icon">&#8635;</span>
+        <div role="heading" aria-level="4">
+        <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${cdBodyId}">
+            <span class="cd-header-icon">${ICON.history}</span>
             <span class="cd-header-title">Change History</span>
             <span class="cd-header-count">${changes.length} change${changes.length !== 1 ? 's' : ''} detected</span>
             <span class="cd-chevron">${ICON.chevron}</span>
         </div>
-        <div class="cd-body is-hidden">`;
+        </div>
+        <div class="cd-body is-hidden" id="${cdBodyId}">`;
 
     for (const change of changes) {
         const dateStr = change.timestamp ? new Date(change.timestamp + 'Z').toLocaleDateString('en-US', {
@@ -1703,7 +1733,7 @@ function renderSubdomainAudit(sa) {
                 <td class="sua-cell-status">${icon} ${escapeHtml(s.status_label)}</td>
                 <td class="sua-cell-action">
                     <button class="sua-audit-btn" data-domain="${escapeHtml(s.subdomain)}"
-                            title="Run full audit on ${escapeHtml(s.subdomain)}">Audit \u2192</button>
+                            title="Run full audit on ${escapeHtml(s.subdomain)}">Audit ${ICON['arrow-right']}</button>
                 </td>
             </tr>`;
     });
@@ -1731,7 +1761,7 @@ function renderSubdomainAudit(sa) {
                                 <th>Own DMARC</th>
                                 <th>Effective Policy</th>
                                 <th>Status</th>
-                                <th></th>
+                                <th><span class="sr-only">Audit</span></th>
                             </tr>
                         </thead>
                         <tbody>${rowsHtml}</tbody>
@@ -1805,7 +1835,7 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
             <div class="sv-header">
                 <div class="sv-header-left">
                     <span class="tag">${escapeHtml(specLabel)}</span>
-                    <span class="sv-title">Strict Record Validation</span>
+                    <h4 class="sv-title">Strict Record Validation</h4>
                 </div>
                 <div class="sv-header-right">
                     <span class="sv-summary ${summaryClass}">${statusIconHtml(summaryClass.slice('sv-summary-'.length))}<span>${escapeHtml(sv.summary)}</span></span>
@@ -1979,7 +2009,7 @@ function renderDmarcTagBreakdown(bd) {
         migrationHtml = `
             <div class="mw-block">
                 <div class="mw-header">
-                    <span class="mw-title">Migration Path to RFC 9989 Ready</span>
+                    <h4 class="mw-title">Migration Path to RFC 9989 Ready</h4>
                     <span class="mw-progress">${bd.migration.total_steps} steps</span>
                 </div>
                 <div class="mw-steps">${stepsHtml}</div>
@@ -2032,7 +2062,7 @@ function renderDmarcTagBreakdown(bd) {
             <div class="wd-block">
                 <details>
                     <summary class="wd-summary">
-                        <span class="wd-summary-icon">&#128218;</span>
+                        <span class="wd-summary-icon">${ICON.book}</span>
                         <span class="wd-summary-text">Why RFC 9989?</span>
                     </summary>
                     <div class="wd-body">${sectionsHtml}</div>
@@ -2049,7 +2079,7 @@ function renderDmarcTagBreakdown(bd) {
     return `
         <div class="record-breakdown">
             <div class="rb-header">
-                <span class="rb-title">DMARC Record Breakdown</span>
+                <h4 class="rb-title">DMARC Record Breakdown</h4>
             </div>
             ${verdictHtml}
             <div class="rb-kvs">${tagsHtml}</div>
@@ -2086,7 +2116,7 @@ function renderRecordBuilder(rb) {
         return `
             <div class="rcb-block rcb-ready">
                 <div class="rcb-header">
-                    <span class="rcb-title">Record Builder</span>
+                    <h4 class="rcb-title">Record Builder</h4>
                     <span class="tag tag-pass">No changes needed</span>
                 </div>
                 <p class="rcb-ready-msg">Your DMARC record is RFC 9989 Ready. No modifications required.</p>
@@ -2111,7 +2141,7 @@ function renderRecordBuilder(rb) {
                     <div class="rcb-diff-label">Current Record</div>
                     <div class="rcb-diff-record">${_renderDiffRecord(curTags, changedTagNames, 'current', rb.changes)}</div>
                 </div>
-                <div class="rcb-diff-arrow">&#10140;</div>
+                <div class="rcb-diff-arrow">${ICON['arrow-right']}</div>
                 <div class="rcb-diff-side rcb-diff-recommended">
                     <div class="rcb-diff-label">Recommended Record</div>
                     <div class="rcb-diff-record">${_renderDiffRecord(recTags, changedTagNames, 'recommended', rb.changes)}</div>
@@ -2181,7 +2211,7 @@ function renderRecordBuilder(rb) {
     return `
         <div class="rcb-block">
             <div class="rcb-header">
-                <span class="rcb-title">${escapeHtml(title)}</span>
+                <h4 class="rcb-title">${escapeHtml(title)}</h4>
             </div>
             ${firstNoteHtml}
             ${diffHtml}
@@ -2255,7 +2285,7 @@ function renderTreeWalkSimple(tw) {
     return `
         <div class="tree-walk tree-walk-simple tw-animated">
             <div class="tw-header-row">
-                <div class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</div>
+                <h4 class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</h4>
                 <a class="tag tag-hit" href="https://www.rfc-editor.org/rfc/rfc9989.html"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -2285,7 +2315,7 @@ function renderTreeWalkFull(tw) {
     let html = `
         <div class="tree-walk tw-animated">
             <div class="tw-header-row">
-                <div class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</div>
+                <h4 class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</h4>
                 <a class="tag tag-hit" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
             </div>`;
 
@@ -2327,14 +2357,22 @@ function renderTreeWalkFull(tw) {
         if (isPolicySource) html += ` <span class="tag">Policy source</span>`;
         if (step.stop_reason) html += ` &middot; stopped (${escapeHtml(step.stop_reason)})`;
         html += `</div>`;
+        // A lookup that never completed learned nothing, which is not the
+        // same as a level with no record (dmarc_tree_walk.py).
         if (step.found && step.record) {
             html += `<div class="tw-record">${escapeHtml(step.record)}</div>`;
+        } else if (step.lookup_failed) {
+            html += `<div class="tw-norecord tw-lookup-failed">${statusIconHtml('unavailable')}<span>Lookup failed</span></div>`;
         } else {
             html += `<div class="tw-norecord">No DMARC record</div>`;
         }
         html += `</div></div>`;
     });
     html += '</div>';
+
+    if (tw.walk_incomplete) {
+        html += `<div class="tw-footnote tw-incomplete">At least one lookup in this walk did not complete, so a policy published at that level could not be read.</div>`;
+    }
 
     // Metadata summary
     if (tw.policy_source) {
@@ -2543,7 +2581,7 @@ function renderDmarcbisReadiness(readiness) {
 // Executive Summary (Prompt 16)
 // ============================================================
 
-function renderExecutiveSummary(es) {
+function renderExecutiveSummary(es, roadmap) {
     if (!es) return '';
 
     const sp = es.spoofing_protection || {};
@@ -2570,11 +2608,15 @@ function renderExecutiveSummary(es) {
     // "could not read" is not an urgent finding, and styling it red would give
     // an incomplete audit the same weight as a real one.
     const riskBg = (es.biggest_risk.startsWith('No urgent risks')
+        || es.biggest_risk.startsWith('Nothing to fix')
         || es.biggest_risk.startsWith('This audit could not read'))
         ? 'es-risk-calm' : 'es-risk-urgent';
 
-    // Action buttons
-    let actions = `<button class="es-action" data-scroll-to="priority-section">View Priorities</button>`;
+    // Action buttons. #priority-section is hidden when the roadmap is empty,
+    // so a button pointing at it would scroll to nothing.
+    const hasPriorities = !!(roadmap && roadmap.items && roadmap.items.length > 0);
+    let actions = hasPriorities
+        ? `<button class="es-action" data-scroll-to="priority-section">View Priorities</button>` : '';
     actions += `<button class="es-action" data-scroll-to="check-dmarc">View Attack Surface</button>`;
     if (es.has_record_builder) {
         actions += `<button class="es-action" data-scroll-to="check-dmarc">Copy Recommended Record</button>`;
@@ -2605,7 +2647,7 @@ function renderExecutiveSummary(es) {
         </div>
 
         ${es.deliverability_summary ? `<div class="es-deliverability">
-            <span class="deliv-icon">&#9993;</span>
+            <span class="deliv-icon">${ICON.mail}</span>
             <span><strong>Email deliverability:</strong> ${escapeHtml(es.deliverability_summary)}</span>
         </div>` : ''}
 
@@ -2756,7 +2798,6 @@ function renderSpfDeepAnalysis(spf) {
         <div class="spfd-block">
             <div class="spfd-header">
                 <span class="spfd-title">SPF Record Analysis</span>
-                <span class="tag">${spf.lookup_count}/10 lookups</span>
             </div>
             ${noteHtml}
             ${mechHtml}
@@ -2836,11 +2877,8 @@ function renderSpfExecution(exec) {
     });
     html += '</div>';
 
-    // Summary footer
-    const totalClass = exec.over_limit ? 'se-counter exceeded' : 'se-counter';
-    html += `<div class="se-footer" data-anim-delay="${metaDelay}s">
-        Total: <span class="${totalClass}">${exec.total_lookups} / ${exec.limit} lookups</span>
-    </div>`;
+    // No lookup total here: the SPF Lookup Budget bar on the same card states
+    // it once.
 
     html += '</div>';
     return html;
@@ -2881,7 +2919,7 @@ function renderDmarcEvaluation(ev) {
     return `
         <div class="dmarc-eval de-animated">
             <div class="se-header-row">
-                <div class="se-header">DMARC Evaluation</div>
+                <h4 class="se-header">DMARC Evaluation</h4>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9989"
                    target="_blank" rel="noopener">rfc9989</a>
             </div>
@@ -2930,7 +2968,7 @@ function renderReportChain(rc) {
     let html = `
         <div class="report-chain rc-animated">
             <div class="se-header-row">
-                <div class="se-header">DMARC Report Delivery Chain</div>
+                <h4 class="se-header">DMARC Report Delivery Chain</h4>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9990#section-4"
                    target="_blank" rel="noopener">rfc9990 &sect;4</a>
             </div>
@@ -3441,7 +3479,7 @@ function renderProviderIntelligence(pi) {
     // Gateway + upstream note
     if (pi.gateway_upstream) {
         html += `<div class="pi-gateway-note">
-            <span class="pi-gateway-icon">&#8644;</span>
+            <span class="pi-gateway-icon">${ICON.swap}</span>
             <span>${escapeHtml(pi.gateway_upstream.note)}</span>
         </div>`;
     }
@@ -3490,10 +3528,11 @@ function _renderProviderCard(provider, showScorecard) {
 
     // Guidance (collapsible)
     if (provider.guidance && provider.guidance.length > 0) {
-        html += `<button class="pi-guidance-toggle" aria-expanded="false">
+        const guidanceId = `pi-guidance-${++_piGuidanceSeq}`;
+        html += `<button class="pi-guidance-toggle" aria-expanded="false" aria-controls="${guidanceId}">
             <span class="pi-chevron">${ICON.chevron}</span> Platform Guidance
         </button>
-        <div class="pi-guidance-body is-hidden">`;
+        <div class="pi-guidance-body is-hidden" id="${guidanceId}">`;
         for (const g of provider.guidance) {
             html += `<div class="pi-guidance-item">
                 <span class="pi-guidance-topic">${escapeHtml(g.topic)}</span>
@@ -3780,7 +3819,8 @@ function _renderRequestId(requestId) {
     if (!requestId) return;
     let el = document.getElementById('request-id-display');
     if (!el) {
-        el = document.createElement('div');
+        el = document.createElement('button');
+        el.type = 'button';
         el.id = 'request-id-display';
         el.className = 'request-id-display';
         const ts = document.getElementById('result-timestamp');
@@ -3789,8 +3829,8 @@ function _renderRequestId(requestId) {
         }
     }
     el.innerHTML = `<span class="request-id-label">Request ID:</span> <code class="request-id-value">${escapeHtml(requestId)}</code>`;
-    el.style.cursor = 'pointer';
     el.title = 'Click to copy';
+    el.setAttribute('aria-label', `Copy request ID ${requestId}`);
     el.onclick = () => _copyToClipboard(requestId, null, '');
 }
 
@@ -3817,7 +3857,7 @@ function _exportToCSV(data) {
             ]);
         });
     } else {
-        rows.push([data.domain, '', '', '', fixes, ts]);
+        rows.push([data.domain, '', '', '', priorities, ts]);
     }
 
     const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -3852,7 +3892,9 @@ document.addEventListener('keydown', (e) => {
     // Don't trigger when typing in inputs
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
     if (e.key === 'r' || e.key === 'R') {
-        if (resultsSection.style.display !== 'none') {
+        // resultsSection.style.display is '' before the first audit, which is
+        // not 'none', so R on a scope button cleared a typed domain.
+        if (lastAuditData) {
             e.preventDefault();
             _resetAndFocusInput();
         }

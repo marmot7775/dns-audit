@@ -238,8 +238,7 @@ BUSINESS_RISK = {
         "to mail that fails."
     ),
     "DMARC_NO_RUA": (
-        "Without aggregate reporting, you have no visibility into who is sending "
-        "mail as your domain. Without aggregate reports you cannot see who is sending "
+        "Without aggregate reports you cannot see who is sending "
         "as your domain or whether their mail passes."
     ),
     "DMARC_PCT_LOW": (
@@ -5896,8 +5895,8 @@ def _build_resilience_analysis(
         dmarc_status = "missing"
         dmarc_note = (
             "No DMARC record found. Without DMARC, there is no policy telling receivers "
-            "what to do with messages that fail SPF and DKIM. Anyone can send email that "
-            "appears to come from this domain."
+            "what to do with messages that fail SPF and DKIM. Receivers have no policy for "
+            "mail that fails authentication for this domain."
         )
     elif dmarc_policy == "reject":
         dmarc_status = "reject"

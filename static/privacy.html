@@ -19,10 +19,13 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/static/style.css?v=f15cecf">
     <script src="/static/theme.js?v=f15cecf"></script>
 </head>
 <body>
+    <a href="#main-content" class="skip-to-content">Skip to content</a>
     <header class="site-header">
         <div class="container header-inner">
             <a href="/" class="logo">
@@ -51,7 +54,7 @@
             </div>
         </div>
     </header>
-    <main class="about-page">
+    <main class="about-page" id="main-content">
         <h1>Privacy</h1>
         <p>This page says what the tool records, where it goes, and how long it stays. It describes dns-audit.com as it works today.</p>
 
@@ -119,7 +122,7 @@
         <div class="container footer-inner">
             <div class="footer-left">
                 <div class="footer-brand-name">dns-audit.com</div>
-                <div class="footer-brand-desc">Free, open-source DNS<br>&amp; email security auditing</div>
+                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
             </div>
             <div class="footer-right">
                 <div class="footer-nav">
