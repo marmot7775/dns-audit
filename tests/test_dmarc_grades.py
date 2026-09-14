@@ -25,7 +25,7 @@ import audit_engine
 import dmarc_tree_walk as tw
 import pdf_report
 from conftest import FakeZone
-from test_doc38_status_semantics import _js_functions
+from test_status_semantics import _js_functions
 
 DOMAIN = "doc44.test"
 RUA = f"rua=mailto:d@{DOMAIN}"

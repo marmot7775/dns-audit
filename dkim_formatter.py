@@ -5,11 +5,9 @@ analyze_dkim_key_strength() is the only public function; audit_engine,
 result_transformer and spf_intelligence use it to grade a selector's key.
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import base64
 import re
-
-from dkim_tag_analyzer import _decode_rsa_key_bits
 
 # RFC 8463 section 3: the Ed25519 public key is 32 raw bytes. Some generators
 # publish the 44-byte DER SubjectPublicKeyInfo wrapper around it instead.
@@ -30,6 +28,85 @@ ED25519_SPKI_LEN = 44
 #      03 21 00           BIT STRING, 33 bytes, 0 unused
 #         <32 key bytes>
 ED25519_SPKI_PREFIX = bytes.fromhex("302a300506032b6570032100")
+
+
+def _decode_rsa_key_bits(b64_data: str) -> Optional[int]:
+    """Decode an RSA SubjectPublicKeyInfo DER blob and return the modulus bit length.
+
+    Every declared ASN.1 length is checked against the bytes actually
+    present. A DER length header is a claim, not a guarantee: a TXT value
+    truncated by a DNS provider still carries the original header, so
+    trusting mod_len alone reports a 60-character fragment of a 2048-bit key
+    as a healthy 2048-bit key while every signature it made fails.
+    """
+    try:
+        raw = base64.b64decode(b64_data)
+    except Exception:
+        return None
+
+    try:
+        if raw[0] != 0x30:
+            return None
+        idx = 1
+        idx, _ = _asn1_length(raw, idx)
+
+        # Skip algorithm identifier SEQUENCE
+        if raw[idx] != 0x30:
+            return None
+        idx += 1
+        idx, algo_len = _asn1_length(raw, idx)
+        if idx + algo_len > len(raw):
+            return None
+        idx += algo_len
+
+        # BIT STRING
+        if raw[idx] != 0x03:
+            return None
+        idx += 1
+        idx, bs_len = _asn1_length(raw, idx)
+        if idx + bs_len > len(raw):
+            return None
+        idx += 1  # skip unused-bits byte
+
+        # Inner SEQUENCE
+        if raw[idx] != 0x30:
+            return None
+        idx += 1
+        idx, seq_len = _asn1_length(raw, idx)
+        if idx + seq_len > len(raw):
+            return None
+
+        # First INTEGER = modulus
+        if raw[idx] != 0x02:
+            return None
+        idx += 1
+        idx, mod_len = _asn1_length(raw, idx)
+        if idx + mod_len > len(raw):
+            return None
+
+        # Leading zero byte for positive integers
+        if raw[idx] == 0x00:
+            mod_len -= 1
+
+        if mod_len <= 0:
+            return None
+
+        return mod_len * 8
+    except (IndexError, ValueError):
+        return None
+
+
+def _asn1_length(data: bytes, idx: int) -> Tuple[int, int]:
+    if idx >= len(data):
+        raise ValueError("Truncated ASN.1 data")
+    b = data[idx]
+    if b < 0x80:
+        return idx + 1, b
+    num_bytes = b & 0x7F
+    if idx + 1 + num_bytes > len(data):
+        raise ValueError("Truncated ASN.1 length")
+    length = int.from_bytes(data[idx + 1: idx + 1 + num_bytes], "big")
+    return idx + 1 + num_bytes, length
 
 
 def _tag_value(dkim_record: str, tag: str) -> Optional[str]:
@@ -131,7 +208,7 @@ def analyze_dkim_key_strength(dkim_record: str) -> Dict:
             result['status'] = 'strong'
             return result
         # A record that says ed25519 but carries RSA key data is a type
-        # mismatch, not an odd size. dkim_tag_analyzer reports the same thing.
+        # mismatch, not an odd size.
         rsa_bits = _decode_rsa_key_bits(key_data)
         result['status'] = 'invalid'
         result['reason'] = 'undecodable'

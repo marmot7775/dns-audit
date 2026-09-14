@@ -13,9 +13,9 @@ Output is deterministic: fixed domain order, fixed card order, one line per
 card. Two runs diff cleanly, so a deploy that was supposed to change three
 verdicts can be shown to have changed exactly those three.
 
-    python3 live_check.py                    # against production
-    python3 live_check.py --base http://127.0.0.1:8000
-    python3 live_check.py > docs/live-baseline.txt
+    python3 tools/live_check.py              # against production
+    python3 tools/live_check.py --base http://127.0.0.1:8000
+    python3 tools/live_check.py > FILE       # output goes wherever you point it
 
 Exit status is 1 if any domain could not be audited at all, so this is
 usable as a smoke test after a deploy.

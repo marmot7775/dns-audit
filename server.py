@@ -132,7 +132,7 @@ except PermissionError:
 # its DNS lookup. Nothing raises and nothing logs at request time, so the
 # start-up check below is the only signal anyone gets. Scaling out means
 # moving all five to shared storage first. See CLAUDE.md, "Single worker by
-# design", and the comment above ExecStart in dns-auditor.service.
+# design", and the comment above ExecStart in deploy/dns-auditor.service.
 
 def _parse_worker_flag(argv) -> Optional[int]:
     """Pull a worker count out of a uvicorn or gunicorn argv, or return None."""

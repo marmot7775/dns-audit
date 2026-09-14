@@ -7,19 +7,12 @@ the <header> block from every static HTML page, strips the one permitted
 per-page difference (which nav link carries nav-link-active) and asserts
 that all eight blocks are byte-identical, so the header cannot drift again.
 """
-import glob
 import os
 import re
 
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC = os.path.join(REPO_ROOT, "static")
-
-PAGES = sorted(
-    glob.glob(os.path.join(STATIC, "*.html"))
-    + glob.glob(os.path.join(STATIC, "articles", "*.html"))
-)
+from static_pages import EXPECTED_PAGES, PAGES, STATIC
 
 HEADER_RE = re.compile(r'<header class="site-header">.*?</header>', re.DOTALL)
 
@@ -41,17 +34,8 @@ def _normalised(path):
 
 
 def test_every_static_page_is_covered():
-    names = {os.path.relpath(p, STATIC) for p in PAGES}
-    assert names == {
-        "404.html",
-        "about.html",
-        "index.html",
-        "privacy.html",
-        "articles/dane.html",
-        "articles/dmarcbis.html",
-        "articles/dnssec.html",
-        "articles/index.html",
-    }
+    """Covers the footer test too: both read PAGES from static_pages."""
+    assert {os.path.relpath(p, STATIC) for p in PAGES} == EXPECTED_PAGES
 
 
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
