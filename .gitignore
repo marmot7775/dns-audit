@@ -52,7 +52,6 @@ logs/
 
 # Old project copies
 dns-security-auditor/
-dns_auditor/
 dns_auditor_backup/
 
 # Local helper shell scripts, never part of the deploy
@@ -78,6 +77,7 @@ config.toml
 .coverage
 htmlcov/
 .pytest_cache/
+.ruff_cache/
 .tox/
 .nox/
 
@@ -95,5 +95,4 @@ package-lock.json
 *.db-wal
 *.db-journal
 
-audit.log
 audit.log

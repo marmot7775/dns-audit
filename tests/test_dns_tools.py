@@ -37,3 +37,9 @@ def test_normalize_domain_edge_cases():
 def test_normalize_domain_idn():
     # Internationalized domain name converts to punycode
     assert normalize_domain("münchen.de") == "xn--mnchen-3ya.de"
+    assert normalize_domain("BÜCHER.de") == "xn--bcher-kva.de"
+
+
+def test_normalize_domain_invalid_no_exception():
+    # Best-effort: invalid IDN passes through (lowercased) for downstream validation.
+    assert normalize_domain("not a domain") == "not a domain"

@@ -2775,7 +2775,7 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
 
     Checks based on:
       - RFC 4035 (DNSSEC Protocol Modifications)
-      - RFC 8624 (Algorithm Implementation Requirements)
+      - IANA DNSSEC algorithm registries (RFC 9904, which obsoletes RFC 8624)
       - NIST SP 800-81-2 (Secure DNS Deployment Guide)
 
     dnssec_state values (machine-readable four-state classification):

@@ -160,7 +160,7 @@
     --border-focus: #5b8def;
 
     /* Text. Every step is 4.5:1 or better on --bg, --bg-raised and
-       --surface; tests/test_doc35_palette_contrast.py holds that. */
+       --surface; tests/test_palette_contrast.py holds that. */
     --text-primary: #eef2f8;
     --text-secondary: #a3b0c4;
     --text-tertiary: #98a5b9;
@@ -6129,7 +6129,7 @@ input[type="search"],
    ========================================================================== */
 @media (prefers-color-scheme: light) {
     /* Keep in step with the [data-theme="light"] block below; the two must
-       carry identical token values. tests/test_doc35_palette_contrast.py
+       carry identical token values. tests/test_palette_contrast.py
        compares them. */
     :root:where(:not([data-theme="dark"])) {
         color-scheme: light;

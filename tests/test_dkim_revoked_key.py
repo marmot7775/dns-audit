@@ -114,7 +114,7 @@ def test_malformed_ed25519_key_does_not_report_a_bit_length():
 
 def test_ed25519_with_data_that_is_neither_is_not_called_an_rsa_mismatch():
     """Ported from tests/test_dkim_key_type_data_mismatch.py, which tested the
-    unreachable dkim_tag_analyzer validator and was deleted with it.
+    unreachable second DKIM validator and was deleted with it.
 
     Key data that is neither Ed25519-sized nor decodable as RSA must be named
     as the wrong size, not as a key-type mismatch. Calling it a mismatch sends

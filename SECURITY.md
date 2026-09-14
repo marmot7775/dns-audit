@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in dns-security-auditor, please report it responsibly.
 
-**Report privately:** use GitHub's private vulnerability reporting on this repository (Security tab, Report a vulnerability). If that is not available to you, message me on https://www.linkedin.com/in/neilanuskiewicz/ and I will open a private channel.
+**Report privately:** use GitHub's private vulnerability reporting on this repository (Security tab, Report a vulnerability), or write to dns@dns-audit.com. If neither works for you, message me on https://www.linkedin.com/in/neilanuskiewicz/ and I will open a private channel.
 
 **What to include:**
 - Description of the vulnerability
@@ -26,13 +26,6 @@ If you discover a security vulnerability in dns-security-auditor, please report 
 - Third-party services (Cloudflare, crt.sh)
 - Social engineering attacks
 - Denial of service attacks
-
-## Supported Versions
-
-| Version | Supported |
-|---------|-----------|
-| 2.x     | Yes       |
-| < 2.0   | No        |
 
 ## Responsible Disclosure
 

@@ -20,8 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pdf_report
 import result_transformer as rt
-from test_doc32_plurals_and_tone import _python_strings
-from test_doc44_dmarc_grades import DOMAIN, RUA, _card, _run
+from test_plurals_and_tone import _python_strings
+from test_dmarc_grades import DOMAIN, RUA, _card, _run
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -222,7 +222,7 @@ def test_removed_tag_rows_do_not_repeat_their_explanation(audit):
 
 
 def test_one_weak_dkim_key_is_singular():
-    from test_doc18_dkim_2048_is_a_recommendation import _rsa_key_record
+    from test_dkim_2048_is_a_recommendation import _rsa_key_record
     card = rt.transform_dkim({"found_selectors": [{"selector": "s1", "record": _rsa_key_record(1024)}],
                               "tested_count": 1}, "example.com")
     item = next(i for i in rt.build_security_roadmap([card])["items"] if i["protocol"] == "DKIM")

@@ -8,12 +8,19 @@ Item 1: the Blocklist check was removed (live_check.py's docstring explains
 why), so it must not reappear in copy a reader could act on. The docstring
 itself is exempt: it is deliberately historical, explaining a check that
 used to exist.
+
+Doc 51: live_check moved to tools/. The README's "What it does not do"
+section names the Blocklist check to say the tool does not do it, so that
+section is exempt from the ban. The Architecture block lists every module in
+the repository root and every entry in it exists.
 """
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
 
 import audit_engine
 import live_check
@@ -24,6 +31,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _read(*parts):
     with open(os.path.join(REPO_ROOT, *parts), encoding="utf-8") as f:
         return f.read()
+
+
+def _section(text, title):
+    m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    assert m, f"README.md has no '## {title}' section"
+    return m.group(1)
 
 
 def test_readme_headline_check_count_matches_the_check_registry():
@@ -58,6 +71,7 @@ def test_no_page_or_readme_mentions_the_removed_blocklist_check():
     offenders = []
 
     readme = _read("README.md")
+    readme = readme.replace(_section(readme, "What it does not do"), "")
     if re.search(r"blocklist", readme, re.IGNORECASE):
         offenders.append("README.md")
 
@@ -82,3 +96,48 @@ def test_live_check_mentions_blocklist_only_in_its_docstring_not_in_card_order()
         "CARD_ORDER, so a run against production would look for a card "
         "that no longer exists"
     )
+
+
+def _architecture_entries():
+    """Every path the README's Architecture code block names.
+
+    A line at column 0 is a path from the repo root; an indented line is a
+    path inside the directory entry above it.
+    """
+    block = re.search(r"```\n(.*?)```", _section(_read("README.md"), "Architecture"), re.DOTALL)
+    assert block, "the README's Architecture section has no code block"
+    entries, parent = [], ""
+    for line in block.group(1).splitlines():
+        if not line.strip():
+            parent = ""
+            continue
+        name = line.split()[0]
+        if line.startswith(" "):
+            entries.append(parent + name)
+        else:
+            entries.append(name)
+            parent = name if name.endswith("/") else ""
+    return entries
+
+
+def _root_modules():
+    out = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=REPO_ROOT, check=True, capture_output=True
+    ).stdout
+    return {p for p in out.decode("utf-8").split("\0") if p.endswith(".py") and "/" not in p}
+
+
+def test_architecture_block_lists_every_root_module_and_no_other():
+    listed = {e for e in _architecture_entries() if e.endswith(".py") and "/" not in e}
+    root = _root_modules()
+    assert root - listed == set(), (
+        f"root modules missing from the README's Architecture block: {sorted(root - listed)}"
+    )
+    assert listed - root == set(), (
+        f"the README's Architecture block lists modules not in the root: {sorted(listed - root)}"
+    )
+
+
+def test_every_architecture_entry_exists():
+    missing = [e for e in _architecture_entries() if not os.path.exists(os.path.join(REPO_ROOT, e))]
+    assert missing == [], f"the README's Architecture block names paths that do not exist: {missing}"

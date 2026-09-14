@@ -13,7 +13,7 @@ DKIM Key Rotation", a step gated on there being no weak key.
 Bug 17b, the same normalization: that key_type string was guessed from the
 base64 length, `len > 300 => 'RSA 2048-bit'`, so 3072-bit and 4096-bit keys
 both read as 2048. dkim_formatter.analyze_dkim_key_strength already decodes
-the DER SubjectPublicKeyInfo through dkim_tag_analyzer._decode_rsa_key_bits;
+the DER SubjectPublicKeyInfo through dkim_formatter._decode_rsa_key_bits;
 the discovery path now calls it instead of keeping a second, wrong copy of
 the size logic.
 

@@ -3,7 +3,7 @@
 Public contact for this repo goes through LinkedIn or GitHub private
 vulnerability reporting. The address was removed from the live site in
 b5233ec and from the last four committed files in doc 37. This test walks
-every file git tracks, docs/prompts included, and fails on any address at
+every file git tracks, docs/history included, and fails on any address at
 the five personal domains, so a future prompt doc or page cannot bring one
 back.
 
@@ -31,7 +31,8 @@ ADDRESS_RE = re.compile(
 _FIXTURE = "user" + "@" + "gmail" + ".com"
 
 # Doc 41: the public contact alias, allowed only in the eight page footers,
-# the results note in app.js, and the doc that asked for it.
+# the results note in app.js, and the doc that asked for it. Doc 51 added
+# SECURITY.md as a private reporting channel, and its own doc names it.
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
 ALIAS_FILES = (
     "static/index.html",
@@ -43,12 +44,14 @@ ALIAS_FILES = (
     "static/articles/dnssec.html",
     "static/articles/index.html",
     "static/app.js",
-    "docs/prompts/doc-41.md",
+    "docs/history/doc-41.md",
+    "docs/history/doc-51.md",
+    "SECURITY.md",
 )
 
 ALLOWED = {
     ("tests/test_dns_tools.py", _FIXTURE),
-    ("docs/prompts/doc-37.md", _FIXTURE),
+    ("docs/history/doc-37.md", _FIXTURE),
 } | {(rel, ALIAS) for rel in ALIAS_FILES}
 
 
@@ -71,7 +74,7 @@ def _matches(relpath):
 def test_git_ls_files_sees_the_repo():
     files = _tracked_files()
     assert "SECURITY.md" in files
-    assert "docs/prompts/doc-37.md" in files
+    assert "docs/history/doc-37.md" in files
     assert "tests/test_dns_tools.py" in files
 
 
@@ -94,9 +97,10 @@ def test_allowlisted_fixture_is_still_where_the_allowlist_says(rel, addr):
     assert addr in _matches(rel), f"{rel} no longer contains the allowlisted string"
 
 
-def test_security_policy_points_to_private_reporting_not_email():
+def test_security_policy_points_to_private_reporting():
     with open(os.path.join(REPO_ROOT, "SECURITY.md"), encoding="utf-8") as f:
         text = f.read()
     assert "**Email:**" not in text
+    assert ALIAS in text
     assert "private vulnerability reporting" in text
     assert "https://www.linkedin.com/in/neilanuskiewicz/" in text

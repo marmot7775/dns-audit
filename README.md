@@ -1,14 +1,12 @@
 # dns-audit.com
 
-**DNS and email security auditing, with DMARC validated against RFC 9989**
+**DNS and email security audit, with DMARC checked against RFC 9989**
 
-**Built by [Neil Anuskiewicz](https://www.linkedin.com/in/neilanuskiewicz/)** | **Live at [dns-audit.com](https://dns-audit.com)**
+dns-audit.com audits a domain's DNS and email security: enter a domain and get plain-language findings and copy-paste DNS records that fix them. DMARC is checked against RFC 9989, the current standard, and against the RFC 7489 behavior most receivers still implement; [the RFC 9989 article](https://dns-audit.com/articles/dmarcbis) explains what changed. Live at [dns-audit.com](https://dns-audit.com).
 
-DNS and email security analysis for any domain. Enter a domain and get technical findings, plain-language explanations, and copy-paste DNS fix records. DMARC records are checked against RFC 9989, the current DMARC standard, and against RFC 7489 behavior, which most receivers still implement while tree walk support rolls out.
+![Home page](docs/screenshots/home-light.jpg)
 
-Built for engineers, email administrators, and security consultants who need to evaluate a domain's authentication posture quickly and accurately.
-
----
+![Results page](docs/screenshots/results-light.jpg)
 
 ## 12 Security Checks
 
@@ -16,7 +14,7 @@ Built for engineers, email administrators, and security consultants who need to 
 
 | Check | What It Does |
 |-------|-------------|
-| **DMARC + RFC 9989** | Validation against RFC 9989 and against RFC 7489, side by side, with a per-tag decoder, dangerous-combination detection, and the DNS Tree Walk of [RFC 9989 Section 4.10](https://www.rfc-editor.org/rfc/rfc9989.html#section-4.10) for hierarchical policy discovery. Full detail under RFC 9989 Checker below. |
+| **DMARC + RFC 9989** | Validation against RFC 9989 and against RFC 7489, side by side, with a per-tag decoder, dangerous-combination detection, and the DNS Tree Walk of [RFC 9989 Section 4.10](https://www.rfc-editor.org/rfc/rfc9989.html#section-4.10) for hierarchical policy discovery. |
 | **SPF** | Syntax validation, mechanism analysis, recursive evaluation with full lookup chain tracing, void lookup detection, and vendor-labeled include tree visualization. Flags `+all`, `?all`, missing `all`, `redirect`+`all` conflicts, deprecated `ptr`, overly broad CIDRs, and invalid IPs. |
 | **DKIM** | Selector discovery from a list of about 1,100 known selectors, narrowed by SPF-based vendor fingerprinting to about 200 lookups per audit. Key strength analysis for RSA (1024/2048/4096) and Ed25519. Direct lookup of user-supplied selectors. Wildcard DNS detection prevents false positives. |
 
@@ -44,8 +42,6 @@ Built for engineers, email administrators, and security consultants who need to 
 | **Nameservers** | NS count, resolution and authoritative response verification, `SOA` serial consistency, IPv6 support, network diversity across /24 ranges, provider identification. |
 | **Certificate Transparency** | CT log query via crt.sh, issuer breakdown, CAA mismatch detection, expiring certificate alerts, subdomain discovery. |
 
----
-
 ## How Results Are Presented
 
 There are no letter grades and no numeric score. Results open with three summary metrics:
@@ -53,113 +49,66 @@ There are no letter grades and no numeric score. Results open with three summary
 | Metric | What It Shows |
 |--------|---------------|
 | Spoofing Protection | Whether direct, subdomain, and non-existent-subdomain spoofing are closed by the DMARC policy, naming any that are not. |
-| RFC 9989 Readiness | Ready, Compatible, In Progress, or Action Needed |
-| Protocol Coverage | How many of nine protocols (DMARC, SPF, DKIM, MTA-STS, TLS-RPT, DANE, DNSSEC, BIMI, CAA) are configured |
+| RFC 9989 Readiness | Ready, Compatible, In progress, or Action needed |
+| Protocol Coverage | How many of up to nine protocols (DMARC, SPF, DKIM, MTA-STS, TLS-RPT, DANE, DNSSEC, BIMI, CAA) are configured |
 
-Below the summary, each check reports pass, warning, fail, not configured, or not checked with the specific finding and a copy-paste fix where one applies. A prioritized roadmap orders the fixes by impact.
+Below the summary, each check reports pass, warning, fail, not configured, or not checked, with the finding and a copy-paste fix where one applies. A prioritized roadmap orders the fixes by impact.
 
-*Note: DKIM selectors cannot be enumerated via DNS. For best results, provide your selector directly.* Domains where selectors could not be detected are not marked down for it, since DNS gives no way to list the names under `_domainkey` and an undetected selector is not evidence of a missing one.
+DNS cannot list DKIM selectors, so name yours for the best result; an undetected selector is never marked down.
 
----
+## Features
 
-## Key Features
-
-### DMARC (RFC 7489)
-
-When evaluating an inbound message, the receiver queries DNS for a `TXT` record at `_dmarc.<domain>`, where the domain is taken from the email's RFC 5322.From (Header From). If no record is found at the exact Author Domain, the receiver determines the Organizational Domain using a Public Suffix List (PSL) and performs a single fallback lookup at that level. No intermediate subdomains are checked.
-
-If a valid record (beginning with `v=DMARC1`) is found at either level, its policy is applied. Otherwise, DMARC does not apply to the message.
-
-### RFC 9989 DNS Tree Walk
-
-Starting from the Author Domain (RFC 5322.From), the tool queries for a DMARC Policy Record. If none is found, it initiates a DNS Tree Walk as described in RFC 9989, Section 4.10, walking up the DNS hierarchy one label at a time to discover both an applicable policy and the Organizational Domain used for identifier alignment. The walk is capped at eight DNS queries to prevent abuse.
-
-Tree walk results are displayed alongside RFC 7489 lookups, because publication is not deployment. Most receivers still evaluate DMARC using RFC 7489 behavior. Showing both lets domain owners compare how policy discovery, inheritance via `sp` and `np`, and the `psd` and `t` tags behave under each, and see what changes as receivers adopt the tree walk.
-
-### Why RFC 9989 Matters
-
-RFC 9989 addresses several architectural limitations in RFC 7489 that carry real security and sustainability implications for email authentication. The original spec was published in 2015 as an Informational RFC, not a formal Internet standard, and carried no conformance requirements. Receivers were free to interpret it however they chose, and they did. A decade of deployment exposed problems that could not be patched within the original framework.
-
-The most significant change is replacing the Public Suffix List, a community-maintained external dependency, with the DNS Tree Walk, a DNS-native mechanism that lets domain owners control their own domain boundaries. RFC 7489 also only performs two lookups (the exact Author Domain and the Organizational Domain), leaving no way for intermediate subdomains to govern their own branch of the tree. For a domain like `notifications.app.services.example.com`, the only two lookups are at that exact subdomain and at `example.com`. There is no way for `services.example.com` to independently govern its own branch. The tree walk queries each level of the hierarchy, enabling decentralized policy management. RFC 9989 also brings in the `np` tag from RFC 9091, which sets a policy for non-existent subdomains separately from real ones. Under RFC 7489 a fabricated subdomain like `ceo.example.com` already inherited `sp`, or `p` when `sp` was absent, so the two moved together. With `np` you can hold `sp=none` while a real subdomain is still being aligned and reject fabricated ones at the same time.
-
-DMARC is now three documents, all published May 2026 as Proposed Standards. RFC 9989 is the core protocol, RFC 9990 is aggregate reporting, RFC 9991 is failure reporting. All three obsolete RFC 7489. RFC 9989 also obsoletes RFC 9091 (PSD DMARC), and RFC 9991 updates RFC 6591. Receiver deployment is gradual, so this tool analyzes the current specification alongside RFC 7489 behavior and shows domain owners where their records stand under each.
-
-### SPF Evaluation Trace
-
-Full recursive SPF evaluation that traces the path through every `include` and `redirect`, showing the per-node lookup cost. Detected vendors are labeled inline so you can see exactly which services consume your 10-lookup budget.
-
-### Defensive DNS Detection
-
-Domains configured to not send or receive email (null MX, `v=spf1 -all`, `p=reject`) are identified as defensive DNS configurations rather than flagged for intentionally absent email infrastructure.
-
-### Authentication Resilience
-
-Evaluates whether the domain can survive the failure of any single authentication mechanism. A domain with both SPF and DKIM functional has high resilience. A domain relying on SPF alone has moderate resilience because forwarded mail will fail.
-
-### Anomaly Detection
-
-Cross-check analysis that catches issues no single check reveals: DMARC enforcement without SPF, BIMI without DMARC enforcement, MTA-STS without TLS-RPT, mixed DKIM key strengths, parked domains with live MX records, unauthorized DMARC report destinations, broken DNSSEC chains.
-
-### PDF Report
-
-One-click branded PDF with executive summary (summary metrics, priority fixes, detected vendors) and detailed check cards.
-
-### Scoped Audits
-
-| Scope | Checks |
-|-------|--------|
-| Complete Audit | All 12 checks |
-| Email Security | DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI |
-| DMARC Check | DMARC, SPF, DKIM |
-| Transport Security | MTA-STS, TLS-RPT, DANE, MX |
-| DNS Infrastructure | DNSSEC, CAA, DANE, Nameservers, Certificate Transparency |
-| Security Scan | DMARC, SPF, DKIM, DNSSEC, DANE, CT, CAA, MTA-STS |
-
-### Vendor Detection
-
-Identifies email service providers using multiple signals: MX hostnames, SPF `include` chains, DMARC `rua` reporting URIs, and DKIM selectors. Multi-signal detection with confidence scoring.
-
-### RFC 9989 Checker
-
-Validates DMARC records against RFC 9989:
-
-- **Strict Record Validator**: 16 layered checks across tokenization, grammar, and semantics. Catches missing `mailto:` prefixes, duplicate tags, invalid URIs, and other issues that legacy tools silently accept.
-- **Spec Mode Toggle**: Switch between RFC 7489 (legacy) and RFC 9989 (strict) validation to see exactly what changes. The delta view shows which issues RFC 9989 flags that RFC 7489 accepted.
-- **Tag Decoder with RFC 9989 Education**: Every tag explained with security consequences and a RFC 9989 note explaining what changed from RFC 7489 and why.
-- **Dangerous Combination Detection**: 20 checks for dangerous tag interactions (`sp=none` + `p=reject` policy gaps, contradictory policies, test mode weakening enforcement).
-- **Health Verdict**: 5-state classification (RFC 9989 Ready, Compatible, Monitoring, Needs Attention, Misconfigured) with specific findings.
-- **Migration Wizard**: Personalized step-by-step path from current state to RFC 9989 Ready, with before/after DNS records at every step and a copy-to-clipboard target record.
-- **Attack Surface View**: 4-vector spoofing risk map (direct domain, subdomain, non-existent subdomain, reporting leakage) with concrete attack scenarios.
-- **Email Security Roadmap**: Cross-protocol prioritized action plan synthesizing findings across all 12 checks.
-
-### Email Security Roadmap
-
-Synthesizes findings across all protocols into one prioritized action plan with four tiers (critical, high, medium, low). Shows the most impactful action first with business impact context for each recommendation.
-
----
+- **RFC 9989 tree walk**: Section 4.10 policy discovery, capped at eight queries, beside the RFC 7489 lookup, with a strict record validator (38 finding codes).
+- **SPF trace**: every `include` and `redirect` with its lookup cost, vendors labeled.
+- **Defensive DNS**: null MX, `v=spf1 -all` and `p=reject` read as a non-mail domain, not as missing records.
+- **Resilience**: whether mail still passes DMARC when SPF or DKIM fails alone.
+- **Anomalies**: cross-check findings, such as MTA-STS without TLS-RPT.
+- **PDF report**: executive summary, priorities, detected vendors, and every check card.
+- **Scoped audits**: six scopes, each running only the checks it needs.
+- **Vendor detection**: from MX hosts, SPF includes, DMARC `rua` addresses, and DKIM selectors.
+- **Roadmap**: one prioritized fix list across all protocols, in four tiers.
 
 ## Architecture
 
-Single-page application with a FastAPI backend. No user accounts and no tracking. The only stored state is a SQLite table of DNS records seen during past audits, used for change detection and pruned after 90 days.
+Single-page app on FastAPI, dnspython and reportlab, with vanilla JavaScript. No accounts, no tracking. The only database is a SQLite table of DNS records seen in past audits, used for change detection and pruned after 90 days.
 
 ```
-server.py                  FastAPI, SSE streaming, rate limiting, caching, PDF endpoint
-audit_engine.py            Check orchestration, parallel execution with timeouts
-result_transformer.py      Raw results to frontend card format
-pdf_report.py              reportlab-based PDF generation
-dmarc_tree_walk.py         RFC 9989 Section 4.10 tree walk
-spf_recursive.py           Recursive SPF lookup counter
-spf_execution_engine.py    SPF evaluation trace and include tree
-checks_extra.py            MTA-STS, TLS-RPT, BIMI checks
-anomaly_detector.py        Cross-check anomaly detection
-dkim_formatter.py          DKIM key analysis (RSA/Ed25519)
-advanced_fingerprinting.py Multi-signal vendor fingerprinting
+server.py                  FastAPI app, SSE, rate limiting, caching
+config.py                  Settings from the environment
+audit_engine.py            Check orchestration and timeouts
+result_transformer.py      Raw results to cards, metrics, roadmap
+pdf_report.py              PDF report
+dns_tools.py               Domain normalization, resolvers
+dns_snapshots.py           DNS record history for change detection
+dmarc_tree_walk.py         RFC 9989 tree walk
+spf_recursive.py           SPF lookup counter
+spf_execution_engine.py    SPF trace, DMARC evaluation summary
+spf_intelligence.py        DKIM selector discovery from SPF vendors
+checks_extra.py            MTA-STS, TLS-RPT, BIMI
+mx_check.py                MX analysis
+dkim_formatter.py          DKIM key analysis
+comprehensive_selectors.py Known DKIM selectors
+advanced_fingerprinting.py Vendor fingerprinting
+anomaly_detector.py        Cross-check anomalies
+ua_classify.py             Browser and bot labels for the audit log
 
 static/
-  index.html               Single-page app shell
-  app.js                   Result rendering, visualizations, scoped audits
-  style.css                Design tokens, responsive layout, animations
+  index.html               App shell
+  app.js                   Result rendering
+  style.css                Styles and design tokens
+  theme.js                 Theme toggle
+  articles.js              Articles filter
+  articles/                Articles
+
+tools/                     Operator scripts
+  live_check.py            Card statuses from a deployed site
+  rewrite_audit_log_ua.py  Old audit log entries to the log policy
+
+deploy/
+  dns-auditor.service      systemd unit template
 ```
+
+Review history: [docs/history](docs/history/README.md).
 
 ## API
 
@@ -170,51 +119,38 @@ GET /api/audit/{domain}/pdf                    PDF download
 GET /api/health                                Health check (DNS resolution, running commit)
 ```
 
-Optional parameters: `selector`, `scope`.
-
-Rate limited to 10 requests per IP per minute. Results cached for 5 minutes.
+Optional parameters: `selector`, `scope`. Rate limited to 10 requests per IP per minute. Results cached for 5 minutes.
 
 ## Self-Hosting
 
-Python 3.10 or newer. Six of the pinned dependencies, dnspython and
-fastapi among them, declare `Requires-Python >=3.10`, so `pip install -r
-requirements.txt` fails outright on anything older. CI runs the suite on
-3.11 and 3.12. No external services or databases.
+Python 3.10 or newer: seven pinned dependencies require it. CI runs tests on 3.11 and security scans on 3.12; production runs 3.12.
 
 ```bash
 pip install -r requirements.txt
 uvicorn server:app --host 127.0.0.1 --port 8000
 ```
 
-All DNS resolution via dnspython. No API keys needed.
+Run it behind a reverse proxy that terminates TLS, bound to loopback. Exposed on 0.0.0.0, set `TRUSTED_PROXY_IPS=` (empty), or any client can rotate `X-Real-IP` past the rate limit. Never pass `--proxy-headers`. Run one worker: the cache, rate limiter and concurrency budget are per process. `/api/health` reports the running commit SHA; `BUILD_SHA` overrides it.
 
-`/api/health` reports `version`, the short commit SHA of the running
-process, so a deploy can be confirmed from outside. Static asset `?v=`
-strings cannot do that: they are rewritten only when a file under
-`static/` changes, so a Python-only commit leaves them on the previous
-build and a skipped restart looks like a successful one. Set `BUILD_SHA`
-to override it where the deploy ships no working tree.
+## Tests
 
-Run it behind a reverse proxy that terminates TLS, and bind it to loopback as
-above so it never accepts connections directly. If you expose it on 0.0.0.0
-instead, set `TRUSTED_PROXY_IPS=` (empty) so the `X-Real-IP` header is ignored,
-because any client can then set that header itself and rotate it to walk past
-the per IP rate limit. Do not pass `--proxy-headers`: the rate limiter
-identifies clients by checking that the connecting peer is a trusted proxy, and
-that flag overwrites the peer address with a client supplied one.
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python3 -m pytest tests/ -q
+```
 
-Use a single worker. No `--workers` flag, and leave `WEB_CONCURRENCY` unset.
-The cache, the rate limiter, the concurrency budget and the in flight audit
-registry are all in process state, so a second worker gets its own copy of each
-and every limit silently multiplies by the worker count. The server logs an
-error at start-up if it detects more than one.
+1,086 tests, run against fake DNS zones. The `no_network` fixture fails any TCP connection off the machine; UDP DNS still gets past it. Browser tests need Playwright (requirements-dev.txt) and `python -m playwright install chromium`, and skip without them.
 
-## Tech Stack
+## What it does not do
 
-- **Backend**: Python, FastAPI, dnspython, reportlab
-- **Frontend**: Vanilla JavaScript, CSS custom properties, no frameworks
-- **Fonts**: DM Sans, JetBrains Mono
-- **Hosting**: DigitalOcean, Cloudflare
+- No blocklist lookups.
+- No mail sending and no SMTP connections. Outbound traffic is DNS plus HTTPS fetches of MTA-STS policies, BIMI logos, and crt.sh.
+- No accounts.
+- No stored audit history beyond the 90-day DNS snapshot table. Results are cached in memory for five minutes; the request log keeps each audit's domain and scope, not results.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Author
 

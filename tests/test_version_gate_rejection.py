@@ -1,5 +1,5 @@
 """
-Prompt 25: a TXT record that fails a record type's version gate must be
+Prompt 25 (Doc 25): a TXT record that fails a record type's version gate must be
 reported as a present-but-invalid record, never as "no record found".
 
 DMARC's _raw_check_dmarc took the "no record" early-return whenever every
