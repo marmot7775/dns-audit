@@ -1,4 +1,4 @@
-# dns-security-auditor
+# dns-audit
 
 ## Stack
 - **Backend:** Python, FastAPI (server.py), uvicorn
@@ -131,6 +131,7 @@ the repo; substitute them before running anything below.
 deploy/dns-auditor.service is a template for the same reason.
 
 git push && ssh DEPLOY_USER@DROPLET_HOST "cd dns-security-auditor && git pull && ~/.venv/bin/pip install -r requirements.txt && sudo systemctl restart dns-auditor"
+The droplet directory keeps the old name on purpose: the repo became dns-audit in Doc 54, the checkout on the server did not move.
 
 The pip install step matters: the server's venv is not kept in sync with
 requirements.txt automatically, so a new or bumped dependency (e.g.
