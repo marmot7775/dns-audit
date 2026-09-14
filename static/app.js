@@ -184,6 +184,24 @@ document.addEventListener('DOMContentLoaded', () => {
         domainInput.value = '';
     }
 
+    // One soft pulse of the focus ring when the page opens with the cursor in
+    // the domain field. Not for a shared-result link, which runs an audit,
+    // and never on a later focus. autofocus lands after DOMContentLoaded, so
+    // the check waits one frame.
+    if (!params.has('d')) {
+        requestAnimationFrame(() => {
+            if (document.activeElement !== domainInput) return;
+            const wrapper = domainInput.closest('.input-wrapper');
+            const done = (e) => {
+                if (e.target !== wrapper) return;
+                wrapper.classList.remove('input-wrapper-hello');
+                wrapper.removeEventListener('animationend', done);
+            };
+            wrapper.addEventListener('animationend', done);
+            wrapper.classList.add('input-wrapper-hello');
+        });
+    }
+
     // Back-to-top button
     const backToTop = document.createElement('button');
     backToTop.innerHTML = ICON['arrow-up'];
