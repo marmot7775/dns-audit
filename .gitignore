@@ -51,7 +51,6 @@ logs/
 *.orig
 
 # Old project copies
-dns-security-auditor/
 dns_auditor_backup/
 
 # Local helper shell scripts, never part of the deploy
