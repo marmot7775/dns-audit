@@ -35,7 +35,7 @@ def _slow_audit_no_progress(domain, dkim_selector=None, scope=None, progress_cal
     time.sleep(30)
     if progress_callback:
         progress_callback("done", 1, 1)
-    return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
+    return {"domain": domain, "checks": [], "vendors": []}
 
 
 @pytest.fixture

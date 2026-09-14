@@ -26,7 +26,7 @@ client = TestClient(server_module.app)
 
 
 def _fast_audit(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
-    return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
+    return {"domain": domain, "checks": [], "vendors": []}
 
 
 class _UnstartableThread:

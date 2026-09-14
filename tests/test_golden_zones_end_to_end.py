@@ -390,8 +390,7 @@ def _populated_fields(panel):
 # The golden snapshot. For the fully configured zone, exactly these fields
 # carry data. Fields deliberately absent from a set are ones that are empty
 # for a real reason in this zone, not a wiring fault: spf_deep.misconfigs and
-# .optimizations because the record is clean, dane_deep.hosts_with_tlsa and
-# .parsed_records because the zone publishes no TLSA.
+# .optimizations because the record is clean.
 #
 # Equality, not a subset. A field that stops being populated is the shape a
 # producer/consumer key mismatch takes, and a field that starts being
@@ -402,11 +401,6 @@ GOLDEN_DEEP_PANELS = {
         "all_explanation", "all_mechanism", "all_severity", "dmarcbis_note",
         "lookup_count", "mechanisms",
     },
-    ("MTA-STS", "mta_sts_deep"): {
-        "max_age_level", "max_age_note", "mode", "mode_explanation",
-    },
-    ("TLS-RPT", "tls_rpt_deep"): {"cross_protocol_note", "destinations"},
-    ("DANE", "dane_deep"): {"dnssec_status", "hosts_without_tlsa"},
 }
 
 

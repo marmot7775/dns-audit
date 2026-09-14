@@ -53,7 +53,7 @@ def test_same_second_write_is_not_lost_to_a_timestamp_tie(monkeypatch):
     )
 
 
-def test_get_history_breaks_timestamp_ties_by_id_desc(monkeypatch):
+def test_get_all_history_breaks_timestamp_ties_by_id_desc(monkeypatch):
     _use_temp_db(monkeypatch)
     domain = "example.com"
     record_type = "dmarc"
@@ -64,7 +64,7 @@ def test_get_history_breaks_timestamp_ties_by_id_desc(monkeypatch):
     _insert_tied_timestamp(conn, domain, record_type, "v3")
     conn.commit()
 
-    history = dns_snapshots.get_history(domain, record_type)
+    history = dns_snapshots.get_all_history(domain)[record_type]
     assert [h["record_value"] for h in history] == ["v3", "v2", "v1"], (
-        "get_history did not return newest-first for same-second writes"
+        "get_all_history did not return newest-first for same-second writes"
     )

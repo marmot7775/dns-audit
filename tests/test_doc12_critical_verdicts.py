@@ -11,7 +11,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import audit_engine
 import pdf_report
-import remediation_planner
 import result_transformer
 
 
@@ -210,20 +209,6 @@ def test_multiple_spf_records_reach_every_layer_not_just_the_card():
         "issues": [], "syntax_errors": [], "mechanisms": [],
     }
 
-    plan = remediation_planner.build_remediation_plan(
-        checks=[], raw_results={"spf": raw_spf}, has_mx=True
-    )
-    titles = [s["title"] for tier in plan.values() for s in tier]
-    assert "Publish SPF Record" not in titles, (
-        f"the plan told a domain with two SPF records to publish one: {titles}"
-    )
-    # Suppressed, not replaced: the card and the security roadmap already tell
-    # the operator to merge, and the defect here was the publish advice.
-    assert not any("SPF" in t for t in titles), (
-        f"the plan should stay silent on SPF rather than add a fourth copy of "
-        f"the merge instruction: {titles}"
-    )
-
     resilience = audit_engine._build_resilience_analysis(
         raw_results={"spf": raw_spf, "dmarc": {}, "dkim": {}},
         checks=[], has_mx=True, is_defensive=False,
@@ -262,10 +247,10 @@ def test_roadmap_all_clear_requires_every_protocol_to_have_been_read():
     ] + [_clean(n) for n in ("MTA-STS", "TLS-RPT", "DANE", "BIMI")]
 
     roadmap = result_transformer.build_security_roadmap(checks)
-    assert roadmap["total"] == 0, "fixture should produce no action items"
+    assert roadmap["items"] == [], "fixture should produce no action items"
     assert _ALL_CLEAR not in roadmap["summary"]
     assert "not assessed" in roadmap["summary"]
-    assert set(roadmap["unread_protocols"]) == {"DMARC", "SPF", "DKIM"}
+    assert all(n in roadmap["summary"] for n in ("DMARC", "SPF", "DKIM"))
 
 
 def test_roadmap_all_clear_requires_every_protocol_to_have_run():
@@ -293,5 +278,5 @@ def test_roadmap_still_gives_the_all_clear_when_everything_really_is_clean():
     checks = [_clean(n) for n in
               ("DMARC", "SPF", "DKIM", "MTA-STS", "TLS-RPT", "DANE", "BIMI")]
     roadmap = result_transformer.build_security_roadmap(checks)
-    assert roadmap["total"] == 0
+    assert roadmap["items"] == []
     assert _ALL_CLEAR in roadmap["summary"]

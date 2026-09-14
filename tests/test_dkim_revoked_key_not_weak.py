@@ -30,11 +30,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from dkim_formatter import analyze_dkim_key_strength
-from remediation_planner import build_remediation_plan
 from result_transformer import transform_dkim
 
 DOMAIN = "example.com"
-WEAK_STEP = "Replace Weak DKIM Keys"
 REVOKED = "v=DKIM1; k=rsa; p="
 
 
@@ -66,11 +64,6 @@ def _raw(*selectors):
     return {"domain": DOMAIN, "found_selectors": list(selectors), "tested_count": 200}
 
 
-def _titles(raw):
-    plan = build_remediation_plan(checks=[], raw_results={"dkim": raw}, has_mx=True)
-    return {s["title"] for tier in plan.values() for s in tier}
-
-
 def _card_text(card):
     return " ".join(d.get("text", "") for d in card.get("details", []))
 
@@ -86,19 +79,4 @@ def test_revoked_keys_do_not_produce_the_weak_key_step():
     assert card["status"] == "unavailable", (
         f"Doc 15: three correctly retired keys are not a failure of the "
         f"domain; got status={card['status']!r}"
-    )
-
-    assert WEAK_STEP not in _titles(raw)
-
-
-def test_a_real_weak_key_alongside_a_revoked_one_is_still_flagged():
-    raw = _raw(_selector("dead", REVOKED), _selector("old", RSA_1024))
-    assert WEAK_STEP in _titles(raw)
-
-
-def test_older_key_size_shape_with_a_revoked_key():
-    """Selector dicts still carrying the pre-17 key_size field must read the
-    same way, rather than relying on `0 or None` collapsing to None."""
-    assert WEAK_STEP not in _titles(
-        {"found_selectors": [{"selector": "dead", "record": REVOKED, "key_size": 0}]}
     )

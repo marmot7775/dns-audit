@@ -13,7 +13,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import audit_engine
-import remediation_planner
 import result_transformer
 
 _FORBIDDEN = ("still delivered", "still reach", "delivered normally", "delivered to recipients")
@@ -75,7 +74,3 @@ def test_audit_engine_p_none_issue_makes_no_delivery_claim():
     assert "are still delivered normally" not in src.lower()
 
 
-def test_remediation_planner_p_none_makes_no_delivery_claim():
-    import inspect
-    src = inspect.getsource(remediation_planner)
-    assert "unauthenticated mail is still delivered" not in src.lower()

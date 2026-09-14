@@ -380,7 +380,7 @@ def test_complete_pdf_has_priorities_and_no_priority_fixes(audit):
     assert "2. Priorities" in text
     assert "Priority Fixes" not in text
     assert "Email Security Roadmap" not in text
-    assert "priority_fixes" in result, "the JSON keeps the field for one more release"
+    assert "priority_fixes" not in result, "Doc 49 removed the field after its last release"
 
 
 def test_the_web_page_renders_priorities_not_key_findings_or_the_roadmap():

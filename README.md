@@ -149,10 +149,9 @@ result_transformer.py      Raw results to frontend card format
 pdf_report.py              reportlab-based PDF generation
 dmarc_tree_walk.py         RFC 9989 Section 4.10 tree walk
 spf_recursive.py           Recursive SPF lookup counter
-spf_execution_engine.py    SPF evaluation trace, DMARC roadmap
+spf_execution_engine.py    SPF evaluation trace and include tree
 checks_extra.py            MTA-STS, TLS-RPT, BIMI checks
 anomaly_detector.py        Cross-check anomaly detection
-remediation_planner.py     Prioritized fix roadmap
 dkim_formatter.py          DKIM key analysis (RSA/Ed25519)
 advanced_fingerprinting.py Multi-signal vendor fingerprinting
 

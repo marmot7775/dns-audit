@@ -33,15 +33,12 @@ from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import spf_intelligence
-from remediation_planner import build_remediation_plan
 from result_transformer import transform_dkim
 from spf_intelligence import smart_dkim_check
 
 DOMAIN = "example.com"
 SELECTOR = "google"
 SPF = "v=spf1 include:_spf.google.com ~all"
-WEAK_STEP = "Replace Weak DKIM Keys"
-ROTATION_STEP = "Schedule Regular DKIM Key Rotation"
 
 
 def _rsa_record(bits):
@@ -113,14 +110,6 @@ def discover(monkeypatch):
     return _run
 
 
-def _plan_for(raw):
-    return build_remediation_plan(checks=[], raw_results={"dkim": raw}, has_mx=True)
-
-
-def _titles(plan):
-    return {s["title"] for tier in plan.values() for s in tier}
-
-
 def _card_text(card):
     return " ".join(d.get("text", "") for d in card.get("details", []))
 
@@ -135,39 +124,21 @@ def test_discovery_reports_the_real_modulus_size(discover):
         assert found[0]["key_type"] == "RSA"
 
 
-def test_discovered_weak_key_reaches_the_remediation_plan(discover):
-    """17: a discovered 1024-bit key has to produce the weak key step."""
-    raw = discover(RECORDS[1024])
-    plan = _plan_for(raw)
-    titles = _titles(plan)
-
-    assert WEAK_STEP in titles
-    assert {s["title"] for s in plan["short_term"]} >= {WEAK_STEP}
-    # The rotation step is gated on there being no weak key, so the two must
-    # never appear together.
-    assert ROTATION_STEP not in titles
-
-
-def test_card_and_plan_agree_at_every_key_size(discover):
+def test_card_grades_every_key_size(discover):
     for bits, record in RECORDS.items():
         raw = discover(record)
         card = transform_dkim(raw, DOMAIN, has_mx=True)
-        titles = _titles(_plan_for(raw))
 
         text = _card_text(card)
         assert f"{bits}-bit RSA key" in text, f"card does not name {bits} bits"
 
         card_says_weak = "upgrade recommended" in text
-        plan_says_weak = WEAK_STEP in titles
-        assert card_says_weak == plan_says_weak, (
-            f"{bits}-bit: card weak={card_says_weak} but plan weak={plan_says_weak}"
-        )
         assert card_says_weak == (bits < 2048)
         assert card["status"] == ("warn" if bits < 2048 else "pass")
 
 
 def test_manual_and_discovered_selectors_share_one_shape(discover):
-    """Both discovery paths have to emit the same keys, or the planner reads
+    """Both discovery paths have to emit the same keys, or a reader finds
     a field that is only ever present on one of them."""
     from dkim_formatter import analyze_dkim_key_strength
 
@@ -185,8 +156,6 @@ def test_manual_and_discovered_selectors_share_one_shape(discover):
 
     for field in ("selector", "record", "key_type", "key_bits"):
         assert discovered[field] == manual[field], f"{field} differs between paths"
-
-    assert WEAK_STEP in _titles(_plan_for({"found_selectors": [manual]}))
 
 
 def test_ed25519_key_is_not_reported_as_rsa(discover):

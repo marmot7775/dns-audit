@@ -194,22 +194,12 @@ def test_an_unavailable_check_is_neither_pass_warn_nor_fail(audit):
 
 
 def test_no_part_of_the_report_tells_the_operator_to_publish_spf(audit):
-    """The card is not the only place the report speaks. The remediation
-    plan, the anomaly list and the DMARC cross-check all read an empty
-    record field as "no record", and each one would state as a finding
-    something the failed lookup never established."""
+    """The card is not the only place the report speaks. The anomaly list
+    and the DMARC cross-check both read an empty record field as "no
+    record", and each would state as a finding something the failed lookup
+    never established."""
     zone = FakeZone(dict(BASE)).fail(DOMAIN, "TXT")
     result = audit(zone, DOMAIN)
-
-    plan = result.get("remediation_plan") or {}
-    titles = [
-        item.get("title", "")
-        for bucket in plan.values() if isinstance(bucket, list)
-        for item in bucket
-    ]
-    assert "Publish SPF Record" not in titles, (
-        "the plan tells the operator to publish a record the audit could not read"
-    )
 
     anomalies = [a.get("title", "") for a in result.get("anomalies") or []]
     assert "DMARC enforcement without SPF" not in anomalies

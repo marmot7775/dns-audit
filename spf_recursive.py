@@ -18,9 +18,9 @@ Usage:
 import dns.resolver
 import dns.exception
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
-from dns_tools import get_resolver, is_spf_record
+from dns_tools import is_spf_record
 
 
 def repair_spf_missing_spaces(record: str) -> Tuple[str, bool]:
@@ -68,11 +68,7 @@ def repair_spf_missing_spaces(record: str) -> Tuple[str, bool]:
     return repaired, is_malformed
 
 
-def _get_resolver(timeout: float = 5.0):
-    # Shared factory: every resolver in the process draws from one TTL-honoring
-    # answer cache, so the repeated lookups a single audit makes hit memory
-    # instead of the network.
-    return get_resolver(timeout)
+from dns_tools import get_resolver as _get_resolver
 
 
 # Outcome of a single SPF TXT lookup.
@@ -134,11 +130,6 @@ def _lookup_spf(domain: str) -> Dict[str, Any]:
         return {"record": records[0], "status": SPF_FOUND, "error": None}
 
     return {"record": None, "status": SPF_NO_RECORD, "error": None}
-
-
-def _get_spf_record(domain: str) -> Optional[str]:
-    """Fetch SPF TXT record for a domain (record only)."""
-    return _lookup_spf(domain)["record"]
 
 
 def _query_answer_status(domain: str, rdtype: str) -> str:

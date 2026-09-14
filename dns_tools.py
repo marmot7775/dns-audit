@@ -6,9 +6,10 @@ Domain normalization and audit entry point.
 
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import dns.flags
+import dns.exception
 import dns.resolver
 import idna
 
@@ -94,16 +95,30 @@ _DNSSEC_CACHE = BoundedNegativeCache(max_size=1000)
 _resolv_conf_template = dns.resolver.Resolver()
 
 
-def get_uncached_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
-    """A resolver that neither reads nor writes the shared answer cache."""
+def _from_template(timeout: float) -> "dns.resolver.Resolver":
+    """A resolver carrying the configuration read from resolv.conf at import.
+
+    Every factory below starts here, so no resolver built during an audit
+    opens /etc/resolv.conf again.
+    """
     resolver = dns.resolver.Resolver(configure=False)
-    resolver.nameservers = list(_resolv_conf_template.nameservers)
-    resolver.domain = _resolv_conf_template.domain
-    resolver.search = list(_resolv_conf_template.search)
-    resolver.rotate = _resolv_conf_template.rotate
-    resolver.ndots = _resolv_conf_template.ndots
+    t = _resolv_conf_template
+    resolver.nameservers = list(t.nameservers)
+    resolver.domain = t.domain
+    resolver.search = list(t.search)
+    resolver.rotate = t.rotate
+    resolver.ndots = t.ndots
+    resolver.edns = t.edns
+    resolver.ednsflags = t.ednsflags
+    resolver.payload = t.payload
     resolver.timeout = timeout
     resolver.lifetime = timeout * 2
+    return resolver
+
+
+def get_uncached_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
+    """A resolver that neither reads nor writes the shared answer cache."""
+    resolver = _from_template(timeout)
     resolver.cache = None
     return resolver
 
@@ -114,9 +129,7 @@ _DNSSEC_NAMESERVERS = ["9.9.9.9", "1.1.1.1", "1.0.0.1", "8.8.8.8"]
 
 def get_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
     """A plain resolver backed by the shared answer cache."""
-    resolver = dns.resolver.Resolver()
-    resolver.timeout = timeout
-    resolver.lifetime = timeout * 2
+    resolver = _from_template(timeout)
     resolver.cache = _PLAIN_CACHE
     return resolver
 
@@ -128,13 +141,32 @@ def get_dnssec_resolver(timeout: float = 8.0) -> "dns.resolver.Resolver":
     at validating public resolvers instead of a possibly stub system resolver,
     and uses a 4096 byte EDNS buffer because DNSKEY responses run over 512.
     """
-    resolver = dns.resolver.Resolver()
-    resolver.timeout = timeout
-    resolver.lifetime = timeout * 2
+    resolver = _from_template(timeout)
     resolver.nameservers = list(_DNSSEC_NAMESERVERS)
     resolver.use_edns(0, dns.flags.DO, 4096)
     resolver.cache = _DNSSEC_CACHE
     return resolver
+
+
+def lookup_ttl(name: str, rdtype: str = "TXT") -> Optional[int]:
+    """Look up the TTL for a DNS record. Returns None on any failure."""
+    try:
+        answers = get_resolver().resolve(name, rdtype)
+        return answers.rrset.ttl if answers.rrset else None
+    except dns.exception.DNSException:
+        return None
+
+
+def make_issue(severity: str, issue: str, plain_english: str,
+               impact: str = "", fix: str = "") -> Dict[str, str]:
+    """One entry in a check's issues list (mx_check and checks_extra)."""
+    return {
+        "severity": severity,
+        "issue": issue,
+        "plain_english": plain_english,
+        "impact": impact,
+        "fix": fix,
+    }
 
 
 # ============================================================
@@ -307,37 +339,3 @@ def normalize_domain(value: str) -> str:
     except idna.IDNAError:
         pass
     return domain
-
-
-def audit_dns_security(
-    domain: str,
-    *,
-    dkim_selector: Optional[str] = None,
-    scope: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Run a full audit via audit_engine.
-
-    Parameters
-    ----------
-    domain : str
-        The domain to audit (will be normalized).
-    dkim_selector : str | None
-        A specific DKIM selector to test.
-    scope : str | None
-        Audit scope (e.g. "email_full", "dmarc"). None = complete.
-    """
-    domain = normalize_domain(domain)
-    if not domain:
-        return {
-            "domain": "",
-            "error": "Empty domain after normalization",
-            "checks": [],
-            "priority_fixes": [],
-        }
-
-    # Imported here rather than at module scope: audit_engine imports the
-    # resolver factories above, so a module-level import in both directions
-    # fails whichever module is loaded second.
-    from audit_engine import run_full_audit
-
-    return run_full_audit(domain, dkim_selector=dkim_selector, scope=scope)
