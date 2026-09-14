@@ -219,11 +219,14 @@ _SCOPED_ZONE = {
     # No MX: DANE (which dns_infra does run) then reports pill "N/A" rather
     # than "Not configured", so the roadmap stays empty and this test is
     # actually exercising an empty roadmap rather than one DANE item.
+    # Two nameservers: since Doc 48 a red Nameservers card (one NS is a
+    # single point of failure) puts a row on the roadmap too.
     SCOPED_DOMAIN: {
         "A": ["203.0.113.90"],
-        "NS": ["ns1." + SCOPED_DOMAIN],
+        "NS": ["ns1." + SCOPED_DOMAIN, "ns2." + SCOPED_DOMAIN],
     },
     "ns1." + SCOPED_DOMAIN: {"A": ["203.0.113.53"]},
+    "ns2." + SCOPED_DOMAIN: {"A": ["198.51.100.53"]},
 }
 
 
