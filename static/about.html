@@ -19,6 +19,8 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/static/style.css?v=f15cecf">
     <script src="/static/theme.js?v=f15cecf"></script>
     <script type="application/ld+json">
@@ -35,6 +37,7 @@
     </script>
 </head>
 <body>
+    <a href="#main-content" class="skip-to-content">Skip to content</a>
     <header class="site-header">
         <div class="container header-inner">
             <a href="/" class="logo">
@@ -63,7 +66,7 @@
             </div>
         </div>
     </header>
-    <main class="about-page">
+    <main class="about-page" id="main-content">
         <h1>About</h1>
         <p>The tools I wanted didn't exist.</p>
         <p>Most DNS tools show you what records you have. They leave you to figure out whether those records are correct, whether the tag combination is dangerous, whether the RFC you're reading is the one that's actually current. I wanted something that did the analysis, showed the work, cited the RFC it was checking against, and gave me the exact record to paste.</p>
@@ -85,7 +88,7 @@
         <div class="container footer-inner">
             <div class="footer-left">
                 <div class="footer-brand-name">dns-audit.com</div>
-                <div class="footer-brand-desc">Free, open-source DNS<br>&amp; email security auditing</div>
+                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
             </div>
             <div class="footer-right">
                 <div class="footer-nav">
