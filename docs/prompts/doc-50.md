@@ -1,120 +1,114 @@
-# Doc 50: One wordmark in the header, and a headline that fits
+# Doc 50: Put the Sept 9 home page back, and the iPad summary row
 
-Small layout and copy doc. Two things the home page shows
-every visitor: the header logo cluster is two competing marks,
-and the headline breaks mid-phrase. Line numbers are from main
-at e1f3506; search for the quoted selector if one has moved.
-Render before and after at 1280 and 390 in both themes; keep
-the screenshots out of the commit.
+Replaces the earlier Doc 50 draft about the header and
+headline; if that one was pasted, this supersedes it. The home
+page as it stood on the morning of Sept 9 (git f1caf02~1,
+before "Homepage wording, layout, and type: input first") is
+the look to restore: a short title, one sentence under it, the
+scope buttons, then the input. The audit form is the point of
+the page and the current hero pushes it down. Line numbers are
+from main at e1f3506. Render before and after at 1280, 1024,
+820, 768, and 390 in both themes; keep the screenshots out of
+the commit.
 
-## 1. The header: one mark, not two
+## 1. Header: the old wordmark, no terminal chip
 
-The left side of the header is a 146 by 39 fake terminal chip
-(title-bar dots, "$ dns-audit --dmarc" at 11px mono) next to
-an 18px "dns-audit" wordmark, 242px in total. Two logos side
-by side is why the left side reads cluttered and the wordmark
-looks off centre; at 640 and below the chip is already hidden,
-so the site has two headers. Keep the wordmark only.
+static/index.html:123 to 134 and the same block on the other
+seven pages: delete the whole <div class="logo-terminal"> and
+make the link exactly what it was on Sept 9:
 
-- Remove the whole <div class="logo-terminal"> block
-  (static/index.html:124 to 133) from all eight pages, so the
-  link is <a href="/" class="logo"><span
-  class="logo-text"><span
-  class="logo-accent">dns</span>-audit</span></a>.
-  tests/test_doc36_header_identical.py compares the headers
-  byte for byte, so change all eight in one pass.
-- Delete the chip CSS: .logo-terminal, .logo-titlebar,
-  .logo-dot and its three colours, .logo-cmd, .logo-prompt,
-  .logo-bin, .logo-flag and the comment above it
-  (static/style.css:376 to 436), and the breakpoint copies at
-  3342 to 3349, 4191 to 4193, and 8473 to 8477 with their
-  comment. Remove gap from .logo at 366; it has one child now.
-- .logo-text at 437: font-size var(--font-xl), keep weight 700
-  and letter-spacing -0.01em. At 3351 (640 and below) make it
-  1rem instead of 0.88rem, and delete the 0.82rem override at
-  4195 to 4197. The wordmark must stay on one line beside
-  Home, Articles, About, and the toggle at 390 and at 320; if
-  it wraps at 320, reduce the nav gap before reducing the
-  wordmark.
-- Vertical alignment: .header-inner is align-items center at
-  60px, so the wordmark centres on the nav without further
-  rules. Confirm in the render that the wordmark baseline and
-  the nav-link baselines sit within 1px of each other; if the
-  wordmark's line-height pushes it off, set line-height 1 on
-  .logo-text.
-- Horizontal alignment is already right and must stay so:
-  .header-inner and .audit-input-card both start at x=224 on a
-  1280 viewport (the 880px container plus its padding). Assert
-  that in the browser test below.
+<a href="/" class="logo"><span class="logo-text">dns<span
+class="logo-accent">-audit</span>.com</span></a>
 
-## 2. The headline
+Delete the chip CSS: .logo-terminal, .logo-titlebar, .logo-dot
+and its three colours, .logo-cmd, .logo-prompt, .logo-bin,
+.logo-flag and the comment above it (static/style.css:376 to
+436), the breakpoint copies at 3342 to 3349, 4191 to 4193 and
+8473 to 8477 with their comment, and gap on .logo at 366. Keep
+.logo-text at var(--font-lg) 700 and .logo-accent as they are;
+at 3351 make the small-screen size 1rem instead of 0.88rem and
+delete the 0.82rem override at 4195 to 4197. The wordmark
+stays on one line beside Home, Articles, About and the toggle
+at 390 and 320.
 
-static/index.html:153: "Check the DNS records mail servers use
-to verify your email" is 11 words and breaks at 1280 as "Check
-the DNS records mail" over "servers use to verify your email",
-splitting the phrase "mail servers"; text-wrap: balance at
-style.css:577 cannot fix that because balancing keeps the two
-lines even and the break lands in the same place. Replace the
-h1 text with:
+## 2. Hero: the Sept 9 copy and size
 
-Check the DNS records behind your email
+static/index.html:153 and 154, replace the h1 and the
+paragraph with the Sept 9 text:
 
-Measured at 1280 it is one line (about 700px of the 734px
-column); at 390 it breaks as "Check the DNS records behind"
-over "your email". It is accurate for every check the audit
-runs, which the old line was not (MTA-STS, DNSSEC, CAA, and
-nameservers are not records mail servers use to verify email).
-Leave the text-wrap: balance rule in place for the two-line
-case on narrower screens.
+<h1 class="audit-title">DNS &amp; Email Security Audit</h1>
+<p class="audit-subtitle">Most DNS tools show you your
+records. This one tells you what is wrong with them. Includes
+<a href="/articles/dmarcbis" class="audit-subtitle-link">RFC
+9989 readiness</a>, DNSSEC validation, and more.</p>
 
-## 3. The subtitle
+static/style.css:557 to 573: .audit-title keeps
+var(--font-3xl) and 700 but margin-bottom becomes
+var(--space-sm); .audit-subtitle loses max-width: 64ch and its
+margin-bottom becomes var(--space-md). Delete the @media
+(min-width: 768px) block at 575 to 582 that raises the title
+to var(--font-4xl) with text-wrap: balance; the title is one
+line at every width above 400 without it. On Sept 9 the title
+measured 34px tall and the whole card 444px at 1280; now it is
+82px and 587px. Land within 20px of the old card height.
 
-static/index.html:154 runs 67 words and five lines at 1280,
-nine at 390. Replace the paragraph text with the following,
-keeping the existing link markup on "RFC 9989 readiness":
+## 3. Form back under the scope buttons, and focus in the input
 
-Enter a domain. The audit reads the DNS records and policy
-files behind email authentication, transport security, and DNS
-integrity (SPF, DKIM, DMARC, MTA-STS, DNSSEC, and seven more),
-says what is missing or misconfigured, cites the RFC it
-checked against, including RFC 9989 readiness, and gives you
-the corrected record to paste. Nothing to install, nothing to
-send.
+Move the <form id="audit-form"> block (index.html:155 to 177)
+back below the scope section, where it sat on Sept 9, so the
+order inside .audit-input-card is title, sentence, Audit scope
+buttons and their description, then the input row and the DKIM
+selector toggle. Centre the selector toggle under the input as
+it was: .selector-toggle-row text-align back to center. Keep
+everything else about the form as it is now: the example.com
+placeholder, the valid-domain indicator, the button, the Doc
+48 spacing.
 
-Measured: 58 words, four lines at 1280 and eight at 390.
-Nothing it claims has changed: policy files are still named
-because the audit fetches the MTA-STS policy and the BIMI logo
-over HTTPS, and "cites the RFC it checked against" stays as
-Doc 40 worded it. Do not add a word to it; at 59 words it went
-back to five lines. The speakable block at index.html:87
-points at .audit-title and .audit-subtitle by selector, so it
-needs no change; the meta and og descriptions are separate
-text and stay as they are.
+Add autofocus to #domain-input so the cursor is in the field
+when the page opens. Nothing in the repo's history ever set
+it; the field is focused only after Run another audit and the
+R shortcut. Keep both of those. On iOS and iPadOS autofocus
+places the caret without raising the keyboard, which is the
+platform's behaviour and fine. Add nothing else that moves
+focus on load.
+
+## 4. iPad: five summary tiles in one row
+
+On the results page between 769 and 1024 wide,
+static/style.css:7746 to 7752 forces .summary-grid to four
+columns and gives .summary-card.unavailable-card grid-column:
+1 / -1, so when Not checked is shown the fifth tile becomes a
+full-width slab under the other four (seen at 820 with the Doc
+38 fixture). The :has rule at 1096 that switches to five
+columns never wins there because the media block comes later.
+Fix: inside that media block, set
+.summary-grid:has(.unavailable-card:not(.is-hidden)) to
+repeat(5, 1fr) and delete the grid-column span; the tiles are
+about 140px each at 820, which the 1280 layout already uses at
+160. At 768 and below (3452 and 7758) the fifth tile may keep
+spanning both columns, but give it a row layout there: label
+and number on one line, padding 0.75rem 1.1rem, so it reads as
+a footnote and not as a fifth big tile.
 
 ## Tests
 
 - tests/test_doc36_header_identical.py:63 to 67: rename the
-  test to test_header_carries_the_wordmark, drop the two
-  .logo-terminal and .logo-bin assertions, keep the wordmark,
-  header-right, nav, and label assertions, and add an
-  assertion that "logo-terminal" appears in no page.
-- tests/test_doc38_visual_system.py section 8 (lines 35 to
-  95): delete
-  test_logo_terminal_has_no_fixed_width_narrower_than_its_command.
-  Rewrite test_header_logo_text_is_not_clipped_in_a_browser to
-  assert, at 1280, 390, and 320: .logo-text scrollWidth equals
-  clientWidth and its getClientRects() length is 1 (one line);
-  the .logo-text and .nav-link bounding boxes share a vertical
-  centre within 1px; at 1280 .header-inner and
-  .audit-input-card have the same left edge; and .audit-title
-  has one client rect at 1280 and two at 390.
-- No existing test asserts the old headline or subtitle text
-  (grep confirms), so add one in
-  test_doc36_header_identical.py that index.html carries the
-  new h1 and the new first sentence.
-- Extend the dash test's file list if it does not already
-  include static/index.html; the new strings contain no dash
-  of any kind.
+  test to test_header_carries_the_wordmark, drop the
+  .logo-terminal and .logo-bin assertions, assert the exact
+  <a> line from item 1 on every page, and assert
+  "logo-terminal" appears in no page.
+- tests/test_doc38_visual_system.py section 8 (35 to 95):
+  delete
+  test_logo_terminal_has_no_fixed_width_narrower_than_its_command;
+  rewrite test_header_logo_text_is_not_clipped_in_a_browser to
+  assert at 1280, 390 and 320 that .logo-text has one client
+  rect and scrollWidth equals clientWidth.
+- Add to test_doc36: index.html has the h1 and sentence from
+  item 2, #domain-input carries autofocus, and .scope-selector
+  comes before #audit-form in source order.
+- Add a browser test on the Doc 38 fixture at 820 wide: the
+  five .summary-card tops are within 2px of each other when
+  .unavailable-card is shown, and at 1280 the same.
 
 ## Repo rules
 
@@ -127,8 +121,8 @@ Save this doc as docs/prompts/doc-50.md in the same commit.
 
 ## Done when
 
-The header shows one wordmark at the container's left edge,
-vertically centred on the nav, identical on all eight pages
-and on one line at 320; the headline is one line at 1280 and
-never splits a phrase; the subtitle is four lines at 1280; and
-the browser test asserts all of it.
+The home page at 1280 matches the Sept 9 layout: one wordmark,
+a one-line title, one sentence, the scope buttons, then the
+input with the cursor in it; the card is within 20px of its
+Sept 9 height; and at 820 the results summary is one row of
+five tiles.

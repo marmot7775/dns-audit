@@ -378,7 +378,7 @@ main {
    the text lifts the baseline onto the nav's while the box stays centred. */
 .logo-text {
     font-weight: 700;
-    font-size: var(--font-xl);
+    font-size: var(--font-lg);
     letter-spacing: -0.01em;
     padding-bottom: 0.32em;
 }
@@ -502,7 +502,7 @@ main {
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--text-primary);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-sm);
     line-height: 1.2;
 }
 
@@ -510,19 +510,8 @@ main {
     font-size: var(--font-md);
     font-weight: 500;
     color: var(--text-secondary);
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-md);
     line-height: 1.55;
-    max-width: 64ch;
-}
-
-@media (min-width: 768px) {
-    .audit-title {
-        font-size: var(--font-4xl);
-        /* At 2.25rem the headline broke with "DNS" alone on the second
-           line. Balancing evens the two lines out. Ignored by browsers
-           that do not support it, which just get the greedy wrap. */
-        text-wrap: balance;
-    }
 }
 
 .audit-subtitle-link {
@@ -612,7 +601,7 @@ main {
 
 .selector-toggle-row {
     margin-top: 0.6rem;
-    text-align: left;
+    text-align: center;
     max-width: 600px;
     width: 100%;
 }
@@ -7672,17 +7661,30 @@ body {
     .summary-grid {
         grid-template-columns: repeat(4, 1fr);
     }
-    .summary-card.unavailable-card {
-        grid-column: 1 / -1;
+    .summary-grid:has(.unavailable-card:not(.is-hidden)) {
+        grid-template-columns: repeat(5, 1fr);
     }
 }
 
+/* Two columns here even when Not checked shows: the five-column :has rule
+   above the breakpoints outranks a plain .summary-grid. The fifth tile
+   spans the row as a one-line footnote rather than a fifth big tile. */
 @media (max-width: 768px) {
-    .summary-grid {
+    .summary-grid,
+    .summary-grid:has(.unavailable-card:not(.is-hidden)) {
         grid-template-columns: 1fr 1fr;
     }
     .summary-card.unavailable-card {
         grid-column: 1 / -1;
+    }
+    .summary-card.unavailable-card:not(.is-hidden) {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        padding: 0.75rem 1.1rem;
+    }
+    .summary-card.unavailable-card .summary-label {
+        margin-bottom: 0;
     }
 
     .comparison-form {
