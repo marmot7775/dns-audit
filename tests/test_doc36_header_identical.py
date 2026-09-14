@@ -60,10 +60,12 @@ def test_header_is_identical_to_about(path):
 
 
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
-def test_header_carries_the_terminal_logo_and_wordmark(path):
+def test_header_carries_the_wordmark(path):
     header = _header(path)
-    assert '<div class="logo-terminal">' in header
-    assert '<span class="logo-bin">dns-audit</span>' in header
+    with open(path, encoding="utf-8") as f:
+        assert "logo-terminal" not in f.read(), "Doc 50 removed the terminal chip"
+    assert re.search(r'<a href="/" class="logo">\s*<span class="logo-text"><span class="logo-accent">'
+                     r'dns</span>-audit</span>\s*</a>', header)
     assert '<span class="logo-text"><span class="logo-accent">dns</span>-audit</span>' in header
     assert '<div class="header-right">' in header
     assert '<nav class="site-nav" aria-label="Main navigation">' in header
@@ -89,3 +91,11 @@ def test_active_link_matches_the_page():
     for rel, label in expected.items():
         header = _header(os.path.join(STATIC, rel))
         assert f'class="nav-link nav-link-active">{label}</a>' in header, rel
+
+
+def test_index_carries_the_doc50_headline_and_subtitle():
+    with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    assert '<h1 class="audit-title">Check the DNS records behind your email</h1>' in html
+    assert ('<p class="audit-subtitle">Enter a domain. The audit reads the DNS records and policy '
+            'files behind email authentication, transport security, and DNS integrity') in html
