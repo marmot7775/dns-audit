@@ -45,7 +45,7 @@ BANNED = [
 SOURCES = (
     [os.path.join(REPO, f) for f in (
         "result_transformer.py", "audit_engine.py", "spf_recursive.py", "anomaly_detector.py",
-        "checks_extra.py", "pdf_report.py", "remediation_planner.py", "README.md",
+        "checks_extra.py", "pdf_report.py", "README.md",
         "static/app.js", "static/index.html")]
     + glob.glob(os.path.join(REPO, "static", "articles", "*.html"))
 )

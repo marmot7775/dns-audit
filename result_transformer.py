@@ -216,7 +216,6 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
     # and an empty record. Every gate below tests for "fail", so without
     # this guard an unavailable check reads as "nothing wrong here" and the
     # summary issues an explicit all clear about records it never read.
-    # remediation_planner.py already models this correctly; same guard here.
     #
     # DKIM has a second way to arrive at "unavailable": the probe completed and
     # still could not settle the question, because selectors are not
@@ -930,10 +929,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     return {
         "items": items,
         "tiers": tiers,
-        "total": total,
         "summary": summary,
-        "unread_protocols": unread,
-        "unscoped_protocols": not_run,
     }
 
 
@@ -1129,115 +1125,75 @@ def _normalize_record_for_comparison(value: str) -> str:
 def build_change_detection(
     raw_results: Dict,
     history: Dict[str, list],
-    first_seen: Optional[str],
 ) -> Optional[Dict]:
     """Build the change detection section from snapshot history.
 
     Args:
         raw_results: Current raw audit results keyed by check name
         history: Dict of record_type -> list of historical snapshots (newest first)
-        first_seen: Timestamp of earliest snapshot for this domain
     """
     if not history:
-        return {
-            "status": "first_audit",
-            "message": "This domain is now tracked; run another audit later to see what changed.",
-            "changes": [],
-            "first_seen": None,
-        }
+        return {"status": "first_audit", "changes": []}
 
     changes = []
 
-    # Map raw_results keys to snapshot record types
-    record_map = {
-        "dmarc": ("dmarc", lambda r: r.get("record")),
-        "spf": ("spf", lambda r: r.get("record")),
-        "mx": ("mx", lambda r: "; ".join(sorted(r.get("records") or []))),
-        "mta_sts": ("mta-sts", lambda r: r.get("txt_record")),
-        "tls_rpt": ("tls-rpt", lambda r: r.get("record")),
-        "dnssec": ("dnssec", lambda r: r.get("dnskey_record")),
-        "caa": ("caa", lambda r: "; ".join(sorted(c["raw"] if isinstance(c, dict) else str(c) for c in (r.get("records") or [])))),
-        "nameservers": ("nameservers", lambda r: "; ".join(sorted(n["hostname"] if isinstance(n, dict) else str(n) for n in (r.get("nameservers") or [])))),
-    }
+    def _changed_pairs(snapshots):
+        """Consecutive (older, newer) snapshots that differ beyond whitespace
+        (e.g. semicolon spacing from record normalization across runs)."""
+        for i in range(len(snapshots) - 1):
+            newer, older = snapshots[i], snapshots[i + 1]
+            if _normalize_record_for_comparison(newer["record_value"]) == \
+                    _normalize_record_for_comparison(older["record_value"]):
+                continue
+            if newer["record_hash"] != older["record_hash"]:
+                yield older, newer
 
-    for check_key, (record_type, extract_fn) in record_map.items():
-        raw = raw_results.get(check_key, {})
-        current_value = extract_fn(raw)
-        snapshots = history.get(record_type, [])
+    for record_type in _RECORD_TYPE_LABELS:
+        for older, newer in _changed_pairs(history.get(record_type, [])):
+            classification = _classify_change(
+                record_type, older["record_value"], newer["record_value"]
+            )
+            changes.append({
+                "record_type": record_type,
+                "record_label": _RECORD_TYPE_LABELS[record_type],
+                "timestamp": newer["timestamp"],
+                "old_value": older["record_value"],
+                "new_value": newer["record_value"],
+                "description": classification["description"],
+                "is_improvement": classification["is_improvement"],
+            })
 
-        if not snapshots:
-            continue
-
-        if len(snapshots) >= 2:
-            # We have at least two snapshots, meaning at least one change happened
-            for i in range(len(snapshots) - 1):
-                newer = snapshots[i]
-                older = snapshots[i + 1]
-                # Compare normalized versions to ignore whitespace-only differences
-                # (e.g. semicolon spacing from record normalization across runs)
-                norm_newer = _normalize_record_for_comparison(newer["record_value"])
-                norm_older = _normalize_record_for_comparison(older["record_value"])
-                if norm_newer == norm_older:
-                    continue  # Whitespace-only difference, not a real change
-                if newer["record_hash"] != older["record_hash"]:
-                    classification = _classify_change(
-                        record_type, older["record_value"], newer["record_value"]
-                    )
-                    changes.append({
-                        "record_type": record_type,
-                        "record_label": _RECORD_TYPE_LABELS.get(record_type, record_type),
-                        "timestamp": newer["timestamp"],
-                        "old_value": older["record_value"],
-                        "new_value": newer["record_value"],
-                        "description": classification["description"],
-                        "is_improvement": classification["is_improvement"],
-                    })
-
-    # Also check DKIM selectors
+    # DKIM selectors and DANE hosts are stored one record type each.
     for rt, snapshots in history.items():
-        if rt.startswith("dkim:") and len(snapshots) >= 2:
+        if rt.startswith("dkim:"):
             selector = rt.split(":", 1)[1]
-            for i in range(len(snapshots) - 1):
-                newer = snapshots[i]
-                older = snapshots[i + 1]
-                # Skip whitespace-only differences
-                if _normalize_record_for_comparison(newer["record_value"]) == _normalize_record_for_comparison(older["record_value"]):
-                    continue
-                if newer["record_hash"] != older["record_hash"]:
-                    changes.append({
-                        "record_type": rt,
-                        "record_label": f"DKIM ({selector})",
-                        "timestamp": newer["timestamp"],
-                        "old_value": older["record_value"],
-                        "new_value": newer["record_value"],
-                        "description": f"DKIM key for selector '{selector}' changed (possible rotation)",
-                        "is_improvement": True,
-                    })
+            label = f"DKIM ({selector})"
+            description = f"DKIM key for selector '{selector}' changed (possible rotation)"
+            is_improvement = True
+        elif rt.startswith("dane:"):
+            host = rt.split(":", 1)[1]
+            label = f"DANE ({host})"
+            description = f"TLSA records for {host} changed"
+            is_improvement = None
+        else:
+            continue
+        for older, newer in _changed_pairs(snapshots):
+            changes.append({
+                "record_type": rt,
+                "record_label": label,
+                "timestamp": newer["timestamp"],
+                "old_value": older["record_value"],
+                "new_value": newer["record_value"],
+                "description": description,
+                "is_improvement": is_improvement,
+            })
 
     # Sort changes by timestamp (newest first)
     changes.sort(key=lambda c: c.get("timestamp", ""), reverse=True)
 
-    if not changes:
-        # We have snapshots but no changes detected
-        latest_ts = first_seen
-        for snapshots in history.values():
-            if snapshots:
-                ts = snapshots[0].get("timestamp", "")
-                if ts > (latest_ts or ""):
-                    latest_ts = ts
-
-        return {
-            "status": "no_changes",
-            "message": f"No changes detected since {latest_ts or 'first audit'}",
-            "changes": [],
-            "first_seen": first_seen,
-        }
-
     return {
-        "status": "changes_found",
-        "message": f"{len(changes)} record change{'s' if len(changes) != 1 else ''} detected",
+        "status": "changes_found" if changes else "no_changes",
         "changes": changes,
-        "first_seen": first_seen,
     }
 
 
@@ -1390,11 +1346,9 @@ def build_subdomain_audit(
                     own_policy = part[2:].strip().lower()
                     break
             eff_policy = own_policy or "none"
-            policy_source = "own"
             policy_display = f"p={eff_policy}"
         elif exists:
             eff_policy = effective_sp or "none"
-            policy_source = "inherited_sp"
             if sp:
                 policy_display = f"Inherits sp={sp}"
             elif policy:
@@ -1403,7 +1357,6 @@ def build_subdomain_audit(
                 policy_display = "No DMARC (none)"
         else:
             eff_policy = effective_np or "none"
-            policy_source = "inherited_np"
             if np:
                 policy_display = f"np={np}"
             elif sp:
@@ -1412,17 +1365,6 @@ def build_subdomain_audit(
                 policy_display = f"No np=, fallback p={policy}"
             else:
                 policy_display = "No np=, fallback none"
-
-        # Classify
-        if exists and sends_mail:
-            category = "active_mail"
-            category_label = "Active mail sender"
-        elif exists:
-            category = "exists_no_mail"
-            category_label = "Exists, no mail config"
-        else:
-            category = "nonexistent"
-            category_label = "Does not exist"
 
         # Status: protected / partial / exposed
         if eff_policy == "reject":
@@ -1451,12 +1393,7 @@ def build_subdomain_audit(
             "sends_mail": sends_mail,
             "mail_signals": ", ".join(mail_reason) if mail_reason else None,
             "has_own_dmarc": has_dmarc,
-            "dmarc_record": dmarc_record,
-            "effective_policy": eff_policy,
-            "policy_source": policy_source,
             "policy_display": policy_display,
-            "category": category,
-            "category_label": category_label,
             "status": status,
             "status_label": status_label,
             "color": color,
@@ -1469,10 +1406,8 @@ def build_subdomain_audit(
     # Summary stats
     total_discovered = sum(1 for s in subdomains if s["exists"])
     total_mail = sum(1 for s in subdomains if s["sends_mail"])
-    total_exposed = sum(1 for s in subdomains if s["status"] == "exposed")
     exposed_mail = sum(1 for s in subdomains if s["status"] == "exposed" and s["sends_mail"])
     exposed_exist = sum(1 for s in subdomains if s["status"] == "exposed" and s["exists"] and not s["sends_mail"])
-    exposed_nx = sum(1 for s in subdomains if s["status"] == "exposed" and not s["exists"])
 
     # Build summary lines
     summary_lines = [
@@ -1522,12 +1457,6 @@ def build_subdomain_audit(
         "summary_lines": summary_lines,
         "callout": callout,
         "total_probed": len(subdomains),
-        "total_discovered": total_discovered,
-        "total_mail": total_mail,
-        "total_exposed": total_exposed,
-        "exposed_mail": exposed_mail,
-        "exposed_exist": exposed_exist,
-        "exposed_nx": exposed_nx,
     }
 
 
@@ -2426,7 +2355,6 @@ def _build_spec_comparison(strict: Optional[Dict], legacy: Optional[Dict]) -> Op
     legacy_issues = legacy_fails | legacy_warns
 
     dmarcbis_only = strict_issues - legacy_issues
-    both = strict_issues & legacy_issues
 
     # Build human-readable list of RFC 9989-only findings
     dmarcbis_only_items = []
@@ -2448,16 +2376,8 @@ def _build_spec_comparison(strict: Optional[Dict], legacy: Optional[Dict]) -> Op
 
     return {
         "dmarcbis_only_count": len(dmarcbis_only_items),
-        "both_count": len(both),
         "dmarcbis_only_items": dmarcbis_only_items,
         "legacy_only_pass": legacy_only_pass,
-        "legacy_pass_count": legacy.get("pass_count", 0),
-        "legacy_fail_count": legacy.get("fail_count", 0),
-        "legacy_warn_count": legacy.get("warn_count", 0),
-        "legacy_total_count": legacy.get("total_count", 0),
-        "legacy_summary": legacy.get("summary", ""),
-        "strict_fail_count": strict_fails_count,
-        "strict_summary": strict.get("summary", ""),
     }
 
 
@@ -2905,7 +2825,6 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
             else:
                 chain.append({"tag": "p", "value": p_val, "active": True})
             e["fallback_chain"] = chain
-            e["resolved_value"] = resolved
             if resolved != "reject":
                 e["warnings"].append({
                     "level": "warning",
@@ -5735,8 +5654,8 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             }
 
         # No MX: MTA-STS names MX hosts in its policy and protects delivery
-        # to them, so there is nothing for it to protect. remediation_planner
-        # already skips it here; the roadmap now does too.
+        # to them, so there is nothing for it to protect, and the roadmap
+        # skips it.
         if not has_mx:
             return {
                 "name": "MTA-STS",
@@ -5839,56 +5758,9 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         "details": details,
         "fix": fix,
         "fix_records": None,
-        "mta_sts_deep": _build_mta_sts_deep(raw, domain) if txt_record else None,
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": None,
     }
-
-
-def _build_mta_sts_deep(raw: Dict, domain: str) -> Optional[Dict]:
-    """MTA-STS deep analysis: mode breakdown, max age, setup guidance."""
-    mode = raw.get("policy_mode")
-    # check_mta_sts publishes the parsed policy fields under the policy_
-    # prefix (checks_extra.py). There is no bare "max_age" key, and nothing
-    # anywhere produces "policy_file_content".
-    max_age = raw.get("policy_max_age")
-
-    mode_explanations = {
-        "testing": (
-            "Senders attempt TLS but deliver even if it fails. Correct starting point. "
-            "Monitor TLS-RPT for failures before enforcing."
-        ),
-        "enforce": (
-            "Senders MUST establish TLS. If TLS fails, mail is NOT delivered. "
-            "Strongest downgrade protection. Ensure certificates stay valid."
-        ),
-        "none": (
-            "Explicitly disabled. Signals MTA-STS was previously configured but is now inactive."
-        ),
-    }
-
-    result: Dict = {
-        "mode": mode,
-        "mode_explanation": mode_explanations.get(mode, f"Unknown mode: {mode}") if mode else None,
-    }
-
-    # Max age analysis
-    if max_age is not None:
-        try:
-            age_secs = int(max_age)
-            if age_secs < 86400:
-                result["max_age_note"] = f"{age_secs}s ({age_secs//3600}h). Very short cache. DNS outage quickly removes protection."
-                result["max_age_level"] = "warning"
-            elif age_secs > 2592000:
-                result["max_age_note"] = f"{age_secs}s ({age_secs//86400}d). Long cache. Policy changes propagate slowly."
-                result["max_age_level"] = "info"
-            else:
-                result["max_age_note"] = f"{age_secs}s ({age_secs//86400}d). Good range."
-                result["max_age_level"] = "pass"
-        except (ValueError, TypeError):
-            pass
-
-    return result
 
 
 # ============================================================
@@ -6013,33 +5885,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         "details": details,
         "fix": fix,
         "fix_records": None,
-        "tls_rpt_deep": _build_tls_rpt_deep(raw) if record else None,
         "ttl_info": format_ttl(raw.get("ttl")),
-    }
-
-
-def _build_tls_rpt_deep(raw: Dict) -> Optional[Dict]:
-    """TLS-RPT deep analysis: destinations, cross-protocol relationships."""
-    # The check emits "report_destinations", which transform_tls_rpt four
-    # lines above already reads correctly.
-    destinations = raw.get("report_destinations", [])
-
-    dest_types = []
-    for d in destinations:
-        if isinstance(d, str):
-            if d.startswith("mailto:"):
-                dest_types.append({"type": "mailto", "value": d})
-            elif d.startswith("https:"):
-                dest_types.append({"type": "https", "value": d})
-            else:
-                dest_types.append({"type": "unknown", "value": d})
-
-    return {
-        "destinations": dest_types,
-        "cross_protocol_note": (
-            "Without TLS-RPT, a man-in-the-middle stripping encryption from your inbound email "
-            "would go undetected."
-        ),
     }
 
 
@@ -6631,7 +6477,6 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
             "details": details,
             "fix": fix,
             "fix_records": None,
-            "dane_deep": _build_dane_deep(tlsa_records, dnssec_ok),
             "ttl_info": format_ttl(raw.get("ttl")),
         }
 
@@ -6684,7 +6529,6 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
             ],
             "fix": None,
             "fix_records": None,
-            "dane_deep": _build_dane_deep(tlsa_records, dnssec_ok),
             "ttl_info": format_ttl(raw.get("ttl")),
         }
 
@@ -6734,7 +6578,6 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
                 "target=\"_blank\" rel=\"noopener\">How SMTP DANE works</a>."
             ),
             "fix_records": None,
-            "dane_deep": _build_dane_deep(tlsa_records, dnssec_ok),
             "ttl_info": format_ttl(raw.get("ttl")),
         }
 
@@ -6783,7 +6626,6 @@ def transform_dane(raw: Dict, domain: str) -> Dict:
         "details": details,
         "fix": fix,
         "fix_records": None,
-        "dane_deep": _build_dane_deep(tlsa_records, dnssec_ok),
         "ttl_info": format_ttl(raw.get("ttl")),
     }
 
@@ -6809,85 +6651,6 @@ _TLSA_MATCHING = {
     1: ("SHA-256", "SHA-256 hash. Recommended."),
     2: ("SHA-512", "SHA-512 hash."),
 }
-
-
-def _build_dane_deep(tlsa_records: List[Dict], dnssec_ok: bool) -> Optional[Dict]:
-    """DANE/TLSA deep analysis: field breakdown, DNSSEC dependency, MX coverage."""
-    if not tlsa_records:
-        return None
-
-    # DNSSEC gate, per MX host: a TLSA RRset has to validate in the MX host's
-    # own zone (RFC 7672 section 2.2.1), not the audited domain's.
-    _found = [r for r in tlsa_records if r.get("found")]
-    if _found and all(r.get("validated") for r in _found):
-        dnssec_status = {"status": "pass", "text": "DANE fully functional: every published TLSA RRset validates under DNSSEC."}
-    elif _found and any(r.get("validated") for r in _found):
-        dnssec_status = {"status": "partial", "text": (
-            "DANE works for some MX hosts only. TLSA records that do not validate under "
-            "DNSSEC are ignored by senders implementing RFC 7672."
-        )}
-    elif _found:
-        dnssec_status = {"status": "fail", "text": (
-            "DANE is ineffective here. The published TLSA records do not validate under DNSSEC, "
-            "and senders implementing RFC 7672 ignore TLSA records that do not validate."
-        )}
-    elif dnssec_ok:
-        dnssec_status = {"status": "partial", "text": (
-            "DNSSEC active. Your domain supports DANE. Adding TLSA records provides "
-            "certificate verification independent of CAs."
-        )}
-    else:
-        dnssec_status = {"status": "info", "text": "Neither DNSSEC nor DANE configured."}
-
-    # MX coverage
-    hosts_with = [r["mx_host"] for r in tlsa_records if r.get("found")]
-    hosts_without = [r["mx_host"] for r in tlsa_records if not r.get("found") and not r.get("error")]
-
-    # Parse TLSA fields from records that were found
-    parsed_tlsa = []
-    for r in tlsa_records:
-        if not r.get("found") or not r.get("records"):
-            continue
-        for rec in r.get("records", []):
-            try:
-                # Records are dicts with usage/selector/matching_type keys
-                if isinstance(rec, dict):
-                    usage = int(rec.get("usage", -1))
-                    selector = int(rec.get("selector", -1))
-                    matching = int(rec.get("matching_type", -1))
-                else:
-                    # Legacy fallback: raw string "usage selector matching data"
-                    parts = rec.strip().split()
-                    if len(parts) < 4:
-                        continue
-                    usage = int(parts[0])
-                    selector = int(parts[1])
-                    matching = int(parts[2])
-
-                usage_info = _TLSA_USAGE.get(usage, ("Unknown", f"Usage {usage}"))
-                sel_info = _TLSA_SELECTOR.get(selector, ("Unknown", f"Selector {selector}"))
-                match_info = _TLSA_MATCHING.get(matching, ("Unknown", f"Matching {matching}"))
-
-                is_best = usage == 3 and selector == 1 and matching == 1
-                rotation_safe = selector == 1
-
-                parsed_tlsa.append({
-                    "mx_host": r["mx_host"],
-                    "usage": usage, "usage_label": usage_info[0], "usage_desc": usage_info[1],
-                    "selector": selector, "selector_label": sel_info[0], "selector_desc": sel_info[1],
-                    "matching": matching, "matching_label": match_info[0], "matching_desc": match_info[1],
-                    "is_best_practice": is_best,
-                    "rotation_safe": rotation_safe,
-                })
-            except (ValueError, IndexError, TypeError):
-                pass
-
-    return {
-        "dnssec_status": dnssec_status,
-        "hosts_with_tlsa": hosts_with,
-        "hosts_without_tlsa": hosts_without,
-        "parsed_records": parsed_tlsa,
-    }
 
 
 # ============================================================
@@ -7349,7 +7112,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "google_workspace": {
         "name": "Google Workspace",
         "category": "mailbox",
-        "badge_class": "pi-badge-google",
         "capabilities": {
             "dkim_2048": True,  # https://knowledge.workspace.google.com/admin/security/set-up-dkim
             "dkim_auto_rotation": None,
@@ -7386,7 +7148,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "microsoft_365": {
         "name": "Microsoft 365",
         "category": "mailbox",
-        "badge_class": "pi-badge-microsoft",
         "capabilities": {
             "dkim_2048": True,  # https://learn.microsoft.com/en-us/defender-office-365/email-authentication-dkim-configure
             "dkim_auto_rotation": True,  # https://learn.microsoft.com/en-us/defender-office-365/email-authentication-dkim-configure
@@ -7425,7 +7186,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "proofpoint": {
         "name": "Proofpoint",
         "category": "gateway",
-        "badge_class": "pi-badge-proofpoint",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7456,7 +7216,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "mimecast": {
         "name": "Mimecast",
         "category": "gateway",
-        "badge_class": "pi-badge-mimecast",
         "capabilities": {
             "dkim_2048": True,  # https://mimecastsupport.zendesk.com/hc/en-us/articles/34000340541587
             "dkim_auto_rotation": None,
@@ -7479,7 +7238,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "barracuda": {
         "name": "Barracuda",
         "category": "gateway",
-        "badge_class": "pi-badge-barracuda",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7502,7 +7260,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "zoho": {
         "name": "Zoho Mail",
         "category": "mailbox",
-        "badge_class": "pi-badge-zoho",
         "capabilities": {
             "dkim_2048": True,  # https://www.zoho.com/mail/help/adminconsole/dkim-configuration.html
             "dkim_auto_rotation": None,
@@ -7525,7 +7282,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "protonmail": {
         "name": "ProtonMail",
         "category": "mailbox",
-        "badge_class": "pi-badge-protonmail",
         "capabilities": {
             "dkim_2048": True,  # https://proton.me/support/anti-spoofing-custom-domain
             "dkim_auto_rotation": True,  # https://proton.me/support/anti-spoofing-custom-domain
@@ -7548,7 +7304,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "fastmail": {
         "name": "Fastmail",
         "category": "mailbox",
-        "badge_class": "pi-badge-fastmail",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7571,7 +7326,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "amazon_ses": {
         "name": "Amazon SES",
         "category": "sending",
-        "badge_class": "pi-badge-ses",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7594,7 +7348,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "sendgrid": {
         "name": "SendGrid",
         "category": "sending",
-        "badge_class": "pi-badge-sendgrid",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7617,7 +7370,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "mailchimp": {
         "name": "Mailchimp",
         "category": "sending",
-        "badge_class": "pi-badge-mailchimp",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7640,7 +7392,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "mailgun": {
         "name": "Mailgun",
         "category": "sending",
-        "badge_class": "pi-badge-mailgun",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7655,7 +7406,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "mandrill": {
         "name": "Mandrill",
         "category": "sending",
-        "badge_class": "pi-badge-mandrill",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7670,7 +7420,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "hubspot": {
         "name": "HubSpot",
         "category": "sending",
-        "badge_class": "pi-badge-hubspot",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7685,7 +7434,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "salesforce": {
         "name": "Salesforce",
         "category": "sending",
-        "badge_class": "pi-badge-salesforce",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7700,7 +7448,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "zendesk": {
         "name": "Zendesk",
         "category": "sending",
-        "badge_class": "pi-badge-zendesk",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7715,7 +7462,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "freshdesk": {
         "name": "Freshdesk",
         "category": "sending",
-        "badge_class": "pi-badge-freshdesk",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7730,7 +7476,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "constant_contact": {
         "name": "Constant Contact",
         "category": "sending",
-        "badge_class": "pi-badge-constantcontact",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7745,7 +7490,6 @@ _PROVIDER_META: Dict[str, Dict] = {
     "campaign_monitor": {
         "name": "Campaign Monitor",
         "category": "sending",
-        "badge_class": "pi-badge-campaignmonitor",
         "capabilities": {
             "dkim_2048": None,
             "dkim_auto_rotation": None,
@@ -7844,7 +7588,6 @@ def _check_domain_features(raw_results: Dict, checks: List[Dict]) -> Dict[str, s
     # row: an assertion that its keys fall short of 2048 bits, about a domain
     # with no keys. google.com published five revoked selectors and nothing
     # live, and this row contradicted its own DKIM card two sections above.
-    # Same expression, same fix as remediation_planner._has_live_dkim_key.
     dkim_raw = raw_results.get("dkim", {})
     found_selectors, _revoked = _split_dkim_selectors(
         dkim_raw.get("found_selectors", []) or []
@@ -7959,7 +7702,6 @@ def _build_provider_intelligence(
             "name": meta["name"],
             "category": category,
             "category_label": _CATEGORY_LABELS.get(category, category),
-            "badge_class": meta.get("badge_class", ""),
             "detected_via": sources,
             "guidance": meta.get("guidance", []),
             "scorecard": scorecard,

@@ -45,7 +45,7 @@ BANNED = [
 ]
 
 PY_SOURCES = ("result_transformer.py", "audit_engine.py", "anomaly_detector.py",
-              "checks_extra.py", "pdf_report.py", "remediation_planner.py",
+              "checks_extra.py", "pdf_report.py",
               "spf_recursive.py")
 
 

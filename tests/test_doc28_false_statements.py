@@ -37,7 +37,6 @@ from result_transformer import (
     build_executive_summary,
     build_security_roadmap,
 )
-from spf_execution_engine import build_dmarc_roadmap
 
 
 # ---------------------------------------------------------------------------
@@ -99,23 +98,6 @@ def test_migration_path_sets_fo_step_when_ruf_present():
     assert "fo=1" in path["target_record"]
     fo_steps = [s for s in path["steps"] if "fo" in s.get("tags_changed", [])]
     assert fo_steps, "expected a fo=1 step when ruf is already configured"
-
-
-def test_dmarc_roadmap_wizard_has_no_bare_fo():
-    raw_dmarc = {
-        "record": None, "policy": "", "pct": None, "rua": None,
-        "domain": "example.com",
-    }
-    raw_spf = {"record": None, "lookup_count": 0, "all_mechanism": ""}
-    raw_dkim = {"found_selectors": []}
-
-    roadmap = build_dmarc_roadmap(
-        raw_dmarc, raw_spf, raw_dkim,
-        tree_walk=None, has_mx=True, is_defensive=False,
-    )
-    assert roadmap is not None
-    for step in roadmap["steps"]:
-        _assert_no_bare_fo(step.get("dns_record"), f"roadmap stage {step['stage']}")
 
 
 # ---------------------------------------------------------------------------

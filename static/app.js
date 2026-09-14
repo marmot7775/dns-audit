@@ -205,16 +205,6 @@ window.addEventListener('pageshow', function(event) {
     }
 });
 
-// -- Educational section toggle --
-const eduToggle = document.getElementById('edu-toggle');
-const eduContent = document.getElementById('edu-content');
-if (eduToggle && eduContent) {
-    eduToggle.addEventListener('click', () => {
-        eduToggle.classList.toggle('open');
-        eduContent.classList.toggle('open');
-    });
-}
-
 // -- Form submission --
 auditForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -920,9 +910,6 @@ function renderResults(data) {
 
     // Share button with dropdown
     _initShareDropdown();
-
-    // Prompt 11: Comparison mode button
-    _initComparisonMode();
 
     // "Run another audit" + CSV export buttons at bottom of results (Prompts 9, 15)
     let runAnother = document.getElementById('run-another-btn');
@@ -2696,8 +2683,6 @@ function renderDkimKeyAnalysis(dk) {
         let tagsHtml = '';
         if (k.tags && k.tags.length > 0) {
             tagsHtml = k.tags.map(t => {
-                let val = t.truncated || t.value || '';
-                if (t.revoked) val = '(empty - REVOKED)';
                 const cls = t.revoked ? ' tag-fail' : '';
                 return `<span class="tag${cls}"><code>${escapeHtml(t.tag)}=</code> <span class="dk-field-label">${escapeHtml(t.label)}</span></span>`;
             }).join('');
@@ -2854,7 +2839,6 @@ function renderSpfExecution(exec) {
 
         // Vendor badge (only for top-level includes with a match)
         if (step.vendor) {
-            const catClass = step.vendor_category ? `se-vendor-${step.vendor_category}` : '';
             html += ` <span class="tag">${escapeHtml(step.vendor)}</span>`;
         }
 
@@ -3069,7 +3053,6 @@ function renderTreeNode(node, totalLookups, isRoot) {
 
     let vendorHtml = '';
     if (node.vendor) {
-        const catClass = node.vendor_category ? `se-vendor-${node.vendor_category}` : '';
         vendorHtml = `<span class="tag">${escapeHtml(node.vendor)}</span>`;
     }
 
@@ -3581,7 +3564,6 @@ function _renderProviderCard(provider, showScorecard) {
 // Toast notification system (Prompt 4)
 // ============================================================
 
-const _toastQueue = [];
 const MAX_TOASTS = 3;
 
 function showToast(message) {
@@ -3908,138 +3890,3 @@ window.addEventListener('scroll', () => {
     const rect = runAnother.getBoundingClientRect();
     runAnother.classList.toggle('sticky', rect.bottom > window.innerHeight);
 }, { passive: true });
-
-// ============================================================
-// Comparison Mode (Prompt 11)
-// ============================================================
-
-function _initComparisonMode() {
-    const resultsBanner = document.getElementById('results-banner');
-    if (!resultsBanner) return;
-
-    let compareBtn = document.getElementById('compare-btn');
-    if (compareBtn) return; // Already initialized
-
-    compareBtn = document.createElement('button');
-    compareBtn.id = 'compare-btn';
-    compareBtn.type = 'button';
-    compareBtn.className = 'audit-btn compare-btn';
-    compareBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-            <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-            <line x1="6" y1="20" x2="6" y2="14"/>
-        </svg>
-        <span>Compare</span>
-    `;
-
-    const bannerActions = resultsBanner.querySelector('.banner-actions');
-    if (bannerActions) {
-        bannerActions.appendChild(compareBtn);
-    }
-
-    compareBtn.addEventListener('click', () => {
-        let panel = document.getElementById('comparison-panel');
-        if (panel) {
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-            return;
-        }
-
-        panel = document.createElement('div');
-        panel.id = 'comparison-panel';
-        panel.className = 'comparison-panel';
-        panel.innerHTML = `
-            <div class="comparison-header">Compare with another domain</div>
-            <form class="comparison-form" id="comparison-form">
-                <input type="text" class="domain-input comparison-input" id="compare-domain-input"
-                       placeholder="Enter second domain..." autocomplete="off" spellcheck="false" />
-                <button type="submit" class="audit-btn">Compare</button>
-            </form>
-            <div id="comparison-results" class="comparison-results is-hidden"></div>
-        `;
-        resultsBanner.parentNode.insertBefore(panel, resultsBanner.nextSibling);
-
-        document.getElementById('comparison-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const raw = document.getElementById('compare-domain-input').value.trim();
-            if (!raw) return;
-            const domain2 = normalizeDomain(raw);
-            if (!domain2) return;
-
-            const resultsDiv = document.getElementById('comparison-results');
-            resultsDiv.classList.remove('is-hidden');
-            resultsDiv.innerHTML = '<div class="comparison-loading">Running comparison audit...</div>';
-
-            try {
-                const selectorVal = document.getElementById('selector-input')?.value?.trim() || '';
-                let url = `${API_BASE}/audit?domain=${encodeURIComponent(domain2)}`;
-                if (selectorVal) url += `&selector=${encodeURIComponent(selectorVal)}`;
-                if (currentScope && currentScope !== 'complete') url += `&scope=${encodeURIComponent(currentScope)}`;
-                const resp = await fetch(url);
-                const data2 = await resp.json();
-
-                if (data2.error) {
-                    resultsDiv.innerHTML = `<div class="comparison-error">${escapeHtml(data2.error_message || data2.error)}</div>`;
-                    return;
-                }
-
-                _renderComparison(lastAuditData, data2, resultsDiv);
-            } catch (err) {
-                resultsDiv.innerHTML = `<div class="comparison-error">Comparison failed: ${escapeHtml(err.message)}</div>`;
-            }
-        });
-    });
-}
-
-function _renderComparison(data1, data2, container) {
-    let html = `
-        <div class="comparison-table-wrap">
-            <table class="comparison-table">
-                <thead>
-                    <tr>
-                        <th>Check</th>
-                        <th>${escapeHtml(data1.domain)}</th>
-                        <th>${escapeHtml(data2.domain)}</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-
-    // Build a map of checks for data2
-    const checks2Map = {};
-    (data2.checks || []).forEach(c => { checks2Map[c.name] = c; });
-
-    (data1.checks || []).forEach(check => {
-        const check2 = checks2Map[check.name] || {};
-        const s1 = check.status || 'N/A';
-        const s2 = check2.status || 'N/A';
-        const winner = (s1 === 'pass' && s2 !== 'pass') ? 'left' :
-                       (s2 === 'pass' && s1 !== 'pass') ? 'right' : '';
-        html += `
-            <tr>
-                <td>${escapeHtml(check.name)}</td>
-                <td class="${winner === 'left' ? 'comparison-winner' : ''}">
-                    <span class="${tagClass(s1)}">${escapeHtml(STATUS_LABELS[s1] || s1)}</span>
-                </td>
-                <td class="${winner === 'right' ? 'comparison-winner' : ''}">
-                    <span class="${tagClass(s2)}">${escapeHtml(STATUS_LABELS[s2] || s2)}</span>
-                </td>
-            </tr>
-        `;
-    });
-
-    html += `</tbody></table></div>`;
-
-    // Summary: compare by failCount (fewer fails = stronger)
-    const fail1 = (data1.checks || []).filter(c => c.status === 'fail').length;
-    const fail2 = (data2.checks || []).filter(c => c.status === 'fail').length;
-    if (fail1 < fail2) {
-        html += `<div class="comparison-summary">${escapeHtml(data1.domain)} has fewer issues</div>`;
-    } else if (fail2 < fail1) {
-        html += `<div class="comparison-summary">${escapeHtml(data2.domain)} has fewer issues</div>`;
-    } else {
-        html += `<div class="comparison-summary">Both domains have the same number of issues</div>`;
-    }
-
-    container.innerHTML = html;
-}

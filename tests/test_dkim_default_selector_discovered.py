@@ -50,8 +50,9 @@ def test_default_selector_is_inside_the_tested_slice():
 
     # No vendor in SPF, so nothing gets prioritized and the raw master order
     # is what the cap slices.
-    prioritized = spf_intelligence.get_prioritized_selectors(
-        "v=spf1 ip4:203.0.113.10 -all", COMPREHENSIVE_DKIM_SELECTORS
+    prioritized = spf_intelligence._selectors_from_vendors(
+        spf_intelligence.detect_vendors_from_spf("v=spf1 ip4:203.0.113.10 -all"),
+        COMPREHENSIVE_DKIM_SELECTORS,
     )
     assert prioritized.index("default") > 200, (
         "fixture no longer reproduces the bug: default is already near the "
@@ -100,8 +101,8 @@ def test_tested_count_reports_probes_that_actually_ran(monkeypatch):
     )
     assert result["tested_count"] > 0
     assert result["tested_count"] <= len(
-        spf_intelligence.get_prioritized_selectors(
-            "v=spf1 ip4:203.0.113.10 -all",
+        spf_intelligence._selectors_from_vendors(
+            spf_intelligence.detect_vendors_from_spf("v=spf1 ip4:203.0.113.10 -all"),
             __import__("comprehensive_selectors").COMPREHENSIVE_DKIM_SELECTORS,
         )
     )

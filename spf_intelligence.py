@@ -243,52 +243,6 @@ def _selectors_from_vendors(vendors: List[Dict], base_selectors: List[str]) -> L
     return priority_selectors + remaining
 
 
-def get_prioritized_selectors(spf_record: str, base_selectors: List[str]) -> List[str]:
-    """
-    Generate prioritized DKIM selector list based on SPF analysis.
-
-    Strategy:
-    1. HIGH PRIORITY: Selectors from vendors detected in SPF (80% hit rate)
-    2. LOW PRIORITY: Remaining base selectors (20% hit rate)
-
-    This means we find most DKIM records in the first 5-10 tests instead of 20+
-    """
-    return _selectors_from_vendors(detect_vendors_from_spf(spf_record), base_selectors)
-
-def generate_vendor_intelligence_report(spf_record: str) -> str:
-    """Generate report showing what vendors were auto-detected from SPF"""
-    vendors = detect_vendors_from_spf(spf_record)
-    
-    if not vendors:
-        return "ℹ️  No known vendors detected in SPF. Testing all common selectors."
-    
-    report = "🔍 INTELLIGENT DISCOVERY (from SPF analysis):\n\n"
-    
-    # Group by category
-    categories = {}
-    for vendor in vendors:
-        cat = vendor['category']
-        if cat not in categories:
-            categories[cat] = []
-        categories[cat].append(vendor)
-    
-    category_labels = {
-        'email_provider': '📧 Email Provider',
-        'marketing_esp': '📢 Marketing Platform',
-        'transactional_esp': '🔔 Transactional Email',
-        'email_security': '🛡️ Email Security',
-        'support_platform': '💬 Support Platform'
-    }
-    
-    for cat, cat_vendors in categories.items():
-        report += f"{category_labels.get(cat, cat)}:\n"
-        for vendor in cat_vendors:
-            report += f"  • {vendor['vendor']}\n"
-            report += f"    SPF: {vendor['spf_include']}\n"
-            report += f"    Testing selectors: {', '.join(vendor['dkim_selectors'])}\n\n"
-    
-    return report
-
 def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selectors: int = 40,
                      mx_hosts: Optional[List[str]] = None,
                      progress_callback: Optional[Callable[[int], None]] = None,
@@ -327,7 +281,6 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         'found_selectors': [],
         'tested_count': 0,
         'discovery_method': 'blind_loop',
-        'intelligence_report': ''
     }
 
     # Get SPF record if not provided
@@ -367,8 +320,6 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     if vendors:
         priority_selectors = _selectors_from_vendors(vendors, DKIM_SELECTORS)
         result['discovery_method'] = 'spf_intelligent' if from_spf else 'mx_intelligent'
-        if spf_record:
-            result['intelligence_report'] = generate_vendor_intelligence_report(spf_record)
     else:
         # No vendor detected from either signal: the head of the master
         # list, which is organized by named vendor before it gets to the
@@ -555,32 +506,3 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         result['timeout_note'] = 'DKIM selector discovery timed out, results may be incomplete.'
 
     return result
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test with sample SPF record
-    sample_spf = "v=spf1 include:_spf.google.com include:servers.mcsv.net include:sendgrid.net ~all"
-    
-    print("=" * 70)
-    print("SPF-BASED INTELLIGENT DKIM DISCOVERY")
-    print("=" * 70)
-    print(f"\nSample SPF: {sample_spf}\n")
-    
-    # Show vendor detection
-    vendors = detect_vendors_from_spf(sample_spf)
-    print(f"Detected {len(vendors)} vendors:")
-    for v in vendors:
-        print(f"  • {v['vendor']}: {v['dkim_selectors']}")
-    
-    # Show prioritized selector order
-    from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS as DKIM_SELECTORS
-    prioritized = get_prioritized_selectors(sample_spf, DKIM_SELECTORS)
-    print("\nPrioritized selector order (first 10):")
-    for i, sel in enumerate(prioritized[:10], 1):
-        print(f"  {i}. {sel}")
-    
-    print(f"\nTotal selectors to test: {len(prioritized)}")
-    print(f"HIGH PRIORITY (from SPF): {len([s for s in prioritized if s in ['google', 'k1', 'k2', 'k3', 'em', 's1', 's2']])}")
-    print(f"LOW PRIORITY (generic): {len(prioritized) - len([s for s in prioritized if s in ['google', 'k1', 'k2', 'k3', 'em', 's1', 's2']])}")
-

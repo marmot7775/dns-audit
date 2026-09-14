@@ -12,15 +12,8 @@ Usage:
     from pdf_report import generate_pdf
     pdf_bytes = generate_pdf(audit_result_dict)
 
-Wire into server.py:
-    @app.get("/api/audit/{domain}/pdf")
-    async def audit_pdf(domain: str, scope: str = "complete", selector: str = None):
-        result = audit_dns_security(domain, scope=scope,
-                    dkim_selectors=[selector] if selector else None)
-        pdf = generate_pdf(result)
-        return Response(content=pdf, media_type="application/pdf",
-                        headers={"Content-Disposition":
-                            f'attachment; filename="dns-audit-{domain}.pdf"'})
+server.py's /api/audit/{domain}/pdf handler passes it the run_full_audit
+result.
 """
 
 import io
@@ -146,9 +139,6 @@ def _strip_html(t):
 def _safe(t):
     if not t: return ""
     return str(t).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-
-def _sev(c):
-    return {"fail":0,"warn":1,"pass":2,"absent":3}.get(c.get("status","pass"),4)
 
 def _get_check(data, name):
     for c in data.get("checks", []):
@@ -1796,13 +1786,8 @@ if __name__ == "__main__":
                  "impact": "BIMI displays your logo in supported email clients."},
             ],
             "tiers": {"critical": 1, "high": 1, "medium": 1, "low": 1},
-            "total": 4,
             "summary": "4 recommendations across 4 priority tiers.",
         },
-        "priority_fixes": [
-            "Upgrade DMARC policy from p=none to p=reject",
-            "Add MTA-STS policy for transport encryption",
-        ],
         "checks": [
             {"name": "DMARC", "status": "warn",
              "verdict": "DMARC record found with p=none (monitoring only)",

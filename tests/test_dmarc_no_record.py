@@ -19,9 +19,6 @@ import audit_engine
 
 def test_tldextract_cache_dir_is_under_project_root():
     """tldextract instance must use a writable, project-local cache dir."""
-    if audit_engine._tld_extract is None:
-        # tldextract not installed in this environment; nothing to verify.
-        return
     project_root = os.path.dirname(os.path.abspath(audit_engine.__file__))
     cache_dir = audit_engine._tldextract_cache_dir
     assert cache_dir.startswith(project_root), (
