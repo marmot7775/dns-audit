@@ -18,6 +18,7 @@ result.
 
 import io
 import logging
+import os
 import re
 import tempfile
 from collections import Counter
@@ -30,12 +31,77 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Table as _PlatypusTable
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    SimpleDocTemplate, Paragraph, Spacer, TableStyle,
     KeepTogether, HRFlowable, PageBreak, CondPageBreak,
 )
 
 log = logging.getLogger("dns-auditor.pdf")
+
+# ================================================================
+# Typefaces (Doc 52)
+# ================================================================
+
+# The site's faces: DM Sans for text, JetBrains Mono for records. The TTFs
+# live in fonts/ at the repo root, found from this file so the working
+# directory does not matter. ReportLab embeds only the glyphs a report uses.
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+_FACES = {
+    "sans":        ("DMSans",        "DMSans-Regular.ttf"),
+    "sans_bold":   ("DMSans-Bold",   "DMSans-Bold.ttf"),
+    "sans_italic": ("DMSans-Italic", "DMSans-Italic.ttf"),
+    "mono":        ("JetBrainsMono", "JetBrainsMono-Regular.ttf"),
+}
+_FALLBACK = {"sans": "Helvetica", "sans_bold": "Helvetica-Bold",
+             "sans_italic": "Helvetica-Oblique", "mono": "Courier"}
+
+
+def _load_fonts(font_dir=_FONT_DIR):
+    """Register the site's faces and return the font names to draw with.
+
+    A missing or unreadable file falls back to ReportLab's built-in
+    Helvetica and Courier with one warning, so the PDF endpoint keeps
+    working. DM Sans has no check or cross glyph, so those two are set in
+    JetBrains Mono, which has both; the built-in fallback gets the bare
+    characters, as before Doc 52.
+    """
+    try:
+        for name, filename in _FACES.values():
+            pdfmetrics.registerFont(TTFont(name, os.path.join(font_dir, filename)))
+    except Exception as exc:
+        log.warning("PDF fonts not loaded from %s (%s); using Helvetica and Courier",
+                    font_dir, exc)
+        return dict(_FALLBACK, check="\u2713", cross="\u2717")
+    pdfmetrics.registerFontFamily("DMSans", normal="DMSans", bold="DMSans-Bold",
+                                  italic="DMSans-Italic", boldItalic="DMSans-Bold")
+    fonts = {key: name for key, (name, _) in _FACES.items()}
+    fonts["check"] = f"<font name='{fonts['mono']}'>\u2713</font>"
+    fonts["cross"] = f"<font name='{fonts['mono']}'>\u2717</font>"
+    return fonts
+
+
+FONTS = _load_fonts()
+
+
+def _glyphs(markup):
+    """Set the check and cross in markup on a face that has them."""
+    return markup.replace("\u2713", FONTS["check"]).replace("\u2717", FONTS["cross"])
+
+
+class Table(_PlatypusTable):
+    """A Table whose cells default to the report's text face.
+
+    ReportLab sets each cell's font before drawing it, Paragraph or not, and
+    its default is Helvetica, which put an unused Helvetica resource on
+    every page.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setStyle([("FONTNAME", (0, 0), (-1, -1), FONTS["sans"])])
 
 # ================================================================
 # Brand colors
@@ -198,11 +264,11 @@ def _findings_summary(passes, warns, fails, absent=0, unavailable=0):
     report, so a clean run reads the same as it always did.
     """
     total = passes + warns + fails + absent + unavailable
-    line = ParagraphStyle("FS", fontName="Helvetica-Bold", fontSize=11, leading=16)
+    line = ParagraphStyle("FS", fontName=FONTS["sans_bold"], fontSize=11, leading=16)
     # The 22pt total needs its own leading; on the 11pt line style its
     # descenders printed over the "checks total" label beneath it.
-    big = ParagraphStyle("FSN", fontName="Helvetica-Bold", fontSize=22, leading=27)
-    label = ParagraphStyle("FSL", fontName="Helvetica", fontSize=9, textColor=TEXT_TER, leading=12)
+    big = ParagraphStyle("FSN", fontName=FONTS["sans_bold"], fontSize=22, leading=27)
+    label = ParagraphStyle("FSL", fontName=FONTS["sans"], fontSize=9, textColor=TEXT_TER, leading=12)
     els = [
         Paragraph(f'<font color="{TEXT_PRI.hexval()}">{total}</font>', big),
         Paragraph(f"check{'s' if total != 1 else ''} total", label),
@@ -224,29 +290,29 @@ def _findings_summary(passes, warns, fails, absent=0, unavailable=0):
 
 def _styles():
     s = {}
-    s["title"]       = ParagraphStyle("T",  fontName="Helvetica-Bold",    fontSize=28, textColor=colors.white, leading=34)
-    s["title_sub"]   = ParagraphStyle("TS", fontName="Helvetica",         fontSize=14, textColor=colors.HexColor("#b0c8e0"), leading=18)
-    s["heading"]     = ParagraphStyle("H",  fontName="Helvetica-Bold",    fontSize=16, textColor=TEXT_PRI, leading=22, spaceBefore=16, spaceAfter=5)
-    s["heading2"]    = ParagraphStyle("H2", fontName="Helvetica-Bold",    fontSize=14, textColor=NAVY, leading=19, spaceBefore=14, spaceAfter=4)
-    s["subheading"]  = ParagraphStyle("SH", fontName="Helvetica-Bold",    fontSize=13, textColor=NAVY, leading=17, spaceBefore=12, spaceAfter=3)
-    s["body"]        = ParagraphStyle("B",  fontName="Helvetica",         fontSize=11, textColor=TEXT_SEC, leading=16, spaceBefore=2, spaceAfter=2)
-    s["body_large"]  = ParagraphStyle("BL", fontName="Helvetica",         fontSize=12, textColor=TEXT_PRI, leading=17, spaceBefore=2, spaceAfter=2)
-    s["body_small"]  = ParagraphStyle("BS", fontName="Helvetica",         fontSize=10, textColor=TEXT_TER, leading=14, spaceBefore=1, spaceAfter=1)
-    s["body_tiny"]   = ParagraphStyle("BT", fontName="Helvetica",         fontSize=9,  textColor=TEXT_TER, leading=12)
-    s["verdict"]     = ParagraphStyle("V",  fontName="Helvetica-Oblique", fontSize=11, textColor=TEXT_TER, leading=16, spaceAfter=5)
-    s["record"]      = ParagraphStyle("R",  fontName="Courier",           fontSize=9.5, textColor=RECORD_FG, leading=13)
-    s["record_sm"]   = ParagraphStyle("RS", fontName="Courier",           fontSize=8.5, textColor=RECORD_FG, leading=12)
-    s["fix_label"]   = ParagraphStyle("FL", fontName="Helvetica-Bold",    fontSize=10, textColor=PASS_CLR, leading=13, spaceAfter=3)
-    s["fix_text"]    = ParagraphStyle("FT", fontName="Helvetica",         fontSize=11, textColor=TEXT_PRI, leading=16)
-    s["toc"]         = ParagraphStyle("TOC", fontName="Helvetica",        fontSize=11, textColor=NAVY, leading=18)
-    s["callout"]     = ParagraphStyle("CO", fontName="Helvetica-Bold",    fontSize=11, textColor=FAIL_CLR, leading=16)
-    s["callout_body"]= ParagraphStyle("CB", fontName="Helvetica",         fontSize=11, textColor=TEXT_PRI, leading=16)
-    s["metric_label"]= ParagraphStyle("ML", fontName="Helvetica",         fontSize=9,  textColor=TEXT_TER, leading=12, alignment=TA_CENTER)
-    s["metric_value"]= ParagraphStyle("MV", fontName="Helvetica-Bold",    fontSize=14, textColor=TEXT_PRI, leading=18, alignment=TA_CENTER)
-    s["section_num"] = ParagraphStyle("SN", fontName="Helvetica-Bold",    fontSize=10, textColor=colors.white, leading=14)
-    s["page_title"]  = ParagraphStyle("PG", fontName="Helvetica-Bold",    fontSize=20, textColor=NAVY, leading=26, spaceBefore=4, spaceAfter=8)
+    s["title"]       = ParagraphStyle("T",  fontName=FONTS["sans_bold"],    fontSize=28, textColor=colors.white, leading=34)
+    s["title_sub"]   = ParagraphStyle("TS", fontName=FONTS["sans"],         fontSize=14, textColor=colors.HexColor("#b0c8e0"), leading=18)
+    s["heading"]     = ParagraphStyle("H",  fontName=FONTS["sans_bold"],    fontSize=16, textColor=TEXT_PRI, leading=22, spaceBefore=16, spaceAfter=5)
+    s["heading2"]    = ParagraphStyle("H2", fontName=FONTS["sans_bold"],    fontSize=14, textColor=NAVY, leading=19, spaceBefore=14, spaceAfter=4)
+    s["subheading"]  = ParagraphStyle("SH", fontName=FONTS["sans_bold"],    fontSize=13, textColor=NAVY, leading=17, spaceBefore=12, spaceAfter=3)
+    s["body"]        = ParagraphStyle("B",  fontName=FONTS["sans"],         fontSize=11, textColor=TEXT_SEC, leading=16, spaceBefore=2, spaceAfter=2)
+    s["body_large"]  = ParagraphStyle("BL", fontName=FONTS["sans"],         fontSize=12, textColor=TEXT_PRI, leading=17, spaceBefore=2, spaceAfter=2)
+    s["body_small"]  = ParagraphStyle("BS", fontName=FONTS["sans"],         fontSize=10, textColor=TEXT_TER, leading=14, spaceBefore=1, spaceAfter=1)
+    s["body_tiny"]   = ParagraphStyle("BT", fontName=FONTS["sans"],         fontSize=9,  textColor=TEXT_TER, leading=12)
+    s["verdict"]     = ParagraphStyle("V",  fontName=FONTS["sans_italic"], fontSize=11, textColor=TEXT_TER, leading=16, spaceAfter=5)
+    s["record"]      = ParagraphStyle("R",  fontName=FONTS["mono"],           fontSize=9.5, textColor=RECORD_FG, leading=13)
+    s["record_sm"]   = ParagraphStyle("RS", fontName=FONTS["mono"],           fontSize=8.5, textColor=RECORD_FG, leading=12)
+    s["fix_label"]   = ParagraphStyle("FL", fontName=FONTS["sans_bold"],    fontSize=10, textColor=PASS_CLR, leading=13, spaceAfter=3)
+    s["fix_text"]    = ParagraphStyle("FT", fontName=FONTS["sans"],         fontSize=11, textColor=TEXT_PRI, leading=16)
+    s["toc"]         = ParagraphStyle("TOC", fontName=FONTS["sans"],        fontSize=11, textColor=NAVY, leading=18)
+    s["callout"]     = ParagraphStyle("CO", fontName=FONTS["sans_bold"],    fontSize=11, textColor=FAIL_CLR, leading=16)
+    s["callout_body"]= ParagraphStyle("CB", fontName=FONTS["sans"],         fontSize=11, textColor=TEXT_PRI, leading=16)
+    s["metric_label"]= ParagraphStyle("ML", fontName=FONTS["sans"],         fontSize=9,  textColor=TEXT_TER, leading=12, alignment=TA_CENTER)
+    s["metric_value"]= ParagraphStyle("MV", fontName=FONTS["sans_bold"],    fontSize=14, textColor=TEXT_PRI, leading=18, alignment=TA_CENTER)
+    s["section_num"] = ParagraphStyle("SN", fontName=FONTS["sans_bold"],    fontSize=10, textColor=colors.white, leading=14)
+    s["page_title"]  = ParagraphStyle("PG", fontName=FONTS["sans_bold"],    fontSize=20, textColor=NAVY, leading=26, spaceBefore=4, spaceAfter=8)
     for k, clr in [("good",PASS_CLR),("warning",WARN_CLR),("error",FAIL_CLR),("info",TEXT_SEC)]:
-        s[f"d_{k}"] = ParagraphStyle(f"D{k}", fontName="Helvetica", fontSize=10.5, textColor=clr, leading=15, spaceBefore=1, spaceAfter=1, leftIndent=12)
+        s[f"d_{k}"] = ParagraphStyle(f"D{k}", fontName=FONTS["sans"], fontSize=10.5, textColor=clr, leading=15, spaceBefore=1, spaceAfter=1, leftIndent=12)
     return s
 
 
@@ -264,7 +330,7 @@ class _PageTpl:
         self._page_count += 1
         w, h = letter
         # Footer on every page
-        c.setFont("Helvetica", 8)
+        c.setFont(FONTS["sans"], 8)
         c.setFillColor(TEXT_TER)
         c.drawString(54, 28, f"dns-audit.com  |  {self.domain}  |  {self.ts}")
         c.drawRightString(w - 54, 28, f"Page {doc.page}")
@@ -358,15 +424,15 @@ def _cover_page(data, S, toc_items=None):
         clr = _clr(color_name)
         cell = [
             Paragraph(f'<font color="{clr.hexval()}" size="16"><b>{_safe(str(value))}</b></font>',
-                      ParagraphStyle("MV2", alignment=TA_CENTER, leading=22)),
+                      ParagraphStyle("MV2", fontName=FONTS["sans"], alignment=TA_CENTER, leading=22)),
             Paragraph(f'<font color="#6b6b6b" size="9">{_safe(label)}</font>',
-                      ParagraphStyle("ML2", alignment=TA_CENTER, leading=13)),
+                      ParagraphStyle("ML2", fontName=FONTS["sans"], alignment=TA_CENTER, leading=13)),
         ]
         # Paragraph ignores "\n", so the detail used to run straight on
         # from the label. It gets its own smaller line.
         if detail:
             cell.append(Paragraph(f'<font color="#6b6b6b" size="7.5">{_safe(detail)}</font>',
-                                  ParagraphStyle("MD2", alignment=TA_CENTER, leading=10)))
+                                  ParagraphStyle("MD2", fontName=FONTS["sans"], alignment=TA_CENTER, leading=10)))
         return cell
 
     sp_val = sp.get("label", "Unknown")
@@ -488,7 +554,7 @@ def _executive_summary_page(data, S, number=1):
     biggest_risk = es.get("biggest_risk", "")
     _severity = es.get("biggest_risk_severity", "critical")
     if _severity == "none":
-        _risk_glyph, _risk_title = "\u2713", "NO URGENT RISKS FOUND"
+        _risk_glyph, _risk_title = _glyphs("\u2713"), "NO URGENT RISKS FOUND"
         _risk_bg, _risk_rule = PASS_BG, PASS_CLR
     elif _severity == "unknown":
         _risk_glyph, _risk_title = "\u2022", "BIGGEST RISK NOT ESTABLISHED"
@@ -528,9 +594,9 @@ def _executive_summary_page(data, S, number=1):
     def _count_cell(label, val, clr):
         return [
             Paragraph(f'<font color="{clr.hexval()}" size="20"><b>{val}</b></font>',
-                      ParagraphStyle("CC", alignment=TA_CENTER, leading=26)),
+                      ParagraphStyle("CC", fontName=FONTS["sans"], alignment=TA_CENTER, leading=26)),
             Paragraph(f'<font color="#6b6b6b" size="9">{label}</font>',
-                      ParagraphStyle("CL", alignment=TA_CENTER, leading=13)),
+                      ParagraphStyle("CL", fontName=FONTS["sans"], alignment=TA_CENTER, leading=13)),
         ]
     count_cells = [
         _count_cell("Passing", str(pc), PASS_CLR),
@@ -615,9 +681,9 @@ def _roadmap_page(data, S, number=2):
         t_clr = PRIORITY_CLR.get(tier_name, TEXT_SEC)
         tier_cells.append([
             Paragraph(f'<font color="{t_clr.hexval()}" size="14"><b>{count}</b></font>',
-                      ParagraphStyle("TC", alignment=TA_CENTER, leading=18)),
+                      ParagraphStyle("TC", fontName=FONTS["sans"], alignment=TA_CENTER, leading=18)),
             Paragraph(f'<font color="#6b6b6b" size="8">{tier_name.upper()}</font>',
-                      ParagraphStyle("TL", alignment=TA_CENTER, leading=12)),
+                      ParagraphStyle("TL", fontName=FONTS["sans"], alignment=TA_CENTER, leading=12)),
         ])
     if any(tiers.values()):
         tier_bar = Table([tier_cells], colWidths=[1.625*inch]*4)
@@ -650,7 +716,7 @@ def _roadmap_page(data, S, number=2):
             s_clr = STATUS_CLR.get(st, NEUTRAL_CLR)
             glyph = STATUS_GLYPH.get(st, "\u2022")
             rows.append([
-                Paragraph(f'<font color="{s_clr.hexval()}">{glyph}</font>', S["body"]),
+                Paragraph(f'<font color="{s_clr.hexval()}">{_glyphs(glyph)}</font>', S["body"]),
                 Paragraph(f'<font color="{p_clr.hexval()}"><b>{p.upper()}</b></font>', S["body_small"]),
                 Paragraph(_safe(item.get("protocol", "")), S["body"]),
                 Paragraph(_safe(item.get("action", "")), S["body"]),
@@ -730,7 +796,7 @@ def _dmarc_deep_dive(data, S, number=3):
         dt = d.get("type", "info")
         icon = DETAIL_ICON.get(dt, "•")
         sk = f"d_{dt}" if f"d_{dt}" in S else "d_info"
-        els.append(Paragraph(f"{icon}  {_safe(d.get('text', ''))}", S[sk]))
+        els.append(Paragraph(f"{_glyphs(icon)}  {_safe(d.get('text', ''))}", S[sk]))
 
     explanation = dmarc.get("explanation", "")
     if explanation:
@@ -810,7 +876,7 @@ def _dmarc_deep_dive(data, S, number=3):
                 icon = {"pass": "\u2713", "fail": "\u2717", "warn": WARN_ICON}.get(c_status, "\u2022")
                 c_clr = STATUS_CLR.get(c_status, TEXT_SEC)
                 style_key = {"pass": "d_good", "fail": "d_error", "warn": "d_warning"}.get(c_status, "d_info")
-                els.append(Paragraph(f"{icon}  {_safe(chk.get('message', ''))}", S[style_key]))
+                els.append(Paragraph(f"{_glyphs(icon)}  {_safe(chk.get('message', ''))}", S[style_key]))
 
     # Tag-by-tag breakdown
     tags_list = tb.get("tags", [])
@@ -846,14 +912,14 @@ def _dmarc_deep_dive(data, S, number=3):
 
             rows.append([
                 Paragraph(f"<b>{_safe(tag_name)}</b>", S["body"]),
-                Paragraph(f"<font name='Courier' size='9'>{_safe(str(val))}</font>", S["body"]),
+                Paragraph(f"<font name='{FONTS['mono']}' size='9'>{_safe(str(val))}</font>", S["body"]),
                 Paragraph(f'<font color="{bis_clr.hexval()}">{_safe(bis_label)}</font>', S["body_small"]),
                 Paragraph(_safe(explanation), S["body_small"]),
             ])
 
         # splitInRow: a rua list taller than a page is one row, and without it
         # ReportLab raises LayoutError and the PDF endpoint returns 500.
-        tt = Table(rows, colWidths=[0.5*inch, 1.3*inch, 0.9*inch, 3.8*inch], splitInRow=1)
+        tt = Table(rows, colWidths=[0.65*inch, 1.15*inch, 0.9*inch, 3.8*inch], splitInRow=1)
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 4),
@@ -926,7 +992,7 @@ def _dmarc_deep_dive(data, S, number=3):
                 reason = ch.get("reason", "")
                 action_icon = {"added": "+", "changed": "\u2192", "removed": "\u2717"}.get(action, "\u2022")
                 els.append(Paragraph(
-                    f"{action_icon}  <b>{_safe(tag)}</b> ({action}): {_safe(reason)}",
+                    f"{_glyphs(action_icon)}  <b>{_safe(tag)}</b> ({action}): {_safe(reason)}",
                     S["body_small"]
                 ))
 
@@ -1042,8 +1108,8 @@ def _attack_surface_page(data, S, number=4):
                 found_icon = "\u2713" if found else "\u2717"
                 f_clr = PASS_CLR if found else FAIL_CLR
                 rows.append([
-                    Paragraph(f"<font name='Courier' size='9'>{_safe(domain_name)}</font>", S["body"]),
-                    Paragraph(f'<font color="{f_clr.hexval()}">{found_icon}</font>', S["body"]),
+                    Paragraph(f"<font name='{FONTS['mono']}' size='9'>{_safe(domain_name)}</font>", S["body"]),
+                    Paragraph(f'<font color="{f_clr.hexval()}">{_glyphs(found_icon)}</font>', S["body"]),
                     Paragraph(_safe(policy_val) if policy_val else "-", S["body_small"]),
                 ])
             st = Table(rows, colWidths=[3.0*inch, 1.0*inch, 2.5*inch])
@@ -1099,8 +1165,8 @@ def _attack_surface_page(data, S, number=4):
         rows = [header]
         for sub in sa["subdomains"]:
             s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(sub.get("status", ""), TEXT_SEC)
-            status_icon = {"protected": STATUS_GLYPH["pass"], "partial": STATUS_GLYPH["warn"],
-                           "exposed": STATUS_GLYPH["fail"]}.get(sub.get("status", ""), "")
+            status_icon = _glyphs({"protected": STATUS_GLYPH["pass"], "partial": STATUS_GLYPH["warn"],
+                                   "exposed": STATUS_GLYPH["fail"]}.get(sub.get("status", ""), ""))
             exists_text = "Yes" if sub.get("exists") else "No"
             mail_text = "-"
             if sub.get("exists"):
@@ -1111,7 +1177,7 @@ def _attack_surface_page(data, S, number=4):
                 dmarc_text = "Yes" if sub.get("has_own_dmarc") else "No"
 
             rows.append([
-                Paragraph(f"<font name='Courier' size='7.5'>{_safe(sub.get('subdomain', ''))}</font>", S["body_small"]),
+                Paragraph(f"<font name='{FONTS['mono']}' size='7.5'>{_safe(sub.get('subdomain', ''))}</font>", S["body_small"]),
                 Paragraph(exists_text, S["body_small"]),
                 Paragraph(mail_text, S["body_small"]),
                 Paragraph(dmarc_text, S["body_small"]),
@@ -1119,7 +1185,7 @@ def _attack_surface_page(data, S, number=4):
                 Paragraph(f'<font color="{s_clr.hexval()}">{status_icon} {_safe(sub.get("status_label", ""))}</font>', S["body_small"]),
             ])
 
-        st = Table(rows, colWidths=[1.7*inch, 0.5*inch, 0.6*inch, 0.7*inch, 1.5*inch, 1.0*inch])
+        st = Table(rows, colWidths=[1.7*inch, 0.65*inch, 0.6*inch, 0.7*inch, 1.5*inch, 1.0*inch])
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 3),
@@ -1253,7 +1319,7 @@ def _protocol_card(check, S):
         dt = d.get("type", "info")
         icon = DETAIL_ICON.get(dt, "\u2022")
         sk = f"d_{dt}" if f"d_{dt}" in S else "d_info"
-        els.append(Paragraph(f"{icon}  {_safe(d.get('text', ''))}", S[sk]))
+        els.append(Paragraph(f"{_glyphs(icon)}  {_safe(d.get('text', ''))}", S[sk]))
 
     # Explanation
     explanation = check.get("explanation", "")
@@ -1330,7 +1396,7 @@ def _spf_deep_section(spf_deep, S):
         for m in mechanisms:
             provider = m.get("provider") or "-"
             rows.append([
-                Paragraph(f"<font name='Courier' size='8'>{_safe(m.get('raw', ''))}</font>", S["body_small"]),
+                Paragraph(f"<font name='{FONTS['mono']}' size='8'>{_safe(m.get('raw', ''))}</font>", S["body_small"]),
                 Paragraph(_safe(m.get("type", "")), S["body_small"]),
                 Paragraph(_safe(provider), S["body_small"]),
                 Paragraph(str(m.get("cost", 0)), S["body_small"]),
@@ -1399,7 +1465,7 @@ def _dkim_deep_section(dkim_deep, S):
         for k in keys:
             r_clr = {"green": PASS_CLR, "amber": WARN_CLR, "red": FAIL_CLR}.get(k.get("rating", ""), TEXT_SEC)
             rows.append([
-                Paragraph(f"<font name='Courier' size='8'>{_safe(k.get('selector', ''))}</font>", S["body_small"]),
+                Paragraph(f"<font name='{FONTS['mono']}' size='8'>{_safe(k.get('selector', ''))}</font>", S["body_small"]),
                 # _build_dkim_key_analysis emits this as "provider". Reading
                 # "vendor" rendered every row as "-" even when the provider was
                 # identified and shown elsewhere in the same report.
@@ -1500,7 +1566,7 @@ def _migration_page(data, S, number=6):
     status = migration.get("status", "")
     if status == "ready":
         els.append(Paragraph(
-            "\u2713  Your DMARC record is already RFC 9989 Ready. No migration needed.",
+            _glyphs("\u2713") + "  Your DMARC record is already RFC 9989 Ready. No migration needed.",
             S["body_large"]
         ))
         return els
@@ -1578,12 +1644,12 @@ def _about_page(data, S, number=7):
     brand_content = [
         Paragraph(
             '<font size="14"><b>Generated by dns-audit.com</b></font>',
-            ParagraphStyle("BR", alignment=TA_CENTER, leading=20)
+            ParagraphStyle("BR", fontName=FONTS["sans"], alignment=TA_CENTER, leading=20)
         ),
         Spacer(1, SP_XS),
         Paragraph(
             '<font size="10" color="#2dd4bf">DMARC audited against RFC 9989, 9990, and 9991</font>',
-            ParagraphStyle("BR2", alignment=TA_CENTER, leading=14)
+            ParagraphStyle("BR2", fontName=FONTS["sans"], alignment=TA_CENTER, leading=14)
         ),
     ]
     bt = Table([[brand_content]], colWidths=[6.5*inch])
@@ -1672,7 +1738,7 @@ def _about_page(data, S, number=7):
     retest = Table([
         [Paragraph(
             f"Re-test this domain at <b>https://dns-audit.com/?d={_safe(domain)}</b>",
-            ParagraphStyle("RT", fontSize=11, textColor=NAVY, alignment=TA_CENTER, leading=16)
+            ParagraphStyle("RT", fontName=FONTS["sans"], fontSize=11, textColor=NAVY, alignment=TA_CENTER, leading=16)
         )],
     ], colWidths=[6.5*inch])
     retest.setStyle(TableStyle([
@@ -1747,6 +1813,9 @@ def generate_pdf(audit_result: dict) -> bytes:
         bottomMargin=0.6*inch,
         leftMargin=0.75*inch,
         rightMargin=0.75*inch,
+        # The canvas opens every page on this face. ReportLab's default is
+        # Helvetica, which left an unused Helvetica resource on every page.
+        initialFontName=FONTS["sans"],
         title=f"DNS Security Audit - {_strip_html(domain)}",
         author="dns-audit.com",
         subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Complete Audit')} "
