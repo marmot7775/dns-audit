@@ -121,16 +121,6 @@
     <header class="site-header">
         <div class="container header-inner">
             <a href="/" class="logo">
-                <div class="logo-terminal">
-                    <div class="logo-titlebar">
-                        <span class="logo-dot logo-dot-red"></span>
-                        <span class="logo-dot logo-dot-yellow"></span>
-                        <span class="logo-dot logo-dot-green"></span>
-                    </div>
-                    <div class="logo-cmd">
-                        <span class="logo-prompt">$</span> <span class="logo-bin">dns-audit</span> <span class="logo-flag">--dmarc</span>
-                    </div>
-                </div>
                 <span class="logo-text"><span class="logo-accent">dns</span>-audit</span>
             </a>
             <div class="header-right">
@@ -150,8 +140,8 @@
     <main class="container" id="main-content">
         <section class="audit-input-section">
             <div class="audit-input-card">
-                <h1 class="audit-title">Check the DNS records mail servers use to verify your email</h1>
-                <p class="audit-subtitle">Enter a domain and it reads the public DNS records that control email authentication, transport security, and DNS integrity: SPF, DKIM, DMARC, MTA-STS, DNSSEC, and seven more, plus the public policy files they point to. It tells you what is missing or misconfigured, cites the RFC it checked against, including <a href="/articles/dmarcbis" class="audit-subtitle-link">RFC 9989 readiness</a>, and gives you the corrected record to paste. Nothing to install, nothing to send.</p>
+                <h1 class="audit-title">Check the DNS records behind your email</h1>
+                <p class="audit-subtitle">Enter a domain. The audit reads the DNS records and policy files behind email authentication, transport security, and DNS integrity (SPF, DKIM, DMARC, MTA-STS, DNSSEC, and seven more), says what is missing or misconfigured, cites the RFC it checked against, including <a href="/articles/dmarcbis" class="audit-subtitle-link">RFC 9989 readiness</a>, and gives you the corrected record to paste. Nothing to install, nothing to send.</p>
                 <form id="audit-form" class="audit-form" autocomplete="off">
                     <div class="input-row input-unified">
                         <div class="input-wrapper">

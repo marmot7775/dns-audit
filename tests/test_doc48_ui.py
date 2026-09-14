@@ -548,7 +548,6 @@ def test_no_font_or_radius_falls_back_on_an_undefined_variable(browser, theme):
 def test_the_three_contrast_failures_now_pass(browser, fixture_result, theme):
     ctx, page, errors = _page(browser, theme, 1280)
     try:
-        logo = page.evaluate(CONTRAST_JS, [".logo-flag", None])
         placeholder = page.evaluate(CONTRAST_JS, ["#domain-input", "::placeholder"])
         _render(page, fixture_result)
         # Put one of each tag on its warn surface inside a real card body, so
@@ -563,7 +562,8 @@ def test_the_three_contrast_failures_now_pass(browser, fixture_result, theme):
         }""")
         warn = page.evaluate(CONTRAST_JS, ["#doc48-tag-warn", None])
         high = page.evaluate(CONTRAST_JS, ["#doc48-tag-high", None])
-        for name, ratio in (("logo flag", logo), ("placeholder", placeholder),
+        # Doc 50 removed the terminal chip, and with it the .logo-flag probe.
+        for name, ratio in (("placeholder", placeholder),
                             ("tag-warn on monitoring verdict", warn),
                             ("tag-high on warn anomaly", high)):
             assert ratio is not None and ratio >= 4.5, f"{theme}: {name} is {ratio:.2f}:1"
