@@ -36,22 +36,6 @@ def test_style_css_uses_exactly_four_font_weights_and_rations_600():
 # Section 8: the header logo is not clipped
 # ---------------------------------------------------------------
 
-def test_logo_terminal_has_no_fixed_width_narrower_than_its_command():
-    css = _read("static", "style.css")
-    widths = []
-    for m in re.finditer(r"([^{}]*)\{([^{}]*)\}", css):
-        if re.search(r"\.logo-terminal(?![\w-])", m.group(1)):
-            w = re.search(r"(?<![\w-])width:\s*([^;]+);", m.group(2))
-            if w:
-                widths.append(w.group(1).strip())
-
-    assert widths, "no .logo-terminal width found"
-    for w in widths:
-        assert w == "auto" or int(re.match(r"\d+", w).group(0)) >= 144, (
-            f".logo-terminal width {w} clips '$ dns-audit --dmarc' to '--dm'"
-        )
-
-
 def _serve_static(route):
     url = urlparse(route.request.url)
     if url.hostname != "dns-audit.test":
@@ -67,7 +51,44 @@ def _serve_static(route):
                   headers={"content-type": mimetypes.guess_type(local)[0] or "text/html"})
 
 
+HEADER_JS = """() => {
+    const box = el => el.getBoundingClientRect();
+    const centre = el => box(el).top + box(el).height / 2;
+    // A block has one client rect however many lines it wraps to, so lines
+    // are counted from the rects of a range over its text.
+    const lines = el => { const r = document.createRange(); r.selectNodeContents(el);
+        return new Set([...r.getClientRects()].map(c => Math.round(c.top))).size; };
+    // Baseline: top of the first text fragment plus the font's ascent.
+    const baseline = el => {
+        const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let n; while ((n = walk.nextNode()) && !n.textContent.trim()) {}
+        const r = document.createRange(); r.selectNodeContents(n);
+        const cs = getComputedStyle(n.parentElement);
+        const ctx = document.createElement('canvas').getContext('2d');
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        return r.getClientRects()[0].top + ctx.measureText('x').fontBoundingBoxAscent;
+    };
+    const text = document.querySelector('.logo-text');
+    const nav = [...document.querySelectorAll('.nav-link')];
+    const inner = document.querySelector('.header-inner');
+    return {
+        scroll: [text.scrollWidth, text.clientWidth],
+        rects: text.getClientRects().length,
+        logoLines: lines(text),
+        logoCentre: centre(text),
+        navCentres: nav.map(centre),
+        logoBaseline: baseline(text),
+        navBaselines: nav.map(baseline),
+        headerLeft: box(inner).left + parseFloat(getComputedStyle(inner).paddingLeft),
+        logoLeft: box(text).left,
+        cardLeft: box(document.querySelector('.audit-input-card')).left,
+        titleLines: lines(document.querySelector('.audit-title')),
+    };
+}"""
+
+
 def test_header_logo_text_is_not_clipped_in_a_browser():
+    """Doc 50: one wordmark, on one line, centred on the nav, at the container edge."""
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as p:
         try:
@@ -75,20 +96,23 @@ def test_header_logo_text_is_not_clipped_in_a_browser():
         except Exception as exc:  # no browser build or missing system libraries
             pytest.skip(f"chromium is not available here: {exc}")
         try:
-            for width in (1280, 390):
+            for width in (1280, 390, 320):
                 page = browser.new_page(viewport={"width": width, "height": 800})
                 page.route("**/*", _serve_static)
                 page.goto("http://dns-audit.test/")
-                dims = page.evaluate("""() => {
-                    const box = document.querySelector('.logo-terminal');
-                    const cmd = document.querySelector('.logo-cmd');
-                    if (!box || !cmd) return null;
-                    return {box: [box.scrollWidth, box.clientWidth],
-                            cmd: [cmd.scrollWidth, cmd.clientWidth]};
-                }""")
-                assert dims, "the header has no .logo-terminal"
-                assert dims["box"][0] == dims["box"][1], (width, dims)
-                assert dims["cmd"][0] == dims["cmd"][1], (width, dims)
+                page.evaluate("document.fonts.ready")
+                m = page.evaluate(HEADER_JS)
+                assert m["scroll"][0] == m["scroll"][1], (width, m)
+                assert m["rects"] == 1 and m["logoLines"] == 1, (width, m)
+                for c in m["navCentres"]:
+                    assert abs(m["logoCentre"] - c) <= 1, (width, m)
+                for y in m["navBaselines"]:
+                    assert abs(m["logoBaseline"] - y) <= 1, (width, m)
+                if width == 1280:
+                    assert m["headerLeft"] == m["cardLeft"] == m["logoLeft"], m
+                    assert m["titleLines"] == 1, m
+                if width == 390:
+                    assert m["titleLines"] == 2, m
                 page.close()
         finally:
             browser.close()
