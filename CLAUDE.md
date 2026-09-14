@@ -11,7 +11,7 @@
 - `audit_engine.py` -- orchestrates all 12 security checks
 - `result_transformer.py` -- transforms raw results into frontend card format
 - `static/app.js` -- frontend logic, SSE client, result rendering
-- `static/style.css` -- all styles, 5 responsive breakpoints
+- `static/style.css` -- all styles, responsive breakpoints in one file
 - `static/index.html` -- single-page app shell
 - `comprehensive_selectors.py` -- DKIM selector list for auto-discovery
 - `dns_tools.py` -- domain normalization, audit entry point
