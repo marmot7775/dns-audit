@@ -2,8 +2,9 @@
 note, and in no other tracked file.
 
 The alias is assembled from pieces so this file does not itself contain it.
-docs/prompts/doc-41.md is the one extra file: the doc is saved verbatim and
-names the alias it asks for.
+docs/history/doc-41.md is an extra file: the doc is saved verbatim and names
+the alias it asks for. Doc 51 added SECURITY.md as a private reporting
+channel, and docs/history/doc-51.md names it for the same reason.
 """
 import os
 import re
@@ -26,7 +27,7 @@ FOOTER_FILES = [
     "static/articles/index.html",
 ]
 SITE_FILES = FOOTER_FILES + ["static/app.js"]
-PROMPT_DOC = "docs/prompts/doc-41.md"
+OTHER_FILES = ["SECURITY.md", "docs/history/doc-41.md", "docs/history/doc-51.md"]
 
 
 def _read(rel):
@@ -64,7 +65,7 @@ def test_alias_appears_in_no_other_tracked_file():
         full = os.path.join(REPO_ROOT, rel)
         if os.path.isfile(full) and ALIAS in _read(rel):
             holders.append(rel)
-    assert sorted(holders) == sorted(SITE_FILES + [PROMPT_DOC]), holders
+    assert sorted(holders) == sorted(SITE_FILES + OTHER_FILES), holders
 
 
 def test_personal_address_guard_still_passes():

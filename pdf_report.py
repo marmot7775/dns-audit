@@ -43,7 +43,7 @@ log = logging.getLogger("dns-auditor.pdf")
 
 # Mirrors the site's light theme tokens in static/style.css (Doc 35) so the
 # PDF and the page it came from use the same status and accent colours.
-# tests/test_doc35_palette_contrast.py holds the two in step.
+# tests/test_palette_contrast.py holds the two in step.
 NAVY        = colors.HexColor("#12284a")
 NAVY_LIGHT  = colors.HexColor("#24427a")
 PASS_CLR    = colors.HexColor("#177245")   # --pass (light)

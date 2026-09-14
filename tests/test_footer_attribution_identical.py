@@ -13,19 +13,12 @@ Doc 41 added one mailto to the contact alias beside the LinkedIn link, in the
 footer and in the results note, so the pinned facts below follow Doc 41. The
 identical-footer check is unchanged.
 """
-import glob
 import os
 import re
 
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC = os.path.join(REPO_ROOT, "static")
-
-PAGES = sorted(
-    glob.glob(os.path.join(STATIC, "*.html"))
-    + glob.glob(os.path.join(STATIC, "articles", "*.html"))
-)
+from static_pages import PAGES, STATIC
 
 ATTRIBUTION_RE = re.compile(r'<div class="footer-attribution">.*?</div>', re.DOTALL)
 LINKEDIN = "https://www.linkedin.com/in/neilanuskiewicz/"
@@ -45,20 +38,6 @@ def _attribution(path):
         f".footer-attribution block, found {len(blocks)}"
     )
     return blocks[0]
-
-
-def test_every_static_page_is_covered():
-    names = {os.path.relpath(p, STATIC) for p in PAGES}
-    assert names == {
-        "404.html",
-        "about.html",
-        "index.html",
-        "privacy.html",
-        "articles/dane.html",
-        "articles/dmarcbis.html",
-        "articles/dnssec.html",
-        "articles/index.html",
-    }
 
 
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))

@@ -17,7 +17,7 @@ JSON are carried through untouched rather than dropped, and an entry that
 already carries a bot flag is left alone, so a second run changes nothing.
 
 Usage:
-    python3 rewrite_audit_log_ua.py [log_dir]
+    python3 tools/rewrite_audit_log_ua.py [log_dir]
 
 log_dir defaults to the LOG_DIR the app itself uses.
 """
@@ -29,7 +29,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import LOG_DIR
 from ua_classify import is_bot, ua_summary

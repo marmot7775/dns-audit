@@ -8,7 +8,7 @@
 
 ## Key files
 - `server.py` -- FastAPI app, SSE streaming, caching, rate limiting
-- `audit_engine.py` -- orchestrates all 13 security checks
+- `audit_engine.py` -- orchestrates all 12 security checks
 - `result_transformer.py` -- transforms raw results into frontend card format
 - `static/app.js` -- frontend logic, SSE client, result rendering
 - `static/style.css` -- all styles, 5 responsive breakpoints
@@ -46,7 +46,7 @@
   --primary-solid, --pass-solid, --fail-solid, --warn-contrast and
   --dmarcbis-contrast exist so white-on-blue, white-on-green, white-on-red,
   text-on-amber and text-on-teal all clear 4.5:1 in both themes.
-  tests/test_doc35_palette_contrast.py computes every one of these pairs
+  tests/test_palette_contrast.py computes every one of these pairs
   from style.css and fails the build if any drops below 4.5:1, and checks
   that the two light-theme token blocks carry identical values. Dark theme
   default, light mode via prefers-color-scheme.
@@ -78,22 +78,23 @@
     The labels do not carry enough to tell a crawler from a person, so any
     reader that tries to re-derive bot status from `ua` gets nothing. Read the
     `bot` field.
-  - `rewrite_audit_log_ua.py` applies the same transformation to stored history
-    (audit.log and audit.log.N). It backs up originals, leaves entries that
+  - `tools/rewrite_audit_log_ua.py` applies the same transformation to stored
+    history (audit.log and audit.log.N). It backs up originals, leaves entries that
     already have a bot flag alone, and prints before and after line counts.
 
 ## Single worker by design
-The service runs exactly one uvicorn process. `dns-auditor.service` passes no
-`--workers` flag and nothing sets `WEB_CONCURRENCY`, and that has to stay true.
+The service runs exactly one uvicorn process. `deploy/dns-auditor.service`
+passes no `--workers` flag and nothing sets `WEB_CONCURRENCY`, and that has
+to stay true.
 
 Every piece of coordination state in `server.py` is a module level global,
 private to one process:
 
-- `_rate_limits` (server.py:398) per IP rate limit table
-- `_active_audits` (server.py:402) concurrency budget
-- `_inflight` (server.py:415) single flight audit registry
-- `_cache` (server.py:532) audit result cache
-- `_health_cache` (server.py:1202) health probe memo
+- `_rate_limits`: per IP rate limit table
+- `_active_audits`: concurrency budget
+- `_inflight`: single flight audit registry
+- `_cache`: audit result cache
+- `_health_cache`: health probe memo
 
 Start N workers and each process gets its own copy of all five. The
 concurrency cap becomes N times `MAX_CONCURRENT_AUDITS` instead of
@@ -126,8 +127,8 @@ limiter. Read the docstring on `_get_client_ip` before touching it.
 ## Deploy
 DROPLET_HOST and DEPLOY_USER are placeholders. The real values live in
 deploy.local.md at the repo root, a local file that .gitignore keeps out of
-the repo; substitute them before running anything below. dns-auditor.service
-is a template for the same reason.
+the repo; substitute them before running anything below.
+deploy/dns-auditor.service is a template for the same reason.
 
 git push && ssh DEPLOY_USER@DROPLET_HOST "cd dns-security-auditor && git pull && ~/.venv/bin/pip install -r requirements.txt && sudo systemctl restart dns-auditor"
 
@@ -135,6 +136,12 @@ The pip install step matters: the server's venv is not kept in sync with
 requirements.txt automatically, so a new or bumped dependency (e.g.
 cryptography, added for DNSSEC/RSA key generation) installs fine in a
 fresh CI venv but crash-loops the live service if this step is skipped.
+
+Python versions: the droplet runs Python 3.12.3 (`python3 --version` on the
+server, read during the Doc 51 deploy on 2026-09-14). CI runs the tests on
+3.11 and the security scans on 3.12. pyproject.toml's floor is 3.10, the
+lowest version every pinned dependency installs on. Read the droplet's
+version again after an OS upgrade and update this paragraph.
 
 Confirm the restart took: `curl -s https://dns-audit.com/api/health` reports
 `version`, the short commit SHA of the running process. The cache-busting
