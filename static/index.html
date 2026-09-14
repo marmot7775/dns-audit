@@ -120,9 +120,7 @@
 
     <header class="site-header">
         <div class="container header-inner">
-            <a href="/" class="logo">
-                <span class="logo-text"><span class="logo-accent">dns</span>-audit</span>
-            </a>
+            <a href="/" class="logo"><span class="logo-text">dns<span class="logo-accent">-audit</span>.com</span></a>
             <div class="header-right">
                 <nav class="site-nav" aria-label="Main navigation">
                     <a href="/" class="nav-link nav-link-active">Home</a>
@@ -140,31 +138,8 @@
     <main class="container" id="main-content">
         <section class="audit-input-section">
             <div class="audit-input-card">
-                <h1 class="audit-title">Check the DNS records behind your email</h1>
-                <p class="audit-subtitle">Enter a domain. The audit reads the DNS records and policy files behind email authentication, transport security, and DNS integrity (SPF, DKIM, DMARC, MTA-STS, DNSSEC, and seven more), says what is missing or misconfigured, cites the RFC it checked against, including <a href="/articles/dmarcbis" class="audit-subtitle-link">RFC 9989 readiness</a>, and gives you the corrected record to paste. Nothing to install, nothing to send.</p>
-                <form id="audit-form" class="audit-form" autocomplete="off">
-                    <div class="input-row input-unified">
-                        <div class="input-wrapper">
-                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-                            </svg>
-                            <span class="domain-input-wrap"><input type="text" id="domain-input" class="domain-input" placeholder="example.com" autocomplete="off" autocapitalize="none" autocorrect="off" inputmode="url" spellcheck="false" required aria-label="Domain or subdomain to audit" /></span>
-                            <button type="submit" id="audit-btn" class="audit-btn">
-                                <span class="btn-text">Run Audit</span>
-                                <span class="btn-loading">
-                                    <svg class="spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
-                                    Auditing...
-                                </span>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="selector-toggle-row">
-                        <button type="button" class="selector-toggle" id="selector-toggle" aria-expanded="false" aria-controls="selector-field">Test a specific DKIM selector</button>
-                        <div class="selector-field" id="selector-field">
-                            <input type="text" id="selector-input" class="domain-input selector-input" placeholder="e.g. google, s1, selector1" autocomplete="off" spellcheck="false" title="The s= value from a DKIM-Signature email header" aria-label="DKIM selector" />
-                        </div>
-                    </div>
-                </form>
+                <h1 class="audit-title">DNS &amp; Email Security Audit</h1>
+                <p class="audit-subtitle">Most DNS tools show you your records. This one tells you what is wrong with them. Includes <a href="/articles/dmarcbis" class="audit-subtitle-link">RFC 9989 readiness</a>, DNSSEC validation, and more.</p>
                 <div class="scope-selector" id="scope-selector" role="radiogroup" aria-label="Audit scope selection">
                     <div class="scope-label">Audit Scope</div>
                     <div class="scope-options">
@@ -195,6 +170,29 @@
                     </div>
                     <p class="scope-desc" id="scope-desc" aria-live="polite"></p>
                 </div>
+                <form id="audit-form" class="audit-form" autocomplete="off">
+                    <div class="input-row input-unified">
+                        <div class="input-wrapper">
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                            </svg>
+                            <span class="domain-input-wrap"><input type="text" id="domain-input" class="domain-input" placeholder="example.com" autocomplete="off" autocapitalize="none" autocorrect="off" inputmode="url" spellcheck="false" required autofocus aria-label="Domain or subdomain to audit" /></span>
+                            <button type="submit" id="audit-btn" class="audit-btn">
+                                <span class="btn-text">Run Audit</span>
+                                <span class="btn-loading">
+                                    <svg class="spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                                    Auditing...
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="selector-toggle-row">
+                        <button type="button" class="selector-toggle" id="selector-toggle" aria-expanded="false" aria-controls="selector-field">Test a specific DKIM selector</button>
+                        <div class="selector-field" id="selector-field">
+                            <input type="text" id="selector-input" class="domain-input selector-input" placeholder="e.g. google, s1, selector1" autocomplete="off" spellcheck="false" title="The s= value from a DKIM-Signature email header" aria-label="DKIM selector" />
+                        </div>
+                    </div>
+                </form>
             </div>
         </section>
 

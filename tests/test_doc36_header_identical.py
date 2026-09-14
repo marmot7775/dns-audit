@@ -23,6 +23,10 @@ PAGES = sorted(
 
 HEADER_RE = re.compile(r'<header class="site-header">.*?</header>', re.DOTALL)
 
+# Doc 50: the Sept 9 wordmark, exactly.
+WORDMARK = ('<a href="/" class="logo"><span class="logo-text">dns<span '
+            'class="logo-accent">-audit</span>.com</span></a>')
+
 
 def _header(path):
     with open(path, encoding="utf-8") as f:
@@ -64,9 +68,7 @@ def test_header_carries_the_wordmark(path):
     header = _header(path)
     with open(path, encoding="utf-8") as f:
         assert "logo-terminal" not in f.read(), "Doc 50 removed the terminal chip"
-    assert re.search(r'<a href="/" class="logo">\s*<span class="logo-text"><span class="logo-accent">'
-                     r'dns</span>-audit</span>\s*</a>', header)
-    assert '<span class="logo-text"><span class="logo-accent">dns</span>-audit</span>' in header
+    assert WORDMARK in header
     assert '<div class="header-right">' in header
     assert '<nav class="site-nav" aria-label="Main navigation">' in header
     for label in ("Home", "Articles", "About"):
@@ -93,9 +95,26 @@ def test_active_link_matches_the_page():
         assert f'class="nav-link nav-link-active">{label}</a>' in header, rel
 
 
-def test_index_carries_the_doc50_headline_and_subtitle():
+def _index():
     with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
-        html = f.read()
-    assert '<h1 class="audit-title">Check the DNS records behind your email</h1>' in html
-    assert ('<p class="audit-subtitle">Enter a domain. The audit reads the DNS records and policy '
-            'files behind email authentication, transport security, and DNS integrity') in html
+        return f.read()
+
+
+def test_index_carries_the_sept9_title_and_sentence():
+    html = _index()
+    assert '<h1 class="audit-title">DNS &amp; Email Security Audit</h1>' in html
+    assert ('<p class="audit-subtitle">Most DNS tools show you your records. This one tells '
+            'you what is wrong with them. Includes <a href="/articles/dmarcbis" '
+            'class="audit-subtitle-link">RFC 9989 readiness</a>, DNSSEC validation, and '
+            'more.</p>') in html
+
+
+def test_domain_input_is_autofocused():
+    tag = re.search(r'<input[^>]*id="domain-input"[^>]*>', _index()).group(0)
+    assert re.search(r'\sautofocus[\s/>]', tag), tag
+    assert _index().count("autofocus") == 1
+
+
+def test_scope_buttons_come_before_the_form():
+    html = _index()
+    assert html.index('class="scope-selector"') < html.index('<form id="audit-form"')
