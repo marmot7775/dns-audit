@@ -363,7 +363,6 @@ main {
 .logo {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
     text-decoration: none;
     color: var(--text-primary);
     transition: opacity var(--duration) var(--ease);
@@ -373,71 +372,15 @@ main {
     opacity: 0.85;
 }
 
-.logo-terminal {
-    width: auto;
-    min-width: 120px;
-    background: var(--code-bg);
-    border-radius: var(--radius);
-    overflow: hidden;
-    flex-shrink: 0;
-    box-shadow: var(--shadow-md);
-    line-height: 1;
-    border: 1px solid var(--border);
-}
-
-.logo-titlebar {
-    background: #161b22;
-    padding: 4px 6px;
-    display: flex;
-    gap: 4px;
-}
-
-.logo-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-}
-
-.logo-dot-red {
-    background: #ff5f57;
-}
-
-.logo-dot-yellow {
-    background: #febc2e;
-}
-
-.logo-dot-green {
-    background: #28c840;
-}
-
-.logo-cmd {
-    padding: 5px 7px 6px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-}
-
-.logo-prompt {
-    color: #10b981;
-}
-
-.logo-bin {
-    color: #a3e635;
-}
-
-/* The terminal chip keeps its dark background in both themes, so the flag
-   keeps one colour too: --primary-light turns #2f5fcc in light theme, which
-   is 3.2:1 on the chip. */
-.logo-flag {
-    color: #7ea6f5;
-}
-
+/* Flex centring lines up the wordmark's box with the nav links, which leaves
+   the larger wordmark's baseline about 3px below theirs; line-height cannot
+   move it because the leading is split evenly above and below. Padding under
+   the text lifts the baseline onto the nav's while the box stays centred. */
 .logo-text {
     font-weight: 700;
-    font-size: var(--font-lg);
+    font-size: var(--font-xl);
     letter-spacing: -0.01em;
+    padding-bottom: 0.32em;
 }
 
 .logo-accent {
@@ -3339,17 +3282,8 @@ details.st-node>summary:hover {
         padding-bottom: 0.65rem;
     }
 
-    .logo-terminal {
-        min-width: 96px;
-    }
-
-    .logo-cmd {
-        font-size: 9.5px;
-        padding: 4px 5px 5px;
-    }
-
     .logo-text {
-        font-size: 0.88rem;
+        font-size: 1rem;
     }
 
     .site-nav {
@@ -4186,14 +4120,6 @@ body {
 @media (max-width: 320px) {
     .container {
         padding: 0 0.75rem;
-    }
-
-    .logo-terminal {
-        min-width: 80px;
-    }
-
-    .logo-text {
-        font-size: 0.82rem;
     }
 
     .scope-btn span {
@@ -8468,12 +8394,6 @@ body {
 @media (max-width: 640px) {
     .logo {
         min-height: 44px;
-    }
-
-    /* The chip plus the wordmark wrapped to two lines beside a four-item nav.
-       The home page already shows the wordmark alone at this width. */
-    .logo-terminal {
-        display: none;
     }
 
     .logo-text {
