@@ -61,6 +61,15 @@ def _extract_p_tag(dkim_record: str) -> Optional[str]:
     return None
 
 
+def _is_ed25519(sel: dict, key_analysis: dict) -> bool:
+    """Key type from the normalized field, falling back to the k= tag."""
+    key_type = sel.get("key_type") or key_analysis.get("key_type") or ""
+    if "ed25519" in str(key_type).lower():
+        return True
+    # Selector dicts assembled elsewhere may carry only the raw record.
+    return "k=ed25519" in str(sel.get("record") or "").lower().replace(" ", "")
+
+
 def analyze_dkim_key_strength(dkim_record: str) -> Dict:
     """
     Analyze DKIM key strength and return security assessment.

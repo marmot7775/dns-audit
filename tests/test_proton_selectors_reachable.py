@@ -28,7 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS, GENERIC_SELECTORS
-from spf_intelligence import detect_vendors_from_spf, get_prioritized_selectors
+from spf_intelligence import _selectors_from_vendors, detect_vendors_from_spf
 
 PROTON_SPF = "v=spf1 include:_spf.protonmail.ch ~all"
 PROTON_SELECTORS = ("protonmail", "protonmail2", "protonmail3")
@@ -37,7 +37,7 @@ CAP = 40  # smart_dkim_check's max_selectors default
 
 def _reachable(spf):
     """Exactly what smart_dkim_check probes: the capped slice plus generics."""
-    return set(get_prioritized_selectors(spf, COMPREHENSIVE_DKIM_SELECTORS)[:CAP]) \
+    return set(_selectors_from_vendors(detect_vendors_from_spf(spf), COMPREHENSIVE_DKIM_SELECTORS)[:CAP]) \
         | set(GENERIC_SELECTORS)
 
 

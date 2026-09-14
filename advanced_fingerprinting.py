@@ -8,11 +8,8 @@ Multi-signal vendor detection using 10+ techniques:
 3. DKIM selector patterns
 4. DMARC report destinations (RUA/RUF)
 5. TLS-RPT report destinations
-6. MTA-STS policy analysis
-7. BIMI record hosting
-8. DNS TTL fingerprinting
-9. Subdomain structure analysis
-10. SPF mechanism complexity
+6. DNS TTL fingerprinting
+7. Subdomain structure analysis
 
 Each signal is weighted and scored for confidence.
 Multiple signals = higher confidence.
@@ -25,7 +22,7 @@ import dns.resolver
 import dns.exception
 
 from dns_tools import get_resolver
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from collections import defaultdict
 
 class AdvancedVendorFingerprinter:
@@ -72,8 +69,6 @@ class AdvancedVendorFingerprinter:
         self._fingerprint_mx()
         self._fingerprint_dmarc()
         self._fingerprint_tls_rpt()
-        self._fingerprint_mta_sts()
-        self._fingerprint_bimi()
         self._fingerprint_dns_patterns()
         self._fingerprint_subdomains()
         
@@ -222,59 +217,6 @@ class AdvancedVendorFingerprinter:
                 })
                 if self.verbose:
                     print(f"  ✓ {vendor} (TLS-RPT)")
-    
-    def _fingerprint_mta_sts(self):
-        """MTA-STS policy analysis"""
-        if self.verbose:
-            print("\n[5] Analyzing MTA-STS...")
-        
-        record = self._given('mta_sts_record')
-        if record is self._MISSING:
-            record = None
-            try:
-                self._resolver.resolve(f'_mta-sts.{self.domain}', 'TXT')
-                record = True
-            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-                record = None
-
-        if not record:
-            if self.verbose:
-                print("  ✗ No MTA-STS policy")
-            return
-
-        # MTA-STS being present says nothing about which vendor is behind
-        # it, so this stops short of a signal. See _fingerprint_bimi below
-        # for the same reasoning.
-        if self.verbose:
-            print("  ✓ MTA-STS configured")
-    
-    def _fingerprint_bimi(self):
-        """BIMI record analysis"""
-        if self.verbose:
-            print("\n[6] Analyzing BIMI...")
-        
-        record = self._given('bimi_record')
-        if record is self._MISSING:
-            record = None
-            try:
-                answers = self._resolver.resolve(f'default._bimi.{self.domain}', 'TXT')
-                for rdata in answers:
-                    candidate = b"".join(rdata.strings).decode("utf-8", errors="replace")
-                    if 'v=BIMI1' in candidate:
-                        record = candidate
-                        break
-            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-                record = None
-
-        if not record or 'v=BIMI1' not in str(record):
-            if self.verbose:
-                print("  ✗ No BIMI record")
-            return
-
-        # BIMI being present says nothing about which vendor is behind it,
-        # so this stops short of a signal.
-        if self.verbose:
-            print("  ✓ BIMI configured")
     
     def _fingerprint_dns_patterns(self):
         """DNS TTL and record patterns"""
@@ -430,67 +372,20 @@ class AdvancedVendorFingerprinter:
             results.append({
                 'vendor': vendor,
                 'confidence': round(final_conf, 2),
-                'signal_count': len(signals),
                 'signals': signals
             })
         
         # Sort by confidence
         results.sort(key=lambda x: x['confidence'], reverse=True)
         
-        return {
-            'domain': self.domain,
-            'vendors': results,
-            'total_signals': len(self.signals),
-            'report': self._generate_report(results)
-        }
+        return {'vendors': results}
     
-    def _generate_report(self, results: List[Dict]) -> str:
-        """Generate human-readable report"""
-        lines = []
-        lines.append("\n📊 VENDOR FINGERPRINTING RESULTS")
-        lines.append("=" * 60)
-        lines.append(f"\nDomain: {self.domain}")
-        lines.append(f"Total Signals: {len(self.signals)}\n")
-        
-        if not results:
-            lines.append("ℹ️  No vendors detected")
-            return "\n".join(lines)
-        
-        lines.append("🎯 DETECTED VENDORS:\n")
-        
-        for i, r in enumerate(results, 1):
-            conf_pct = int(r['confidence'] * 100)
-            
-            if conf_pct >= 90:
-                icon, level = "🟢", "VERY HIGH"
-            elif conf_pct >= 75:
-                icon, level = "🟡", "HIGH"
-            elif conf_pct >= 60:
-                icon, level = "🟠", "MODERATE"
-            else:
-                icon, level = "⚪", "LOW"
-            
-            lines.append(f"{i}. {icon} {r['vendor']}")
-            lines.append(f"   Confidence: {conf_pct}% ({level})")
-            lines.append(f"   Evidence: {r['signal_count']} signal(s)")
-            
-            for j, sig in enumerate(r['signals'][:2], 1):
-                lines.append(f"     • {sig['technique']}: {sig['evidence']}")
-            
-            if len(r['signals']) > 2:
-                lines.append(f"     ... and {len(r['signals']) - 2} more")
-            lines.append("")
-        
-        return "\n".join(lines)
-
 
 # Example usage
 if __name__ == "__main__":
     import sys
-    
+
     domain = sys.argv[1] if len(sys.argv) > 1 else "google.com"
-    
     fingerprinter = AdvancedVendorFingerprinter(domain, verbose=True)
-    results = fingerprinter.fingerprint_all()
-    
-    print(results['report'])
+    for v in fingerprinter.fingerprint_all()['vendors']:
+        print(f"{v['vendor']}: {int(v['confidence'] * 100)}%")

@@ -34,7 +34,7 @@ def test_policy_downgrade_with_rua_added_is_a_regression():
         "v=DMARC1; p=reject",
         "v=DMARC1; p=none; rua=mailto:x@y.com",
     )
-    result = result_transformer.build_change_detection({}, history, first_seen="2026-08-19T00:00:00Z")
+    result = result_transformer.build_change_detection({}, history)
 
     dmarc_changes = [c for c in result["changes"] if c["record_type"] == "dmarc"]
     assert len(dmarc_changes) == 1
@@ -59,7 +59,7 @@ def test_rua_added_alone_is_still_an_improvement():
         "v=DMARC1; p=reject",
         "v=DMARC1; p=reject; rua=mailto:x@y.com",
     )
-    result = result_transformer.build_change_detection({}, history, first_seen="2026-08-19T00:00:00Z")
+    result = result_transformer.build_change_detection({}, history)
     dmarc_changes = [c for c in result["changes"] if c["record_type"] == "dmarc"]
     assert len(dmarc_changes) == 1
     change = dmarc_changes[0]
@@ -74,7 +74,7 @@ def test_policy_upgrade_with_rua_removed_is_still_an_upgrade():
         "v=DMARC1; p=none; rua=mailto:x@y.com",
         "v=DMARC1; p=reject",
     )
-    result = result_transformer.build_change_detection({}, history, first_seen="2026-08-19T00:00:00Z")
+    result = result_transformer.build_change_detection({}, history)
     dmarc_changes = [c for c in result["changes"] if c["record_type"] == "dmarc"]
     assert len(dmarc_changes) == 1
     change = dmarc_changes[0]

@@ -188,13 +188,7 @@ def test_google_com_card_does_not_tell_the_operator_to_publish_a_key(google_resu
 
 
 def test_google_com_gets_no_dkim_remediation_step(google_result):
-    """Both roadmaps. A key rotation step needs a key to rotate, and BIMI
-    needs a live signing key."""
-    plan = google_result.get("remediation_plan") or {}
-    titles = {s["title"] for tier in plan.values() for s in tier}
-    assert "Schedule Regular DKIM Key Rotation" not in titles
-    assert "Add BIMI Record" not in titles
-
+    """A key rotation step needs a key to rotate."""
     roadmap_actions = " ".join(
         i.get("action", "") for i in google_result["security_roadmap"]["items"]
     ).lower()

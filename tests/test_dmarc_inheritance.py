@@ -6,8 +6,6 @@ Covers:
   - _enrich_dmarc_inheritance: tree walk path, PSL path, sp= tag, own-record bypass
   - _build_resilience_analysis: non-sending subdomain levels with inherited policy
   - detect_anomalies (anomaly_detector): inherited DMARC treated as present/enforced
-  - build_remediation_plan (remediation_planner): inherited DMARC suppresses immediate
-    "Publish DMARC Record" and adds short-term "Publish Dedicated DMARC Record"
 """
 
 import sys
@@ -19,16 +17,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from audit_engine import _get_org_domain, _enrich_dmarc_inheritance, _build_resilience_analysis
 from anomaly_detector import detect_anomalies
-from remediation_planner import build_remediation_plan
 
 
 # ---------------------------------------------------------------------------
 # Helpers shared across test classes
 # ---------------------------------------------------------------------------
-
-def _titles(plan_list):
-    return [step["title"] for step in plan_list]
-
 
 def _find_anomaly(anomalies, fragment):
     """Return the first anomaly whose title contains fragment (case-insensitive)."""
@@ -53,8 +46,6 @@ def _minimal_dmarc_raw(policy, record="v=DMARC1; p={}"):
 class TestGetOrgDomain(unittest.TestCase):
     """_get_org_domain returns the RFC 7489 organizational domain."""
 
-    # --- with tldextract available (default in this repo) ---
-
     def test_subdomain_of_com_tld(self):
         assert _get_org_domain("mail.yahoo.com") == "yahoo.com"
 
@@ -72,34 +63,6 @@ class TestGetOrgDomain(unittest.TestCase):
         result = _get_org_domain("localhost")
         # Either None or "localhost" is acceptable; must not raise
         assert result is None or isinstance(result, str)
-
-    # --- fallback heuristic (tldextract = None) ---
-
-    def _get_org_domain_no_tldextract(self, domain):
-        """Run _get_org_domain with tldextract patched to None."""
-        with patch("audit_engine.tldextract", None):
-            return _get_org_domain(domain)
-
-    def test_fallback_simple_com(self):
-        result = self._get_org_domain_no_tldextract("mail.yahoo.com")
-        assert result == "yahoo.com"
-
-    def test_fallback_already_org_domain(self):
-        result = self._get_org_domain_no_tldextract("yahoo.com")
-        assert result == "yahoo.com"
-
-    def test_fallback_co_uk_two_part_tld(self):
-        result = self._get_org_domain_no_tldextract("sub.example.co.uk")
-        assert result == "example.co.uk"
-
-    def test_fallback_deeply_nested(self):
-        result = self._get_org_domain_no_tldextract("deeply.nested.sub.example.com")
-        assert result == "example.com"
-
-    def test_fallback_bare_tld_returns_none(self):
-        # e.g. "co.uk" has labels < 3 for a two-part TLD match
-        result = self._get_org_domain_no_tldextract("co.uk")
-        assert result is None
 
 
 # ============================================================================
@@ -508,141 +471,6 @@ class TestAnomalyDetectorInheritedDmarc(unittest.TestCase):
 
 
 # ============================================================================
-# build_remediation_plan with inherited DMARC
-# ============================================================================
-
-class TestRemediationPlannerInheritedDmarc(unittest.TestCase):
-    """Inherited DMARC policy affects remediation plan structure."""
-
-    def _run_plan(self, dmarc_raw, *, has_mx=True, spf_record=None, extra_raw=None):
-        spf = {"record": spf_record or ""}
-        raw_results = {
-            "dmarc": dmarc_raw,
-            "spf": spf,
-            "dkim": {},
-            "mta_sts": {},
-            "tls_rpt": {},
-            "dnssec": {},
-            "caa": {},
-            "dane": {},
-            "mx": {"records": [], "record_count": 1 if has_mx else 0},
-        }
-        if extra_raw:
-            raw_results.update(extra_raw)
-        return build_remediation_plan(checks=[], raw_results=raw_results, has_mx=has_mx)
-
-    def _inherited(self, policy, inherited_from="example.com"):
-        return {
-            "record": "",
-            "policy": None,
-            "is_subdomain": True,
-            "inherited_policy": policy,
-            "inherited_from": inherited_from,
-            "inheritance_method": "tree_walk",
-        }
-
-    # --- inherited reject: no "Publish DMARC Record" in immediate ---
-
-    def test_inherited_reject_no_publish_dmarc_in_immediate(self):
-        plan = self._run_plan(self._inherited("reject"))
-        immediate_titles = _titles(plan["immediate"])
-        assert "Publish DMARC Record" not in immediate_titles, (
-            "Inherited reject should not trigger 'Publish DMARC Record'"
-        )
-
-    def test_no_inherited_no_own_record_gets_publish_dmarc_immediate(self):
-        """Baseline: no DMARC at all -> 'Publish DMARC Record' IS in immediate."""
-        dmarc_missing = {"record": "", "policy": None, "is_subdomain": False}
-        plan = self._run_plan(dmarc_missing)
-        assert "Publish DMARC Record" in _titles(plan["immediate"])
-
-    # --- inherited reject: "Publish Dedicated DMARC Record" in short_term ---
-
-    def test_inherited_reject_gets_dedicated_record_short_term(self):
-        plan = self._run_plan(self._inherited("reject"))
-        short_titles = _titles(plan["short_term"])
-        assert "Publish Dedicated DMARC Record" in short_titles, (
-            "Inherited DMARC should recommend a dedicated record in short_term"
-        )
-
-    def test_inherited_quarantine_gets_dedicated_record_short_term(self):
-        plan = self._run_plan(self._inherited("quarantine"))
-        short_titles = _titles(plan["short_term"])
-        assert "Publish Dedicated DMARC Record" in short_titles
-
-    def test_dedicated_record_description_mentions_inherited_source(self):
-        plan = self._run_plan(self._inherited("reject", inherited_from="parent.com"))
-        step = next(
-            s for s in plan["short_term"] if s["title"] == "Publish Dedicated DMARC Record"
-        )
-        assert "parent.com" in step["description"]
-
-    # --- inherited none: upgrade recommendation ---
-
-    def test_inherited_none_gets_upgrade_to_quarantine(self):
-        """Inherited none -> 'Upgrade DMARC to p=quarantine' in short_term."""
-        plan = self._run_plan(self._inherited("none"))
-        short_titles = _titles(plan["short_term"])
-        assert "Upgrade DMARC to p=quarantine" in short_titles
-
-    def test_inherited_none_no_publish_immediate(self):
-        """Inherited none also suppresses 'Publish DMARC Record' immediate step."""
-        plan = self._run_plan(self._inherited("none"))
-        assert "Publish DMARC Record" not in _titles(plan["immediate"])
-
-    # --- inherited quarantine: advance to reject in long_term ---
-
-    def test_inherited_quarantine_advance_to_reject_long_term(self):
-        plan = self._run_plan(self._inherited("quarantine"))
-        long_titles = _titles(plan["long_term"])
-        assert "Advance DMARC to p=reject" in long_titles
-
-    def test_inherited_reject_no_advance_to_reject_long_term(self):
-        """Already at reject: no 'Advance to p=reject' recommendation."""
-        plan = self._run_plan(self._inherited("reject"))
-        long_titles = _titles(plan["long_term"])
-        assert "Advance DMARC to p=reject" not in long_titles
-
-    # --- plan structure ---
-
-    def test_plan_has_three_buckets(self):
-        plan = self._run_plan(self._inherited("reject"))
-        assert set(plan.keys()) == {"immediate", "short_term", "long_term"}
-
-    def test_all_plan_steps_are_dicts(self):
-        plan = self._run_plan(self._inherited("reject"))
-        for bucket in plan.values():
-            for step in bucket:
-                assert isinstance(step, dict)
-
-    def test_all_plan_steps_have_required_keys(self):
-        plan = self._run_plan(self._inherited("reject"))
-        required = {"title", "description", "effort", "impact", "check"}
-        for bucket in plan.values():
-            for step in bucket:
-                assert required <= set(step.keys()), (
-                    f"Step '{step.get('title')}' missing keys: {required - set(step.keys())}"
-                )
-
-    # --- own record: no dedicated-record recommendation ---
-
-    def test_own_record_no_dedicated_recommendation(self):
-        """A domain with its own DMARC reject record: no 'Publish Dedicated'."""
-        dmarc_own = {
-            "record": "v=DMARC1; p=reject",
-            "policy": "reject",
-            "is_subdomain": False,
-        }
-        plan = self._run_plan(dmarc_own)
-        all_titles = (
-            _titles(plan["immediate"])
-            + _titles(plan["short_term"])
-            + _titles(plan["long_term"])
-        )
-        assert "Publish Dedicated DMARC Record" not in all_titles
-
-
-# ============================================================================
 # No em-dashes in DMARC inheritance output (CLAUDE.md rule)
 # ============================================================================
 
@@ -655,13 +483,6 @@ class TestNoEmDashesInInheritedOutput(unittest.TestCase):
         parts = []
         for a in anomalies:
             parts.extend([a.get("title", ""), a.get("description", ""), a.get("recommendation", "")])
-        return " ".join(parts)
-
-    def _all_plan_text(self, plan):
-        parts = []
-        for bucket in plan.values():
-            for step in bucket:
-                parts.extend([step.get("title", ""), step.get("description", "")])
         return " ".join(parts)
 
     def test_anomaly_text_no_em_dash(self):
@@ -696,25 +517,6 @@ class TestNoEmDashesInInheritedOutput(unittest.TestCase):
         }
         result = _build_resilience_analysis(raw_results, [], has_mx=False, is_defensive=False)
         text = result.get("summary", "") + result.get("risk", "")
-        assert self.EM_DASH not in text
-
-    def test_plan_text_no_em_dash(self):
-        dmarc = {
-            "record": "",
-            "policy": None,
-            "is_subdomain": True,
-            "inherited_policy": "reject",
-            "inherited_from": "example.com",
-            "inheritance_method": "tree_walk",
-        }
-        plan = build_remediation_plan(
-            checks=[],
-            raw_results={"dmarc": dmarc, "spf": {}, "dkim": {}, "mta_sts": {},
-                         "tls_rpt": {}, "dnssec": {}, "caa": {}, "dane": {},
-                         "mx": {"records": [], "record_count": 0}},
-            has_mx=False,
-        )
-        text = self._all_plan_text(plan)
         assert self.EM_DASH not in text
 
 

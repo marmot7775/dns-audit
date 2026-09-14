@@ -9,7 +9,6 @@ whole result, serialized the way the API sends it, must not contain it.
 """
 import json
 import os
-import re
 import sys
 
 import pytest
@@ -72,9 +71,7 @@ def test_exception_text_never_reaches_the_result(monkeypatch, func_name, expecte
     assert FAKE_PATH not in serialized and "secret_module" not in serialized, (
         f"exception text from {func_name} reached the API response"
     )
-    for entry in result.get("errors") or []:
-        assert re.fullmatch(r"[\w .-]+: (check failed|timed out)", entry), (
-            f"errors entry is not a fixed string: {entry!r}"
-        )
-    if expected_error:
-        assert expected_error in (result.get("errors") or [])
+    # Doc 49 dropped the top-level errors field (no reader), so the
+    # fixed strings now only reach the "Incomplete results" advisory.
+    assert "errors" not in result
+    assert any(a.get("title") == "Incomplete results" for a in result.get("advisories") or [])

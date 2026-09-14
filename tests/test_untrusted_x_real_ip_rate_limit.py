@@ -11,7 +11,7 @@ client = TestClient(server_module.app)
 
 
 def _fast_audit(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
-    return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
+    return {"domain": domain, "checks": [], "vendors": []}
 
 
 def test_rotating_x_real_ip_from_untrusted_peer_still_rate_limited(monkeypatch):

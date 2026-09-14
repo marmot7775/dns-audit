@@ -13,7 +13,7 @@ import logging
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 log = logging.getLogger(__name__)
 
@@ -138,11 +138,11 @@ def store_audit_snapshots(domain: str, raw_results: Dict[str, Any]):
     if tls_rpt.get("record"):
         store_snapshot(domain, "tls-rpt", tls_rpt["record"])
 
-    # DANE (store per MX host)
+    # DANE (store per MX host, the host's TLSA RRset as one string)
     dane = raw_results.get("dane", {})
     for tlsa in dane.get("tlsa_records", []):
         mx_host = tlsa.get("mx_host", "")
-        record = tlsa.get("record", "")
+        record = "; ".join(sorted(r.get("raw", "") for r in tlsa.get("records") or []))
         if mx_host and record:
             store_snapshot(domain, f"dane:{mx_host}", record)
 
@@ -170,28 +170,6 @@ def store_audit_snapshots(domain: str, raw_results: Dict[str, Any]):
             for n in ns_list
         ))
         store_snapshot(domain, "nameservers", ns_str)
-
-
-def get_history(domain: str, record_type: str, limit: int = 10) -> List[Dict]:
-    """Get the change history for a domain+record_type.
-
-    Returns a list of snapshots ordered newest-first, limited to `limit` entries.
-    """
-    domain = domain.lower().strip()
-    record_type = record_type.lower().strip()
-    try:
-        conn = _get_conn()
-        rows = conn.execute(
-            "SELECT record_value, record_hash, timestamp "
-            "FROM dns_snapshots "
-            "WHERE domain = ? AND record_type = ? "
-            "ORDER BY timestamp DESC, id DESC LIMIT ?",
-            (domain, record_type, limit),
-        ).fetchall()
-        return [dict(r) for r in rows]
-    except Exception as e:
-        log.debug("History fetch failed: %s", e)
-        return []
 
 
 def get_all_history(domain: str, limit_per_type: int = 5) -> Dict[str, List[Dict]]:
@@ -225,22 +203,6 @@ def get_all_history(domain: str, limit_per_type: int = 5) -> Dict[str, List[Dict
     except Exception as e:
         log.debug("All history fetch failed: %s", e)
         return {}
-
-
-def get_first_seen(domain: str) -> Optional[str]:
-    """Get the timestamp of the earliest snapshot for a domain."""
-    domain = domain.lower().strip()
-    try:
-        conn = _get_conn()
-        row = conn.execute(
-            "SELECT MIN(timestamp) as first_seen FROM dns_snapshots WHERE domain = ?",
-            (domain,),
-        ).fetchone()
-        if row and row["first_seen"]:
-            return row["first_seen"]
-        return None
-    except Exception:
-        return None
 
 
 def purge_old_snapshots():

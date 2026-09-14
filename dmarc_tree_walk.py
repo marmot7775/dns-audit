@@ -61,60 +61,27 @@ from typing import Dict, Any, Optional, List
 
 import os
 
-try:
-    import tldextract
-    # ProtectHome=read-only on the prod systemd unit makes tldextract's
-    # default ~/.cache path unwritable. Pin the cache under the working
-    # directory (in ReadWritePaths).
-    _tldextract_cache_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), ".tldextract_cache"
-    )
-    # suffix_list_urls=() pins the bundled snapshot so the tree walk never
-    # blocks on an HTTPS fetch of the public suffix list, and the timeout
-    # bounds that fetch if a future edit ever restores the URLs. See the
-    # matching block in audit_engine.py.
-    _tld_extract = tldextract.TLDExtract(
-        cache_dir=_tldextract_cache_dir,
-        suffix_list_urls=(),
-        cache_fetch_timeout=3.0,
-    )
-except ImportError:
-    # A guard, not a path anything is expected to take. tldextract is
-    # pinned in requirements.txt.
-    tldextract = None
-    _tld_extract = None
+import tldextract
+# ProtectHome=read-only on the prod systemd unit makes tldextract's
+# default ~/.cache path unwritable. Pin the cache under the working
+# directory (in ReadWritePaths).
+_tldextract_cache_dir = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".tldextract_cache"
+)
+# suffix_list_urls=() pins the bundled snapshot so the tree walk never
+# blocks on an HTTPS fetch of the public suffix list, and the timeout
+# bounds that fetch if a future edit ever restores the URLs. See the
+# matching block in audit_engine.py.
+_tld_extract = tldextract.TLDExtract(
+    cache_dir=_tldextract_cache_dir,
+    suffix_list_urls=(),
+    cache_fetch_timeout=3.0,
+)
 
 # RFC 9989 §4.10-5: total query cap is 8, including the Author Domain
 # query. The walk loop therefore allows at most 7 queries (1 already
 # consumed by the Author Domain lookup).
 MAX_TREE_WALK_QUERIES = 7
-
-# Public suffixes with two labels (e.g. "co.uk"). Mirrors the fallback
-# table in audit_engine._get_org_domain so dmarc_tree_walk's PSL hint
-# does not require tldextract.
-_TWO_PART_PUBLIC_SUFFIXES = {
-    "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk",
-    "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp",
-    "com.au", "net.au", "org.au", "edu.au", "gov.au",
-    "co.nz", "net.nz", "org.nz",
-    "co.za", "org.za", "web.za",
-    "com.br", "net.br", "org.br",
-    "co.in", "net.in", "org.in", "gen.in",
-    "com.mx", "org.mx", "gob.mx",
-    "co.kr", "or.kr", "ne.kr",
-    "com.cn", "net.cn", "org.cn",
-    "com.tw", "org.tw", "net.tw",
-    "co.il", "org.il", "net.il",
-    "com.sg", "org.sg", "net.sg",
-    "com.hk", "org.hk", "net.hk",
-    "co.id", "or.id", "web.id",
-    "com.ar", "org.ar", "net.ar",
-    "com.tr", "org.tr", "net.tr",
-    "co.th", "or.th", "in.th",
-    "com.ph", "org.ph", "net.ph",
-    "co.ke", "or.ke",
-}
-
 
 def _psl_org_domain(domain: str) -> Optional[str]:
     """Best-effort PSL Organizational Domain.
@@ -126,21 +93,10 @@ def _psl_org_domain(domain: str) -> Optional[str]:
     behavior and avoids false-external-rua flags for sub-domain audits
     whose parents do not publish DMARC records.
     """
-    if tldextract is not None:
-        ext = _tld_extract(domain)
-        if ext.domain and ext.suffix:
-            return f"{ext.domain}.{ext.suffix}"
-        return None
-
-    labels = domain.lower().rstrip(".").split(".")
-    if len(labels) < 2:
-        return None
-    last_two = ".".join(labels[-2:])
-    if last_two in _TWO_PART_PUBLIC_SUFFIXES:
-        if len(labels) < 3:
-            return None
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
+    ext = _tld_extract(domain)
+    if ext.domain and ext.suffix:
+        return f"{ext.domain}.{ext.suffix}"
+    return None
 
 
 class _LookupFailed(str):
@@ -278,7 +234,6 @@ def _dmarc_tree_walk_impl(domain: str) -> Dict[str, Any]:
         "walked" | "psl_fallback" | None (no record).
       - psd_flag: the psd tag value from the matched record
       - query_count: total DNS queries made (walk only, excludes Author Domain)
-      - collected_records: all records found during walk (for debugging/display)
     """
     steps = []
     labels = domain.rstrip(".").split(".")
@@ -583,9 +538,6 @@ def _dmarc_tree_walk_impl(domain: str) -> Dict[str, Any]:
         "org_domain_method": "walked",
         "psd_flag": psd_flag,
         "query_count": walk_query_count,
-        "collected_records": [
-            {"domain": r["domain"], "psd": r["psd"]} for r in collected_records
-        ],
     }
 
 
@@ -598,7 +550,6 @@ def _author_hit_result(
     org_domain: str,
     org_domain_method: str,
     walk_query_count: int = 0,
-    collected_records: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Return value for the Author-Domain-hit branch of §4.10.1.
 
@@ -620,10 +571,6 @@ def _author_hit_result(
         "org_domain_method": org_domain_method,
         "psd_flag": psd,
         "query_count": walk_query_count,
-        "collected_records": [
-            {"domain": r["domain"], "psd": r["psd"]}
-            for r in (collected_records or [])
-        ],
     }
 
 
@@ -773,10 +720,6 @@ def _walk_after_author_hit(
         "org_domain_method": org_domain_method,
         "psd_flag": psd_flag,
         "query_count": walk_query_count,
-        "collected_records": [
-            {"domain": r["domain"], "psd": r["psd"]}
-            for r in walked_records
-        ],
     }
 
 
@@ -794,5 +737,4 @@ def _no_policy_result(domain: str, steps: list, query_count: int) -> Dict[str, A
         "org_domain_method": None,
         "psd_flag": None,
         "query_count": query_count,
-        "collected_records": [],
     }
