@@ -3,8 +3,8 @@ Audit Engine
 =============
 Orchestrates all security checks for a domain.
 Each check runs independently -- if one fails, the others still complete.
-Assembles results for the security scorer and transforms everything
-into the frontend's expected format.
+Transforms every result into the card format the frontend and the PDF
+render.
 """
 
 import ipaddress
@@ -15,7 +15,7 @@ import threading as _ct_threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from datetime import datetime, timezone
-from html import escape as _e, unescape as _u
+from html import escape as _e
 from typing import Any, Dict, List, Optional
 
 log = logging.getLogger(__name__)
@@ -93,40 +93,30 @@ from spf_recursive import count_spf_lookups, repair_spf_missing_spaces
 from advanced_fingerprinting import AdvancedVendorFingerprinter
 from dkim_formatter import analyze_dkim_key_strength
 from anomaly_detector import detect_anomalies
-from remediation_planner import build_remediation_plan
 
 from dmarc_tree_walk import dmarc_tree_walk
-try:
-    import tldextract
-    # ProtectHome=read-only on the prod systemd unit makes tldextract's
-    # default ~/.cache path unwritable, which crashes the DMARC check.
-    # Pin the cache under the working directory (in ReadWritePaths).
-    _tldextract_cache_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), ".tldextract_cache"
-    )
-    # suffix_list_urls=() pins the bundled public suffix snapshot and takes
-    # the network off the audit hot path entirely. .tldextract_cache/ is
-    # gitignored, so without this the first lookup after every restart
-    # fetched the list over HTTPS, serialized behind a file lock across
-    # every concurrent audit. Public suffixes change on the order of weeks,
-    # so a snapshot that ships with the pinned version is close enough.
-    # cache_fetch_timeout is set anyway: it defaults to None, so if a future
-    # edit restores the URLs the fetch would once again hang without bound.
-    _tld_extract = tldextract.TLDExtract(
-        cache_dir=_tldextract_cache_dir,
-        suffix_list_urls=(),
-        cache_fetch_timeout=3.0,
-    )
-except ImportError:
-    # Kept as a guard for an environment that somehow lacks the dependency,
-    # not as a path anything is expected to take. tldextract is pinned in
-    # requirements.txt: the 68-entry fallback below mis-computes the org
-    # domain for every suffix outside it, and does so silently.
-    tldextract = None
-    _tld_extract = None
+import tldextract
+# ProtectHome=read-only on the prod systemd unit makes tldextract's
+# default ~/.cache path unwritable, which crashes the DMARC check.
+# Pin the cache under the working directory (in ReadWritePaths).
+_tldextract_cache_dir = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".tldextract_cache"
+)
+# suffix_list_urls=() pins the bundled public suffix snapshot and takes
+# the network off the audit hot path entirely. .tldextract_cache/ is
+# gitignored, so without this the first lookup after every restart
+# fetched the list over HTTPS, serialized behind a file lock across
+# every concurrent audit. Public suffixes change on the order of weeks,
+# so a snapshot that ships with the pinned version is close enough.
+# cache_fetch_timeout is set anyway: it defaults to None, so if a future
+# edit restores the URLs the fetch would once again hang without bound.
+_tld_extract = tldextract.TLDExtract(
+    cache_dir=_tldextract_cache_dir,
+    suffix_list_urls=(),
+    cache_fetch_timeout=3.0,
+)
 from spf_intelligence import smart_dkim_check
 from dns_tools import (
-    get_resolver,
     is_spf_record,
     get_dnssec_resolver,
     is_dmarc_version_tag,
@@ -154,7 +144,7 @@ from result_transformer import (
     _build_provider_intelligence,
     _lookup_unavailable_card,
 )
-from dns_snapshots import store_audit_snapshots, get_all_history, purge_old_snapshots, get_first_seen
+from dns_snapshots import store_audit_snapshots, get_all_history, purge_old_snapshots
 
 
 # ============================================================
@@ -335,10 +325,9 @@ def _should_include(check_key, scope_set):
 # DNS Helpers
 # ============================================================
 
-def _get_resolver(timeout: float = 5.0):
-    # Backed by the shared plain answer cache. A single complete audit used to
-    # re-issue about 35 identical queries because nothing anywhere cached.
-    return get_resolver(timeout)
+# Backed by the shared plain answer cache. A single complete audit used to
+# re-issue about 35 identical queries because nothing anywhere cached.
+from dns_tools import get_resolver as _get_resolver, lookup_ttl as _lookup_ttl
 
 
 def _get_dnssec_resolver(timeout: float = 8.0):
@@ -376,6 +365,9 @@ def _lookup_txt(name: str, raise_on_failure: bool = False) -> List[str]:
     published" (NXDOMAIN/NoAnswer, still returned as []) from "the
     lookup itself failed" (SERVFAIL, REFUSED, timeout), which is
     re-raised instead of being silently treated as absence.
+
+    Differs from checks_extra._lookup_txt, which raises its own LookupFailed
+    on failure and leaves escaped semicolons as they are.
     """
     try:
         resolver = _get_resolver()
@@ -419,16 +411,6 @@ def _lookup_txt(name: str, raise_on_failure: bool = False) -> List[str]:
         if raise_on_failure:
             raise
         return []
-
-
-def _lookup_ttl(name: str, rdtype: str = "TXT") -> Optional[int]:
-    """Look up the TTL for a DNS record. Returns None on any failure."""
-    try:
-        resolver = _get_resolver()
-        answers = resolver.resolve(name, rdtype)
-        return answers.rrset.ttl if answers.rrset else None
-    except dns.exception.DNSException:
-        return None
 
 
 # ============================================================
@@ -509,7 +491,6 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
                 "address": email,
                 "domain": dest_domain,
                 "is_external": is_external,
-                "authorization_record": None,
                 "authorized": None,
                 "has_mx": None,
                 "service": None,
@@ -521,9 +502,6 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
                     dest_info["service"] = svc_name
                     break
 
-            if is_external:
-                dest_info["authorization_record"] = f"{domain}._report._dmarc.{dest_domain}"
-
             destinations.append(dest_info)
 
     # Pass 2: probe every destination at once.
@@ -534,9 +512,13 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
     # from the response. A reader then saw no section and no note, which
     # makes a domain whose reports really are going somewhere unauthorized
     # look exactly like one that was never checked.
+    def _auth_fqdn(dest: Dict) -> str:
+        """Where an external destination authorizes reports (RFC 7489 S7.1)."""
+        return f"{domain}._report._dmarc.{dest['domain']}"
+
     def _probe(dest: Dict) -> None:
-        auth_fqdn = dest.get("authorization_record")
-        if auth_fqdn:
+        if dest["is_external"]:
+            auth_fqdn = _auth_fqdn(dest)
             try:
                 txt_records = _lookup_txt(auth_fqdn, raise_on_failure=True)
                 dest["authorized"] = any(
@@ -572,7 +554,7 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
             continue
         email = dest["address"]
         dest_domain = dest["domain"]
-        auth_fqdn = dest["authorization_record"]
+        auth_fqdn = _auth_fqdn(dest)
 
         if dest["authorized"] is False:
             issues.append({
@@ -648,55 +630,14 @@ def _get_org_domain(domain: str) -> Optional[str]:
       sub.example.co.uk -> example.co.uk
       yahoo.com -> yahoo.com (already the org domain)
 
-    Uses tldextract if available; falls back to a lightweight heuristic
-    that handles common two-part TLDs (co.uk, com.au, etc.).
+    Uses tldextract with its bundled public suffix list.
 
     Returns None if the domain cannot be parsed.
     """
-    if tldextract is not None:
-        ext = _tld_extract(domain)
-        if not ext.domain or not ext.suffix:
-            return None
-        return f"{ext.domain}.{ext.suffix}"
-
-    # Lightweight fallback: handle common two-part public suffixes
-    labels = domain.lower().rstrip(".").split(".")
-    if len(labels) < 2:
+    ext = _tld_extract(domain)
+    if not ext.domain or not ext.suffix:
         return None
-
-    _TWO_PART_TLDS = {
-        "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk",
-        "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp",
-        "com.au", "net.au", "org.au", "edu.au", "gov.au",
-        "co.nz", "net.nz", "org.nz",
-        "co.za", "org.za", "web.za",
-        "com.br", "net.br", "org.br",
-        "co.in", "net.in", "org.in", "gen.in",
-        "com.mx", "org.mx", "gob.mx",
-        "co.kr", "or.kr", "ne.kr",
-        "com.cn", "net.cn", "org.cn",
-        "com.tw", "org.tw", "net.tw",
-        "co.il", "org.il", "net.il",
-        "com.sg", "org.sg", "net.sg",
-        "com.hk", "org.hk", "net.hk",
-        "co.id", "or.id", "web.id",
-        "com.ar", "org.ar", "net.ar",
-        "com.tr", "org.tr", "net.tr",
-        "co.th", "or.th", "in.th",
-        "com.ph", "org.ph", "net.ph",
-        "co.ke", "or.ke",
-    }
-
-    # Check if the last two labels form a known two-part TLD
-    last_two = ".".join(labels[-2:])
-    if last_two in _TWO_PART_TLDS:
-        # Org domain is the label above the two-part TLD
-        if len(labels) < 3:
-            return None  # Already the org domain
-        return ".".join(labels[-3:])
-    else:
-        # Standard TLD: org domain is the last two labels
-        return ".".join(labels[-2:])
+    return f"{ext.domain}.{ext.suffix}"
 
 
 def _enrich_dmarc_inheritance(
@@ -1022,18 +963,6 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
             "any that were placed there by mistake.",
         )
 
-    # Detect wildcard DMARC records (not valid for DMARC)
-    if "*" in domain:
-        _add_issue(
-            "warning",
-            "Wildcard DMARC records are not supported",
-            "DMARC does not support wildcard records. A record at "
-            "_dmarc.*.example.com will not be discovered during DMARC "
-            "policy lookup. Each subdomain must have its own DMARC record "
-            "or inherit from the organizational domain.",
-            "Remove the wildcard and publish DMARC records on specific "
-            "subdomains, or rely on policy inheritance from the org domain.",
-        )
 
     if not dmarc_records:
         result["status"] = "error"
@@ -1128,17 +1057,6 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # 3a. Lowercase v=dmarc1 is handled by the pre-check above Step 1.
     # Records reaching here have already passed the strict v=DMARC1 filter.
     stripped = record.strip()
-
-    # 3b. Missing version number: v=DMARC instead of v=DMARC1
-    if re.match(r"v=DMARC\s*[;]", stripped, re.IGNORECASE) or \
-       stripped.upper().startswith("V=DMARC;") or \
-       stripped.upper().rstrip() == "V=DMARC":
-        _add_fatal_syntax(
-            "Version tag missing '1': v=DMARC instead of v=DMARC1",
-            "The record says 'v=DMARC' but is missing the required '1'. "
-            "Receivers will not recognize this as a valid DMARC record.",
-            "Change to v=DMARC1.",
-        )
 
     # 3c. Separator errors (dmarc.org: colons, slashes, missing semicolons)
     # Check for colons used as separators (v=DMARC1: p=none: ...)
@@ -2926,29 +2844,20 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
             "fix": fix,
         })
 
-    resolver = _get_dnssec_resolver()
-
-    # Check DNSKEY records
-    try:
-        dnskey_answers = resolver.resolve(domain, "DNSKEY")
+    def _read_dnskeys(dnskey_answers) -> Optional[int]:
+        """Record what a DNSKEY answer says; returns the answer's TTL."""
         result["has_dnssec"] = True
-        _rrset = getattr(dnskey_answers, "rrset", None)
-        _dnskey_ttl = _rrset.ttl if _rrset else None
         result["key_count"] = len(dnskey_answers)
+        # The RRset as text, which dns_snapshots stores for change tracking.
+        result["dnskey_record"] = "; ".join(sorted(str(r) for r in dnskey_answers))
 
         # Record whether the recursive resolver validated the chain (AD
         # flag). This is a corroborating signal only: an on-path attacker
         # can clear AD, and AD=0 does not prove DS is absent. Treat it
         # as soft evidence, never as the sole basis for has_ds.
-        ad_flag = bool(dnskey_answers.response.flags & dns.flags.AD)
-        result["validated_by_resolver"] = ad_flag
+        result["validated_by_resolver"] = bool(dnskey_answers.response.flags & dns.flags.AD)
 
-        seen_algos = set()
-        for rdata in dnskey_answers:
-            algo_num = rdata.algorithm
-            seen_algos.add(algo_num)
-
-        for algo in sorted(seen_algos):
+        for algo in sorted({rdata.algorithm for rdata in dnskey_answers}):
             algo_name = DNSSEC_ALGORITHMS.get(algo, f"Unknown ({algo})")
             result["algorithms"].append({
                 "number": algo,
@@ -2974,6 +2883,14 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
                     "Modern algorithms offer better security and smaller signatures.",
                     "Consider migrating to algorithm 13 (ECDSA P-256) for better performance and security.",
                 )
+        rrset = getattr(dnskey_answers, "rrset", None)
+        return rrset.ttl if rrset else None
+
+    resolver = _get_dnssec_resolver()
+
+    # Check DNSKEY records
+    try:
+        _dnskey_ttl = _read_dnskeys(resolver.resolve(domain, "DNSKEY"))
     except dns.resolver.NoAnswer:
         result["has_dnssec"] = False
         should_probe_bogus = True
@@ -2992,45 +2909,7 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
         # Retry once with a generous 30s timeout before giving up.
         retry_resolver = _get_dnssec_resolver(timeout=30.0)
         try:
-            dnskey_answers = retry_resolver.resolve(domain, "DNSKEY")
-            result["has_dnssec"] = True
-            _rrset = getattr(dnskey_answers, "rrset", None)
-            _dnskey_ttl = _rrset.ttl if _rrset else None
-            result["key_count"] = len(dnskey_answers)
-
-            ad_flag = bool(dnskey_answers.response.flags & dns.flags.AD)
-            result["validated_by_resolver"] = ad_flag
-
-            seen_algos = set()
-            for rdata in dnskey_answers:
-                seen_algos.add(rdata.algorithm)
-
-            for algo in sorted(seen_algos):
-                algo_name = DNSSEC_ALGORITHMS.get(algo, f"Unknown ({algo})")
-                result["algorithms"].append({
-                    "number": algo,
-                    "name": algo_name,
-                    "deprecated": algo in DEPRECATED_ALGORITHMS,
-                    "legacy": algo in LEGACY_ALGORITHMS,
-                })
-
-                if algo in DEPRECATED_ALGORITHMS:
-                    _add_issue(
-                        "error",
-                        f"Deprecated DNSSEC algorithm: {algo_name}",
-                        f"Algorithm {algo} ({algo_name}) is deprecated and considered insecure. "
-                        "This algorithm is no longer recommended in the IANA DNSSEC algorithm registry "
-                        "and its signatures are not considered secure.",
-                        "Migrate to algorithm 13 (ECDSA P-256) or 8 (RSA/SHA-256).",
-                    )
-                elif algo in LEGACY_ALGORITHMS:
-                    _add_issue(
-                        "warning",
-                        f"Legacy DNSSEC algorithm: {algo_name}",
-                        f"Algorithm {algo} is functional but not recommended for new deployments. "
-                        "Modern algorithms offer better security and smaller signatures.",
-                        "Consider migrating to algorithm 13 (ECDSA P-256) for better performance and security.",
-                    )
+            _dnskey_ttl = _read_dnskeys(retry_resolver.resolve(domain, "DNSKEY"))
         except dns.exception.DNSException:
             result["has_dnssec"] = False
             # Nothing was learned on either attempt, not a real negative
@@ -3600,107 +3479,106 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
 
     result["ns_count"] = len(ns_hostnames)
 
-    # Resolve each NS to get IP addresses and check reachability
-    all_ips = []
-    networks_v4 = set()
-    ns_details = []
+    # Authoritative response testing queries each NS directly for SOA.
+    import time as _time
 
-    for ns_host in sorted(ns_hostnames):
+    def _probe_ns(ns_host: str):
+        """A, AAAA and a direct SOA query for one nameserver, in that order.
+
+        Returns (ns_info, auth_entry); auth_entry is None when no SOA answer
+        came back.
+        """
         ns_info = {
             "hostname": ns_host,
             "ipv4": [],
             "ipv6": [],
             "resolves": False,
         }
-
-        # Resolve A records
         try:
-            a_answers = resolver.resolve(ns_host, "A")
-            for rdata in a_answers:
-                ip_str = str(rdata)
-                ns_info["ipv4"].append(ip_str)
-                all_ips.append(ip_str)
-                ns_info["resolves"] = True
-                try:
-                    net = ipaddress.IPv4Network(f"{ip_str}/24", strict=False)
-                    networks_v4.add(str(net))
-                except (ValueError, TypeError):
-                    pass
+            ns_info["ipv4"] = [str(r) for r in resolver.resolve(ns_host, "A")]
         except dns.exception.DNSException:
             pass
-
-        # Resolve AAAA records
         try:
-            aaaa_answers = resolver.resolve(ns_host, "AAAA")
-            for rdata in aaaa_answers:
-                ns_info["ipv6"].append(str(rdata))
-                ns_info["resolves"] = True
+            ns_info["ipv6"] = [str(r) for r in resolver.resolve(ns_host, "AAAA")]
         except dns.exception.DNSException:
             pass
-
-        ns_details.append(ns_info)
-
-    result["nameservers"] = ns_details
-    result["networks"] = list(networks_v4)
-
-    # Authoritative response testing -- query each NS directly for SOA
-    import time as _time
-    auth_results = []
-    soa_serials = {}
-
-    for ns_info in ns_details:
+        ns_info["resolves"] = bool(ns_info["ipv4"] or ns_info["ipv6"])
         if not ns_info["resolves"]:
-            continue
+            return ns_info, None
+
         # Use first IPv4 address for the query
-        ns_ip = ns_info["ipv4"][0] if ns_info["ipv4"] else (ns_info["ipv6"][0] if ns_info["ipv6"] else None)
-        if not ns_ip or _is_private_ip(ns_ip):
-            continue
+        ns_ip = ns_info["ipv4"][0] if ns_info["ipv4"] else ns_info["ipv6"][0]
+        if _is_private_ip(ns_ip):
+            return ns_info, None
         try:
             soa_query = dns.message.make_query(domain, dns.rdatatype.SOA)
             soa_query.flags &= ~dns.flags.RD  # RD=0 for authoritative test
             t0 = _time.monotonic()
             response = dns.query.udp(soa_query, ns_ip, timeout=3)
             elapsed_ms = round((_time.monotonic() - t0) * 1000, 1)
-            is_authoritative = bool(response.flags & dns.flags.AA)
-
-            # Extract SOA serial from answer section
-            soa_serial = None
-            for rrset in response.answer:
-                if rrset.rdtype == dns.rdatatype.SOA:
-                    for rdata in rrset:
-                        soa_serial = rdata.serial
-                        break
-                    break
-
-            auth_entry = {
-                "hostname": ns_info["hostname"],
-                "ip": ns_ip,
-                "authoritative": is_authoritative,
-                "soa_serial": soa_serial,
-                "response_time_ms": elapsed_ms,
-            }
-            auth_results.append(auth_entry)
-            ns_info["authoritative"] = is_authoritative
-            ns_info["soa_serial"] = soa_serial
-            ns_info["response_time_ms"] = elapsed_ms
-
-            if soa_serial is not None:
-                soa_serials[ns_info["hostname"]] = soa_serial
-
-            if not is_authoritative:
-                _add_issue(
-                    "error",
-                    f"Lame delegation: {ns_info['hostname']} ({ns_ip}) is not authoritative",
-                    f"Nameserver {ns_info['hostname']} does not return the AA (Authoritative Answer) "
-                    "flag for this domain. It is listed as a nameserver but cannot authoritatively "
-                    "answer queries, which can cause intermittent resolution failures.",
-                    "Remove this nameserver from your NS records or configure it to serve this zone.",
-                )
         except (dns.exception.DNSException, OSError):
             # Query failed -- don't penalize, just skip
             ns_info["authoritative"] = None
             ns_info["soa_serial"] = None
             ns_info["response_time_ms"] = None
+            return ns_info, None
+
+        # Extract SOA serial from answer section
+        soa_serial = None
+        for rrset in response.answer:
+            if rrset.rdtype == dns.rdatatype.SOA:
+                for rdata in rrset:
+                    soa_serial = rdata.serial
+                    break
+                break
+        is_authoritative = bool(response.flags & dns.flags.AA)
+        ns_info["authoritative"] = is_authoritative
+        ns_info["soa_serial"] = soa_serial
+        ns_info["response_time_ms"] = elapsed_ms
+        return ns_info, {
+            "hostname": ns_host,
+            "ip": ns_ip,
+            "authoritative": is_authoritative,
+            "soa_serial": soa_serial,
+            "response_time_ms": elapsed_ms,
+        }
+
+    # One nameserver after another, each with a 3 s SOA timeout, was the
+    # slowest part of this check. They run side by side on _probe_executor:
+    # this check is itself a task on _shared_executor and may not submit
+    # into it. Results come back in sorted order, so issues read the same
+    # way on every run.
+    probed = list(_probe_executor.map(_probe_ns, sorted(ns_hostnames)))
+    ns_details = [info for info, _ in probed]
+
+    networks_v4 = set()
+    for ns_info in ns_details:
+        for ip_str in ns_info["ipv4"]:
+            try:
+                networks_v4.add(str(ipaddress.IPv4Network(f"{ip_str}/24", strict=False)))
+            except (ValueError, TypeError):
+                pass
+
+    result["nameservers"] = ns_details
+    result["networks"] = list(networks_v4)
+
+    auth_results = []
+    soa_serials = {}
+    for ns_info, auth_entry in probed:
+        if auth_entry is None:
+            continue
+        auth_results.append(auth_entry)
+        if auth_entry["soa_serial"] is not None:
+            soa_serials[ns_info["hostname"]] = auth_entry["soa_serial"]
+        if not auth_entry["authoritative"]:
+            _add_issue(
+                "error",
+                f"Lame delegation: {ns_info['hostname']} ({auth_entry['ip']}) is not authoritative",
+                f"Nameserver {ns_info['hostname']} does not return the AA (Authoritative Answer) "
+                "flag for this domain. It is listed as a nameserver but cannot authoritatively "
+                "answer queries, which can cause intermittent resolution failures.",
+                "Remove this nameserver from your NS records or configure it to serve this zone.",
+            )
 
     result["auth_results"] = auth_results
 
@@ -4721,12 +4599,46 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     needs_mx = scope_set is None or bool(scope_set & (_MX_DEPENDENTS | {"mx"}))
     needs_spf = scope_set is None or bool(scope_set & (_SPF_DEPENDENTS | {"spf"}))
 
-    # --- DMARC Tree Walk (RFC 9989 Section 4.10) ---
-    # Run before DMARC card so inherited policy can inform the card
-    tree_walk_result = None
-    if needs_dmarc and not _time_up():
+    # ================================================================
+    # Phase 1: tree walk, DMARC, MX, SPF and the hoisted DNSSEC check
+    # ================================================================
+    # The five raw checks share no inputs, so they are submitted together
+    # and transformed afterwards, in the order they used to run. Only
+    # transform_spf reads MX (for has_mx); _raw_check_spf does not. Each
+    # future keeps the budget _run_with_timeout gave it, counted from its
+    # own submission.
+    _phase1 = {}
+
+    def _submit(key, func, *args, **kwargs):
+        _phase1[key] = (_shared_executor.submit(func, *args, **kwargs), time.monotonic())
+
+    def _await(key, timeout=CHECK_TIMEOUT):
+        future, submitted = _phase1[key]
         try:
-            tree_walk_result = _run_with_timeout(dmarc_tree_walk, domain)
+            return future.result(timeout=max(0.0, submitted + timeout - time.monotonic()))
+        except FuturesTimeoutError:
+            # Same as _run_with_timeout: a still-queued task must not run
+            # later and burn a worker on a result nobody wants.
+            future.cancel()
+            raise
+
+    if not _time_up():
+        if needs_dmarc:
+            _submit("tree_walk", dmarc_tree_walk, domain)
+            _submit("dmarc", _raw_check_dmarc, domain)
+        if needs_mx:
+            _submit("mx", check_mx, domain, executor=_probe_executor)
+        if needs_spf:
+            _submit("spf", _raw_check_spf, domain)
+        if _should_include("dnssec", scope_set) or _should_include("dane", scope_set):
+            _submit("dnssec", _raw_check_dnssec, domain)
+
+    # --- DMARC Tree Walk (RFC 9989 Section 4.10) ---
+    # Awaited before the DMARC card so inherited policy can inform the card
+    tree_walk_result = None
+    if "tree_walk" in _phase1:
+        try:
+            tree_walk_result = _await("tree_walk")
         except Exception as e:
             log.warning("Tree Walk failed: %s", e, exc_info=True)
             errors.append("Tree Walk: check failed")
@@ -4734,9 +4646,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # --- 1. DMARC ---
     report_auth = None
-    if needs_dmarc and not _time_up():
+    if "dmarc" in _phase1:
         try:
-            raw_dmarc = _run_with_timeout(_raw_check_dmarc, domain)
+            raw_dmarc = _await("dmarc")
             # Enrich with inherited policy (tree walk first, PSL fallback)
             _enrich_dmarc_inheritance(raw_dmarc, domain, tree_walk_result)
             raw_results["dmarc"] = raw_dmarc
@@ -4754,9 +4666,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     )
                     if report_auth:
                         raw_dmarc["report_destinations"] = report_auth["report_destinations"]
-                        raw_dmarc["report_auth_issues"] = report_auth.get("report_auth_issues", [])
                         raw_dmarc["ruf_provider_note"] = report_auth.get("ruf_provider_note", False)
-                        raw_dmarc["issues"].extend(report_auth.get("report_auth_issues", []))
+                        # Popped: the issues join the DMARC card's own, and the
+                        # report_chain section in the response does not repeat them.
+                        raw_dmarc["issues"].extend(report_auth.pop("report_auth_issues", []))
                 except Exception:
                     # The section used to vanish here with no note, so a
                     # domain whose reports really are going to an
@@ -4778,10 +4691,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 checks.append(_error_card("DMARC", e))
         _notify("DMARC")
 
-    # --- 2. MX Records (run before SPF so we know if domain sends mail) ---
-    if needs_mx and not _time_up():
+    # --- 2. MX Records (transformed before SPF so has_mx is known) ---
+    if "mx" in _phase1:
         try:
-            raw_mx = _run_with_timeout(check_mx, domain)
+            raw_mx = _await("mx")
             raw_results["mx"] = raw_mx
             if _should_include("mx", scope_set):
                 checks.append(transform_mx(raw_mx))
@@ -4800,9 +4713,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # --- 3. SPF ---
     spf_record = None
-    if needs_spf and not _time_up():
+    if "spf" in _phase1:
         try:
-            raw_spf = _run_with_timeout(_raw_check_spf, domain)
+            raw_spf = _await("spf")
             raw_results["spf"] = raw_spf
             spf_record = raw_spf.get("record")
             if _should_include("spf", scope_set):
@@ -4865,15 +4778,15 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # with the copy already in flight. The transport scope has no DNSSEC card
     # at all and still paid for a whole DNSSEC run.
     #
-    # Running it once up front costs one serial check and removes the
-    # duplicate. It cannot be submitted as a future that DANE then waits on:
-    # DANE runs on _shared_executor, and a task on that pool may not block on
+    # Running it once, submitted with the Phase 1 checks and awaited here,
+    # removes the duplicate. DANE cannot wait on it as a future itself: DANE
+    # runs on _shared_executor, and a task on that pool may not block on
     # another task in the same pool.
     _dnssec_raw = None
     _dnssec_error = None
-    if (_should_include("dnssec", scope_set) or _should_include("dane", scope_set)) and not _time_up():
+    if "dnssec" in _phase1:
         try:
-            _dnssec_raw = _run_with_timeout(_raw_check_dnssec, domain, timeout=CHECK_TIMEOUT)
+            _dnssec_raw = _await("dnssec")
             raw_results["dnssec"] = _dnssec_raw
         except FuturesTimeoutError:
             _dnssec_error = "timeout"
@@ -5407,8 +5320,6 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             "mx_hosts": _fp_mx_hosts,
             "dmarc_record": _raw_dmarc.get("record"),
             "tls_rpt_record": _raw_tls_rpt.get("record"),
-            "mta_sts_record": _raw_mta_sts.get("txt_record"),
-            "bimi_record": _raw_bimi.get("record"),
             "txt_ttl": _raw_spf.get("ttl"),
         }
         # Only the subdomain probe still queries, and it is not worth a card of
@@ -5468,10 +5379,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     check["fix"] = vendor_hint
                 break
 
-    # --- Priority Fixes ---
     raw_mx = raw_results.get("mx", {})
     has_mx = bool(raw_mx.get("records")) or bool(raw_mx.get("mx_details"))
-    priority_fixes = _build_priority_fixes(checks, raw_results, has_mx=has_mx)
     _notify("Scoring")
 
     # --- Anomaly Detection ("What's Unusual") ---
@@ -5480,13 +5389,6 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     except Exception:
         log.debug("Anomaly detection failed", exc_info=True)
         anomalies = []
-
-    # --- Remediation Plan ---
-    try:
-        remediation_plan = build_remediation_plan(checks, raw_results, has_mx, is_defensive, tree_walk=tree_walk_result)
-    except Exception:
-        log.debug("Remediation plan failed", exc_info=True)
-        remediation_plan = {"immediate": [], "short_term": [], "long_term": []}
 
     # --- Authentication Resilience Analysis ---
     try:
@@ -5558,22 +5460,13 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # Retrieve history for change detection
     record_history = {}
-    first_seen = None
     try:
         record_history = get_all_history(domain)
-        first_seen = get_first_seen(domain)
     except Exception as e:
         log.debug("History retrieval failed: %s", e)
 
     # Build change detection from history + current raw results
-    change_detection = build_change_detection(raw_results, record_history, first_seen)
-
-    # Build TTL map from raw results
-    ttl_map = {}
-    for check_key in ("dmarc", "spf", "mta_sts", "tls_rpt", "bimi", "dnssec", "caa", "nameservers", "mx"):
-        raw = raw_results.get(check_key, {})
-        if raw.get("ttl") is not None:
-            ttl_map[check_key] = raw["ttl"]
+    change_detection = build_change_detection(raw_results, record_history)
 
     # Build consistency findings (Part 4)
     consistency = build_consistency_findings(raw_results, checks)
@@ -5614,9 +5507,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "timestamp": start_time.isoformat(),
         "elapsed_seconds": round(elapsed, 2),
         "checks": checks,
-        "priority_fixes": priority_fixes,
         "anomalies": anomalies,
-        "remediation_plan": remediation_plan,
         "vendors": vendors,
         "provider_intelligence": provider_intelligence,
         "tree_walk": tree_walk_result,
@@ -5632,10 +5523,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "executive_summary": build_executive_summary(checks, _roadmap),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
-        "ttl_map": ttl_map,
         "consistency_findings": consistency,
         "advisories": advisories if advisories else None,
-        "errors": errors if errors else None,
     }
 
 
@@ -5710,7 +5599,7 @@ def _build_resilience_analysis(
     # every branch below reads that emptiness as absence. Without these flags
     # this section states that records are missing when it never read them.
     # The DKIM branch already models the inconclusive case; SPF and DMARC
-    # follow the same shape. Matches remediation_planner.py.
+    # follow the same shape.
     spf_unavailable = raw_spf.get("status") == "unavailable"
     dmarc_unavailable = (
         raw_dmarc.get("status") == "unavailable"
@@ -6164,60 +6053,6 @@ def _build_resilience_analysis(
 # ============================================================
 # Priority Fixes
 # ============================================================
-
-def _build_priority_fixes(checks: List[Dict], raw_results: Dict = None, has_mx: bool = True) -> List[str]:
-    """
-    Build prioritized fix list directly from check results.
-    Maximum 5 items: BOGUS DNSSEC first, then fails, then warnings.
-    Deduplicates by check name.
-
-    For non-mail domains (has_mx=False), skip email-infrastructure fixes
-    since they're not applicable.
-
-    BOGUS DNSSEC sorts to the very top: validating resolvers return
-    SERVFAIL, so the domain is effectively unresolvable for those users.
-    """
-    MAIL_ONLY_CHECKS = {"SPF", "MX Records", "MX", "MTA-STS", "TLS-RPT", "DKIM", "BIMI", "DANE"}
-
-    fixes: List[str] = []
-    covered_checks: set = set()
-
-    def _clean(html_text: str) -> str:
-        text = re.sub(r'<br\s*/?>', ' ', html_text, flags=re.IGNORECASE)
-        text = re.sub(r'<[^>]+>', '', text)
-        text = _u(text)
-        return re.sub(r'\s+', ' ', text).strip()
-
-    if raw_results and raw_results.get("dnssec", {}).get("dnssec_state") == "bogus":
-        for check in checks:
-            if check.get("name") == "DNSSEC" and check.get("fix"):
-                text = _clean(check["fix"])
-                if text:
-                    fixes.append(text)
-                    covered_checks.add("DNSSEC")
-                break
-
-    for status in ("fail", "warn"):
-        for check in checks:
-            if check.get("status") != status:
-                continue
-            name = check.get("name", "")
-            if name in covered_checks:
-                continue
-            if not has_mx and name in MAIL_ONLY_CHECKS:
-                continue
-            if check.get("pill_label") == "Error":
-                continue
-            fix = check.get("fix")
-            if not fix:
-                continue
-            text = _clean(fix)
-            if text and text not in fixes:
-                fixes.append(text)
-                covered_checks.add(name)
-
-    return fixes[:5]
-
 
 # ============================================================
 # Error Card Helper

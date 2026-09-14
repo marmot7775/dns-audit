@@ -43,7 +43,6 @@ USER_FACING_MODULES = [
     "spf_execution_engine.py",
     "dkim_formatter.py",
     "dkim_tag_analyzer.py",
-    "remediation_planner.py",
     "pdf_report.py",
     "dmarc_tree_walk.py",
     "mx_check.py",

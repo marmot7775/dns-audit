@@ -24,7 +24,7 @@ def calls(monkeypatch):
     def _fake_audit(domain, dkim_selector=None, scope=None, progress_callback=None,
                     deadline=None):
         recorded.append({"deadline": deadline, "now": time.monotonic()})
-        return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
+        return {"domain": domain, "checks": [], "vendors": []}
 
     monkeypatch.setattr(server_module, "run_full_audit", _fake_audit)
     monkeypatch.setattr(server_module, "_preflight_dns_check", lambda domain: None)

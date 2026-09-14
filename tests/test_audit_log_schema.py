@@ -81,7 +81,7 @@ def _ok_audit(domain, dkim_selector=None, scope=None, progress_callback=None, de
     return {
         "domain": domain,
         "checks": [{"id": "dmarc"}, {"id": "spf"}],
-        "priority_fixes": [],
+        
         "vendors": [],
     }
 
@@ -146,7 +146,7 @@ def _slow_audit(domain, dkim_selector=None, scope=None, progress_callback=None, 
     if progress_callback:
         progress_callback("start", 0, 2)
     time.sleep(10)
-    return {"domain": domain, "checks": [], "priority_fixes": [], "vendors": []}
+    return {"domain": domain, "checks": [], "vendors": []}
 
 
 @pytest.fixture

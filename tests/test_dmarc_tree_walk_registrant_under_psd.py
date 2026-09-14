@@ -79,7 +79,7 @@ def test_misclassification_is_fixed_downstream_in_report_authorization():
 
     fake_resolver = MagicMock()
     with patch.object(audit_engine, "_get_resolver", return_value=fake_resolver), \
-         patch.object(audit_engine, "_lookup_txt", return_value=["v=DMARC1"]):
+         patch.object(audit_engine, "_lookup_txt", return_value=["v=DMARC1"]) as lookup_txt:
         result = audit_engine._check_report_authorization(domain, raw_dmarc, tree_walk_result)
 
     dest = result["report_destinations"][0]
@@ -88,7 +88,9 @@ def test_misclassification_is_fixed_downstream_in_report_authorization():
         f"reports@unrelated-vendor.co.uk must be classified external "
         f"(it shares only the public suffix, not the org domain); got {dest!r}"
     )
-    assert dest["authorization_record"] == "example.co.uk._report._dmarc.unrelated-vendor.co.uk"
+    lookup_txt.assert_any_call(
+        "example.co.uk._report._dmarc.unrelated-vendor.co.uk", raise_on_failure=True
+    )
     assert dest["authorized"] is not None, (
         f"External destinations must have their _report._dmarc "
         f"authorization checked, not skipped; got {dest!r}"

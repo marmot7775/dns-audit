@@ -1,35 +1,26 @@
 """
 MX Analysis Module - DNS Security Auditor
-Comprehensive MX record checking with provider detection,
-priority analysis, STARTTLS support, reverse DNS, and RFC compliance.
+MX record checking with provider detection, priority analysis, and RFC
+compliance.
 
 Usage:
     from mx_check import check_mx
     result = check_mx("example.com")
-    result = check_mx("example.com", deep_scan=True)
 """
 
 import re
-import socket
-import ssl
-import smtplib
 import ipaddress
-from typing import Any, Dict, Optional
-from datetime import datetime, timezone
-
-from cryptography import x509
-from cryptography.x509.oid import NameOID
+from typing import Any, Dict, List, Optional
 
 try:
     import dns.resolver
-    import dns.reversename
     import dns.exception
 
     DNS_AVAILABLE = True
 except ImportError:
     DNS_AVAILABLE = False
 
-from dns_tools import get_resolver
+from dns_tools import get_resolver as _get_resolver, make_issue as _make_issue
 
 
 # ============================================================
@@ -84,24 +75,6 @@ COMPILED_PROVIDERS = [(re.compile(pat, re.IGNORECASE), name) for pat, name in MX
 # Helpers
 # ============================================================
 
-def _get_resolver(timeout: float = 5.0):
-    # Shared factory: every resolver in the process draws from one TTL-honoring
-    # answer cache, so the repeated lookups a single audit makes hit memory
-    # instead of the network.
-    return get_resolver(timeout)
-
-
-def _make_issue(severity: str, issue: str, plain_english: str,
-                impact: str = "", fix: str = "") -> Dict[str, str]:
-    return {
-        "severity": severity,
-        "issue": issue,
-        "plain_english": plain_english,
-        "impact": impact,
-        "fix": fix,
-    }
-
-
 def _detect_provider(hostname: str) -> Optional[str]:
     h = hostname.lower().rstrip(".")
     for pattern, provider in COMPILED_PROVIDERS:
@@ -118,111 +91,24 @@ def _is_ip_address(value: str) -> bool:
         return False
 
 
-def _resolve_host(hostname: str) -> Dict[str, Any]:
-    result = {"a": [], "aaaa": [], "resolved": False}
-    resolver = _get_resolver()
+def _resolve_addresses(hostname: str, rdtype: str) -> List[str]:
+    """A or AAAA addresses for one host; empty when the lookup yields none."""
     try:
-        answers = resolver.resolve(hostname, "A")
-        result["a"] = [str(r) for r in answers]
-        result["resolved"] = True
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-        pass
-    try:
-        answers = resolver.resolve(hostname, "AAAA")
-        result["aaaa"] = [str(r) for r in answers]
-        result["resolved"] = True
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-        pass
-    return result
-
-
-def _check_ptr(ip: str) -> Dict[str, Any]:
-    result = {"ip": ip, "ptr": None, "fcrdns": False}
-    try:
-        rev_name = dns.reversename.from_address(ip)
-        resolver = _get_resolver()
-        answers = resolver.resolve(rev_name, "PTR")
-        ptr_name = str(answers[0]).rstrip(".")
-        result["ptr"] = ptr_name
-        fwd = _resolve_host(ptr_name)
-        all_ips = fwd["a"] + fwd["aaaa"]
-        if ip in all_ips:
-            result["fcrdns"] = True
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-        pass
-    return result
-
-
-def _check_starttls(hostname: str, port: int = 25, timeout: float = 10.0) -> Dict[str, Any]:
-    result = {
-        "hostname": hostname,
-        "supports_starttls": False,
-        "tls_version": None,
-        "cert_subject": None,
-        "cert_issuer": None,
-        "cert_expiry": None,
-        "cert_valid": None,
-        "error": None,
-    }
-    server = None
-    try:
-        server = smtplib.SMTP(hostname, port, timeout=timeout)
-        server.ehlo()
-        if server.has_extn("starttls"):
-            result["supports_starttls"] = True
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            server.starttls(context=context)
-            server.ehlo()
-            result["tls_version"] = server.sock.version()
-            # With CERT_NONE, getpeercert(binary_form=False) always returns
-            # {}: the dict form is only populated when OpenSSL actually
-            # validated the chain. The DER bytes are returned regardless of
-            # verification (a client always receives the server's
-            # certificate), so parse those directly. This is a posture
-            # scan, not a trust decision, and self-signed MX certs are
-            # common.
-            der = server.sock.getpeercert(binary_form=True)
-            if der:
-                try:
-                    peer_cert = x509.load_der_x509_certificate(der)
-                    cn = peer_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
-                    if cn:
-                        result["cert_subject"] = cn[0].value
-                    issuer_attrs = peer_cert.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME) \
-                        or peer_cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
-                    if issuer_attrs:
-                        result["cert_issuer"] = issuer_attrs[0].value
-                    expiry = getattr(peer_cert, "not_valid_after_utc", None)
-                    if expiry is None:
-                        expiry = peer_cert.not_valid_after.replace(tzinfo=timezone.utc)
-                    result["cert_expiry"] = expiry.isoformat()
-                    result["cert_valid"] = expiry > datetime.now(timezone.utc)
-                except (ValueError, TypeError):
-                    pass
-    except smtplib.SMTPServerDisconnected:
-        result["error"] = "Server disconnected"
-    except socket.timeout:
-        result["error"] = "Connection timed out"
-    except ConnectionRefusedError:
-        result["error"] = "Connection refused (port 25 blocked)"
-    except Exception as e:
-        result["error"] = str(e)[:200]
-    finally:
-        if server:
-            try:
-                server.quit()
-            except Exception:
-                pass
-    return result
+        return [str(r) for r in _get_resolver().resolve(hostname, rdtype)]
+    except dns.exception.DNSException:
+        return []
 
 
 # ============================================================
 # Main MX Check
 # ============================================================
 
-def check_mx(domain: str, deep_scan: bool = False) -> Dict[str, Any]:
+def check_mx(domain: str, executor=None) -> Dict[str, Any]:
+    """MX records and per-host analysis.
+
+    executor, when given, runs the hosts' A and AAAA lookups side by side;
+    run_full_audit passes its probe pool. Without one they run in order.
+    """
     result = {
         "check": "MX Records", "domain": domain,
         "records": [], "record_count": 0, "providers": [],
@@ -298,6 +184,12 @@ def check_mx(domain: str, deep_scan: bool = False) -> Dict[str, Any]:
             "Senders get a clean rejection.", ""))
         return result
 
+    # A and AAAA for every MX host at once. The lookups are independent, and
+    # one after another they were most of this check's time.
+    lookups = [(h, t) for _, h in raw_mx if not _is_ip_address(h) for t in ("A", "AAAA")]
+    mapper = executor.map if executor is not None else map
+    addresses = dict(zip(lookups, mapper(lambda ht: _resolve_addresses(*ht), lookups)))
+
     # Analyze each MX host
     seen_providers = set()
     priorities = [p for p, _ in raw_mx]
@@ -306,7 +198,7 @@ def check_mx(domain: str, deep_scan: bool = False) -> Dict[str, Any]:
         mx_detail = {
             "priority": priority, "hostname": hostname,
             "provider": None, "resolved": False,
-            "ips": [], "ptr_results": [],
+            "ips": [],
         }
 
         if _is_ip_address(hostname):
@@ -325,22 +217,15 @@ def check_mx(domain: str, deep_scan: bool = False) -> Dict[str, Any]:
                 seen_providers.add(provider)
                 result["providers"].append(provider)
 
-        resolution = _resolve_host(hostname)
-        mx_detail["resolved"] = resolution["resolved"]
-        mx_detail["ips"] = resolution["a"] + resolution["aaaa"]
+        mx_detail["ips"] = addresses[(hostname, "A")] + addresses[(hostname, "AAAA")]
+        mx_detail["resolved"] = bool(mx_detail["ips"])
 
-        if not resolution["resolved"]:
+        if not mx_detail["resolved"]:
             result["issues"].append(_make_issue(
                 "error", f"MX host '{hostname}' does not resolve",
                 f"'{hostname}' has no A or AAAA records.",
                 "Mail delivery will fail for this MX.",
                 f"Add A/AAAA records for '{hostname}'."))
-
-        # PTR/FCrDNS data is collected but not flagged as an issue.
-        # PTR matters for outbound sending IPs, not inbound MX hosts.
-        for ip in mx_detail["ips"]:
-            ptr_result = _check_ptr(ip)
-            mx_detail["ptr_results"].append(ptr_result)
 
         result["mx_details"].append(mx_detail)
 
@@ -371,32 +256,6 @@ def check_mx(domain: str, deep_scan: bool = False) -> Dict[str, Any]:
         hosts = [h for pri, h in raw_mx if pri == p]
         result["warnings"].append(
             f"Priority {p} shared by {count} hosts ({', '.join(hosts)}).")
-
-    # Deep scan
-    if deep_scan:
-        result["deep_scan_results"] = []
-        for mx_detail in result["mx_details"]:
-            if mx_detail["ips"]:
-                tls_result = _check_starttls(mx_detail["hostname"])
-                mx_detail["starttls"] = tls_result
-                result["deep_scan_results"].append(tls_result)
-                if tls_result.get("error"):
-                    result["issues"].append(_make_issue(
-                        "info", f"STARTTLS check failed for {mx_detail['hostname']}",
-                        f"Error: {tls_result['error']}", "",
-                        "Verify port 25 and STARTTLS."))
-                elif not tls_result["supports_starttls"]:
-                    result["issues"].append(_make_issue(
-                        "warning", f"No STARTTLS on {mx_detail['hostname']}",
-                        "Email received in plaintext.",
-                        "Inbound email is unencrypted.",
-                        "Enable STARTTLS on the mail server."))
-                elif tls_result.get("cert_valid") is False:
-                    result["issues"].append(_make_issue(
-                        "warning", f"Expired cert on {mx_detail['hostname']}",
-                        f"Expired: {tls_result.get('cert_expiry', 'unknown')}.",
-                        "Strict senders may refuse delivery.",
-                        "Renew the TLS certificate."))
 
     severities = [i["severity"] for i in result["issues"]]
     if "error" in severities:

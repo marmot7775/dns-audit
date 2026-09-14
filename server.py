@@ -452,7 +452,7 @@ def _release_inflight(cache_key: str, future, payload: Optional[Dict]) -> None:
     if payload is None:
         payload = {
             "checks": [],
-            "priority_fixes": [],
+            
             "vendors": [],
             "error": "server_error",
             "error_message": "Audit could not complete. Please try again.",
@@ -610,17 +610,10 @@ def _validate_scope(scope: Optional[str]) -> Optional[str]:
     return s
 
 
-# Preflight resolver, built once. dns.resolver.Resolver() re-reads
-# /etc/resolv.conf from disk on every construction, and this configuration
-# never changes between calls.
-try:
-    _preflight_resolver = dns.resolver.Resolver()
-except dns.exception.DNSException:
-    # No resolver configuration at import time. An unconfigured resolver still
-    # raises through _preflight_dns_check's own handling rather than taking the
-    # whole module down on import.
-    _preflight_resolver = dns.resolver.Resolver(configure=False)
-_preflight_resolver.timeout = 5
+# Preflight resolver, built once from the resolv.conf configuration dns_tools
+# read at import, like every other resolver in the process.
+from dns_tools import get_uncached_resolver
+_preflight_resolver = get_uncached_resolver(5)
 _preflight_resolver.lifetime = 3
 
 
@@ -633,7 +626,7 @@ def _preflight_dns_check(domain: str) -> Optional[Dict]:
     _err_base = {
         "domain": domain,
         "checks": [],
-        "priority_fixes": [],
+        
     }
     try:
         try:
@@ -767,7 +760,7 @@ async def audit_domain(
                 # "Audit could not complete" that _release_inflight substitutes
                 # for a missing payload. Busy is retryable; failed is not.
                 _payload = {
-                    "checks": [], "priority_fixes": [], "vendors": [],
+                    "checks": [], "vendors": [],
                     "error": "server_busy",
                     "error_message": "Server is busy. Please try again in a moment.",
                     "_http_status": 503,
@@ -811,7 +804,7 @@ async def audit_domain(
                     "domain": domain,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "checks": [],
-                    "priority_fixes": [],
+                    
                     "vendors": [],
                     "error": "server_error",
                     "error_message": "Audit could not complete. Please try again.",
@@ -989,7 +982,7 @@ async def audit_stream(
                     "domain": domain,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "checks": [],
-                    "priority_fixes": [],
+                    
                     "vendors": [],
                     "error": "server_error",
                     "error_message": "Audit could not complete. Please try again.",
@@ -1015,7 +1008,7 @@ async def audit_stream(
                             "domain": domain,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                             "checks": [],
-                            "priority_fixes": [],
+                            
                             "vendors": [],
                             "error": "timeout",
                             "error_message": f"Audit exceeded the {AUDIT_WALL_CLOCK_BUDGET} second time limit. Please try again.",

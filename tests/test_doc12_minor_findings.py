@@ -292,7 +292,7 @@ def test_every_follower_honours_the_leaders_status_not_just_the_first():
     import server as server_module
 
     busy_payload = {
-        "checks": [], "priority_fixes": [], "vendors": [],
+        "checks": [], "vendors": [],
         "error": "server_busy",
         "error_message": "Server is busy. Please try again in a moment.",
         "_http_status": 503,

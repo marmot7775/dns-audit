@@ -25,7 +25,7 @@ except ImportError:
 
 # Carrier-Grade NAT (RFC 6598). Not classified by ipaddress.is_private
 # in Python 3.12, so check it explicitly. Drop once is_private covers it
-# (Python 3.13+ via is_global, but we target 3.9+).
+# (Python 3.13+ via is_global, but requirements.txt targets 3.10+).
 _CGNAT = ipaddress.ip_network('100.64.0.0/10')
 
 
@@ -138,7 +138,6 @@ except ImportError:
     DNS_AVAILABLE = False
 
 from dns_tools import (
-    get_resolver,
     is_bimi_version_tag,
     is_dmarc_version_tag,
     is_mta_sts_version_tag,
@@ -148,23 +147,9 @@ from dns_tools import (
 )
 
 
-def _get_resolver(timeout: float = 5.0):
-    # Shared factory: every resolver in the process draws from one TTL-honoring
-    # answer cache, so the repeated lookups a single audit makes hit memory
-    # instead of the network.
-    return get_resolver(timeout)
 
 
-def _lookup_ttl(name: str, rdtype: str = "TXT") -> Optional[int]:
-    """Look up the TTL for a DNS record. Returns None on any failure."""
-    if not DNS_AVAILABLE:
-        return None
-    try:
-        resolver = _get_resolver()
-        answers = resolver.resolve(name, rdtype)
-        return answers.rrset.ttl if answers.rrset else None
-    except dns.exception.DNSException:
-        return None
+from dns_tools import get_resolver as _get_resolver, lookup_ttl as _lookup_ttl, make_issue as _make_issue
 
 
 class LookupFailed(Exception):
@@ -178,6 +163,13 @@ class LookupFailed(Exception):
 
 
 def _lookup_txt(name: str, raise_on_failure: bool = False) -> List[str]:
+    """TXT records at name, each multi-string record joined with no separator.
+
+    Differs from audit_engine._lookup_txt on failure and on escapes: with
+    raise_on_failure a failed lookup raises this module's LookupFailed rather
+    than the dnspython exception, and an escaped semicolon (backslash ;) is
+    left as the resolver returned it rather than unescaped.
+    """
     if not DNS_AVAILABLE:
         return []
     try:
@@ -231,17 +223,6 @@ def _parses_as_url(url: str) -> bool:
         return True
     except ValueError:
         return False
-
-
-def _make_issue(severity: str, issue: str, plain_english: str,
-                impact: str = "", fix: str = "") -> Dict[str, str]:
-    return {
-        "severity": severity,
-        "issue": issue,
-        "plain_english": plain_english,
-        "impact": impact,
-        "fix": fix,
-    }
 
 
 # ============================================================
