@@ -32,3 +32,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 49](doc-49.md): Dead code, dead output, and audit speed
 - [Doc 50](doc-50.md): Put the Sept 9 home page back, and the iPad summary row
 - [Doc 51](doc-51.md): Repo hygiene and README
+- [Doc 52](doc-52.md): The PDF in the site's typefaces
