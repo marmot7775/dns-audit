@@ -496,7 +496,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
 
     # ── Part 3: Biggest risk ─────────────────────────────────
     roadmap_items = roadmap.get("items", [])
-    _urgent = any(i.get("priority") in ("critical", "high") for i in roadmap_items)
+    # A red Nameservers card during an unread audit is the same outage the
+    # unread message below already names ("once the nameservers are
+    # answering"), so its row does not displace that message.
+    _urgent = any(i.get("priority") in ("critical", "high")
+                  and not (auth_unavailable and i.get("protocol") == "Nameservers")
+                  for i in roadmap_items)
     if auth_unavailable and not _urgent:
         # The roadmap gates on "fail", so an unread record contributes no item
         # and some minor nicety floats to the top. Presenting that as the
@@ -516,8 +521,13 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
         if risk_candidates:
             top = risk_candidates[0]
             biggest_risk = top.get("impact", top.get("action", ""))
-        else:
+        elif roadmap_items:
             biggest_risk = "No urgent risks found. The Priorities list below names smaller improvements."
+        else:
+            # An empty roadmap hides the Priorities list, so the sentence above
+            # would point at nothing. Every fail or warn card has a roadmap row,
+            # so an empty one means nothing that was assessed needs fixing.
+            biggest_risk = "Nothing to fix. Every check the audit could assess passed."
 
     # ── Part 4: has_record_builder flag ──────────────────────
     has_record_builder = dmarc.get("record_builder") is not None
@@ -643,6 +653,16 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
 # Email Security Roadmap (Prompt 11)
 # ============================================================
 
+def _roadmap_fix_text(card: Dict) -> str:
+    """A card's fix as plain text for a Priorities row. Some fixes carry
+    <strong> markup for the card body; the row escapes what it shows."""
+    from html import unescape
+    fix = card.get("fix") or ""
+    if not isinstance(fix, str):
+        return ""
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", "", fix))).strip()
+
+
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                            has_mx: bool = True) -> Dict:
     """Synthesize all check results into a prioritized action plan.
@@ -752,6 +772,16 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
                       "impact": "Exceeding 10 lookups causes SPF to fail entirely."})
 
+    # Nameservers. A red or amber card here had no row and no remediation
+    # anywhere on the page. The action is the card's own fix text.
+    ns_card = check_map.get("Nameservers", {})
+    if ns_card.get("status") in ("fail", "warn"):
+        items.append({"priority": "high" if ns_card["status"] == "fail" else "medium",
+                      "protocol": "Nameservers",
+                      "action": _roadmap_fix_text(ns_card) or "Fix the nameserver delegation",
+                      "impact": "Nameservers answer every DNS query for this domain, so a fault "
+                                "here can stop mail and the website from resolving."})
+
     # ── Medium ──────────────────────────────────────────────
     # Every gate below reads a pill_label or a count, and an absent card returns
     # the default for both. A scoped audit that never ran MTA-STS, TLS-RPT, DANE
@@ -816,12 +846,29 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # a CRITICAL DKIM one while the tier counts above the table said
     # otherwise. Stable sort by rank so the web roadmap and the PDF agree
     # with their own counts; ties keep check order.
+    # Every card that fails or warns gets a row, so no finding is left on the
+    # page with nowhere to act on it. The rules above word the common cases;
+    # the rest take the card's own fix text, with its verdict as the impact.
+    covered = {i["protocol"] for i in items}
+    for card in checks:
+        name = card.get("name", "")
+        if name in covered or card.get("status") not in ("fail", "warn"):
+            continue
+        fix = _roadmap_fix_text(card)
+        items.append({"priority": "high" if card["status"] == "fail" else "low",
+                      "protocol": name,
+                      "action": fix or f"Review the {name} findings",
+                      "impact": card.get("verdict") or fix or ""})
+
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
+    # A row on a passing card is a recommendation, not a result, so it gets
+    # the info icon: a green check there read as already done.
     # Within a tier, rows about something wrong come before rows about
     # something not yet adopted.
     for item in items:
-        item["status"] = check_map.get(item["protocol"], {}).get("status")
+        _card_status = check_map.get(item["protocol"], {}).get("status")
+        item["status"] = _card_status if _card_status in ("fail", "warn", "absent") else "info"
     items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), i["status"] == "absent"))
 
     # Count by tier
@@ -2266,8 +2313,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     elif policy == "reject":
         _deliverability = (
             "Excellent for deliverability. This is the strongest signal to receivers that "
-            "you control your email. Domains with p=reject generally see better inbox placement "
-            "because receivers trust them more."
+            "you control your email. Google and Yahoo require a DMARC record from bulk senders; "
+            "an enforcing policy also lets receivers act on mail that fails."
         )
     else:
         _deliverability = None
@@ -2539,8 +2586,8 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
         if sp == "none" and policy in ("reject", "quarantine"):
             gap_note = (
                 " Your root domain is protected but subdomains are not, so mail "
-                f"claiming to be from a subdomain of {domain} is delivered as if "
-                "the policy did not exist."
+                f"claiming to be from a subdomain of {domain} receives no policy at all, "
+                "so each receiver applies only its own filtering."
             )
         v2 = {
             "name": "Subdomain Spoofing",
@@ -2809,8 +2856,8 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
                     "level": "warning",
                     "text": (
                         "Your subdomains have weaker enforcement than your root domain, so "
-                        f"mail claiming to be from mail.{_dom} is delivered as if the "
-                        "policy did not exist."
+                        f"mail claiming to be from mail.{_dom} receives no policy at all, so "
+                        "each receiver applies only its own filtering."
                     ),
                 })
             return e
@@ -2838,7 +2885,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
                     "text": (
                         "Critical gap. Non-existent subdomains have no enforcement while your root "
                         f"domain rejects. Mail from an invented name like secure-login.{_dom} "
-                        "is delivered as if no policy existed."
+                        "receives no policy at all, so each receiver applies only its own filtering."
                     ),
                 })
             return e
@@ -3229,8 +3276,8 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
             "title": "Subdomain policy gap",
             "text": (
                 "Subdomain policy gap. Your root domain rejects spoofed mail but subdomains allow "
-                f"it through, so mail claiming to be from mail.{_dom} is delivered as if the "
-                "policy did not exist."
+                f"it through, so mail claiming to be from mail.{_dom} receives no policy at all, "
+                "so each receiver applies only its own filtering."
             ),
             "tags": ["sp", "p"],
         })
@@ -3807,7 +3854,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         steps.append({
             "step": step_num,
             "action": "Align subdomain policy: change sp=none to sp=reject",
-            "why": "Close the subdomain policy gap. With sp=none, mail from any subdomain is delivered as if no policy existed.",
+            "why": "Close the subdomain policy gap. With sp=none, mail from any subdomain receives no policy at all, so each receiver applies only its own filtering.",
             "tags_changed": ["sp"],
         })
 
@@ -5722,8 +5769,8 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
                 "While DMARC protects the <em>identity</em> of the sender, "
                 "MTA-STS (<a href=\"https://datatracker.ietf.org/doc/html/rfc8461\" target=\"_blank\" rel=\"noopener\">RFC 8461</a>) "
                 "protects the <em>connection</em>. It prevents downgrade attacks where a network attacker "
-                "forces email to be delivered without encryption. Without MTA-STS, SMTP's opportunistic "
-                "TLS (STARTTLS) can be silently stripped, allowing email content to be intercepted in transit."
+                "forces email to be delivered without encryption. Without MTA-STS, a sending server "
+                "that cannot reach your mail server over TLS falls back to plaintext and nothing tells you."
             ),
             "details": [_issue_to_detail(i) for i in raw.get("issues", [])],
             "fix": (
@@ -5733,9 +5780,8 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             ),
             "fix_records": None,
             "deliverability": (
-                "Without MTA-STS, the TLS encryption between mail servers can be silently stripped. "
-                "While this does not directly affect spam filtering, some enterprise recipients flag "
-                "inbound email that was not delivered over verified TLS."
+                "Missing MTA-STS does not directly affect spam filtering, but some enterprise "
+                "recipients flag inbound email that was not delivered over verified TLS."
             ),
         }
 

@@ -218,6 +218,8 @@
        ground, where --text-muted alone falls short of 4.5:1. */
     --text-muted-raised: #b3bfd0;
     --ttl-long-text: #b39cf7;
+    --ttl-long-bg: rgba(139, 92, 246, 0.04);
+    --ttl-long-border: rgba(139, 92, 246, 0.27);
     --dmarcbis-bg: rgba(56, 191, 174, 0.10);
     --dmarcbis-border: rgba(56, 191, 174, 0.28);
 
@@ -236,6 +238,7 @@
 
     /* Layout */
     --max-width: 880px;
+    --radius-sm: 4px;
     --radius: 8px;
     --radius-lg: 12px;
 
@@ -308,7 +311,7 @@ body {
 :focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
 }
 
 /* Screen reader only (visually hidden but accessible) */
@@ -374,7 +377,7 @@ main {
     width: auto;
     min-width: 120px;
     background: var(--code-bg);
-    border-radius: 7px;
+    border-radius: var(--radius);
     overflow: hidden;
     flex-shrink: 0;
     box-shadow: var(--shadow-md);
@@ -424,8 +427,11 @@ main {
     color: #a3e635;
 }
 
+/* The terminal chip keeps its dark background in both themes, so the flag
+   keeps one colour too: --primary-light turns #2f5fcc in light theme, which
+   is 3.2:1 on the chip. */
 .logo-flag {
-    color: var(--primary-light);
+    color: #7ea6f5;
 }
 
 .logo-text {
@@ -456,7 +462,7 @@ main {
     color: var(--text-muted);
     text-decoration: none;
     padding: 0.3rem 0.55rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     transition: color 0.15s var(--ease), background 0.15s var(--ease);
 }
 
@@ -486,7 +492,7 @@ main {
     color: var(--primary-light);
     text-decoration: none;
     padding: 0.3rem 0.7rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     transition: color var(--duration) var(--ease), background var(--duration) var(--ease);
 }
 
@@ -527,8 +533,8 @@ main {
 }
 
 .audit-input-card {
-    background: #243046;
-    border-radius: 14px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
     padding: var(--space-xl) var(--space-2xl);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
@@ -611,9 +617,9 @@ main {
 .input-unified .input-wrapper {
     display: flex;
     align-items: center;
-    background: #2e3d54;
+    background: var(--surface-hover);
     border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
     max-width: 600px;
     width: 100%;
@@ -625,7 +631,7 @@ main {
 .input-unified .domain-input {
     border: none;
     background: transparent;
-    border-radius: 12px 0 0 12px;
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
     height: 50px;
 }
 .input-unified .domain-input:focus {
@@ -633,10 +639,23 @@ main {
     box-shadow: none;
 }
 .input-unified .audit-btn {
-    border-radius: 0 10px 10px 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
     height: 46px;
     margin: 2px 2px 2px 0;
     flex-shrink: 0;
+}
+
+/* The input alone, so the validity indicator anchors to the field rather
+   than to the row that also holds the Run Audit button. */
+.domain-input-wrap {
+    position: relative;
+    display: flex;
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
+.domain-input-wrap .domain-input {
+    padding-right: 2.5rem;
 }
 
 .input-wrapper {
@@ -718,13 +737,13 @@ main {
     color: var(--text-primary);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius);
     outline: none;
     transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
 }
 
 .domain-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-tertiary);
     font-weight: 400;
 }
 
@@ -739,7 +758,7 @@ main {
     background: var(--primary-solid);
     color: var(--text-inverse);
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius);
     font-family: var(--font-body);
     font-size: var(--font-base);
     font-weight: 600;
@@ -813,7 +832,7 @@ main {
     width: 100%;
     height: 4px;
     background: var(--border);
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     margin-bottom: 0.85rem;
 }
@@ -827,7 +846,7 @@ main {
     height: 100%;
     width: 0%;
     background: var(--primary);
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     transition: width 0.5s var(--ease-out);
 }
 
@@ -1007,7 +1026,7 @@ main {
     padding: 10px 14px;
     background: none;
     border: none;
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: var(--radius);
     font-family: var(--font-body);
     font-size: var(--font-sm);
     font-weight: 500;
@@ -1249,7 +1268,7 @@ main {
     gap: 4px;
     height: 22px;
     padding: 0 8px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: var(--font-xs);
     font-weight: 600;
     letter-spacing: 0;
@@ -1270,6 +1289,14 @@ main {
 .tag-high { background: var(--warn-bg); color: var(--warn); }
 .tag-medium,
 .tag-low { background: var(--border); color: var(--text-tertiary); }
+
+/* An amber tag on an amber-tinted surface stacks two translucent washes and
+   fell to 4.1:1 in light theme. On a warn surface the tag is solid amber
+   with the text-on-amber token, which clears 4.5:1 in both themes. */
+.rb-verdict-monitoring .tag-warn,
+.rb-verdict-monitoring .tag-high,
+.anomaly-warn .tag-warn,
+.anomaly-warn .tag-high { background: var(--warn); color: var(--warn-contrast); }
 
 /* Tiers are ranks, not sentences: the one uppercase exception. */
 .tag-critical,
@@ -1581,15 +1608,15 @@ h3.result-title,
 
 /* Record syntax highlighting */
 .rec-keyword {
-    color: #79c0ff;
+    color: var(--primary-light);
 }
 
 .rec-value {
-    color: #a5d6ff;
+    color: var(--text-primary);
 }
 
 .rec-safe {
-    color: #3fb950;
+    color: var(--pass);
     font-weight: 500;
 }
 
@@ -1598,46 +1625,52 @@ h3.result-title,
 }
 
 .rec-warn {
-    color: #f0883e;
+    color: var(--warn);
     font-weight: 500;
 }
 
 .rec-danger {
-    color: #f85149;
+    color: var(--fail-text);
     font-weight: 500;
 }
 
 .rec-muted {
-    color: #8b949e;
+    color: var(--text-tertiary);
+}
+
+/* Room for the 44px copy button and its offset above and below, so a
+   one-line record does not let the button hang out of the block. */
+.record-block:has(> .copy-btn) {
+    min-height: calc(44px + 1.2rem);
 }
 
 .copy-btn {
     position: absolute;
     top: 0.6rem;
     right: 0.6rem;
-    background: #21262d;
-    border: 1px solid #30363d;
-    border-radius: 6px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
     padding: 0.4rem 0.7rem;
     min-height: 44px;
     min-width: 44px;
     font-family: var(--font-body);
     font-size: var(--font-xs);
     font-weight: 500;
-    color: #a0a8b8;
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all var(--duration) var(--ease);
 }
 
 .copy-btn:hover {
-    color: #c9d1d9;
-    border-color: #484f58;
-    background: #30363d;
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+    background: var(--border);
 }
 
 .copy-btn.copied {
-    color: #3fb950;
-    border-color: rgba(63, 185, 80, 0.4);
+    color: var(--pass);
+    border-color: var(--pass-border);
     animation: copy-flash 0.3s var(--ease);
 }
 
@@ -1714,13 +1747,11 @@ h3.result-title,
 
 .tw-intro a {
     color: var(--primary-light);
-    text-decoration: none;
-    border-bottom: 1px solid var(--primary-border);
+    text-decoration: underline;
 }
 
 .tw-intro a:hover {
     color: var(--primary);
-    border-bottom-color: var(--primary);
 }
 
 /* -- Simple mode -- */
@@ -1768,8 +1799,14 @@ h3.result-title,
 
 .tw-footnote a {
     color: var(--primary-light);
-    text-decoration: none;
-    border-bottom: 1px solid var(--primary-border);
+    text-decoration: underline;
+}
+
+/* Card explanations had no link rule, so their links took the browser's
+   default blue in both themes. */
+.explanation a {
+    color: var(--primary-light);
+    text-decoration: underline;
 }
 
 .tw-footnote a:hover {
@@ -1958,6 +1995,19 @@ h3.result-title,
     margin-top: 0.2rem;
 }
 
+.tw-lookup-failed {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-style: normal;
+}
+
+/* Card sections are h4 so a screen reader can move between them; they keep
+   the look their class gives them. */
+:where(h4.sv-title, h4.mw-title, h4.rb-title, h4.rcb-title, h4.tree-walk-header, h4.se-header) {
+    font: inherit;
+}
+
 /* -- Metadata summary section -- */
 .tw-meta {
     margin-top: 0.85rem;
@@ -2000,7 +2050,7 @@ h3.result-title,
     font-size: var(--font-xs);
     background: rgba(255, 255, 255, 0.05);
     padding: 0.1rem 0.35rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
 }
 
@@ -2185,7 +2235,7 @@ h3.result-title,
     font-size: var(--font-xs);
     font-weight: 500;
     padding: 0.1rem 0.4rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     letter-spacing: 0.02em;
     color: var(--pass);
     background: var(--pass-bg);
@@ -2267,7 +2317,7 @@ h3.result-title,
     padding: 0.5rem 0.75rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: var(--font-sm);
 }
 
@@ -2376,7 +2426,7 @@ h3.result-title,
     padding: 0.5rem 0.75rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: var(--font-sm);
     flex-wrap: wrap;
 }
@@ -2386,7 +2436,7 @@ h3.result-title,
     font-size: var(--font-xs);
     font-weight: 500;
     padding: 0.1rem 0.4rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
 }
 
@@ -2480,7 +2530,7 @@ h3.result-title,
     font-size: var(--font-xs);
     font-weight: 500;
     padding: 0.12rem 0.5rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .st-budget-status.st-bar-warn {
@@ -2497,13 +2547,13 @@ h3.result-title,
     height: 8px;
     width: 100%;
     background: var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
 }
 
 .st-budget-fill {
     height: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: width 0.6s var(--ease-out);
 }
 
@@ -2547,7 +2597,7 @@ details.st-node>summary {
     gap: 0.4rem;
     padding: 0.35rem 0.5rem;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius);
     min-height: 44px;
     font-size: var(--font-sm);
     list-style: none;
@@ -2586,7 +2636,7 @@ details.st-node>summary:hover {
     font-size: var(--font-xs);
     font-weight: 500;
     padding: 0.1rem 0.4rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     letter-spacing: 0.02em;
     white-space: nowrap;
 }
@@ -2609,7 +2659,7 @@ details.st-node>summary:hover {
     margin: 0.25rem 0 0.25rem 1.5rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow-x: auto;
     white-space: nowrap;
     line-height: 1.5;
@@ -2629,7 +2679,7 @@ details.st-node>summary:hover {
     padding: 0.1rem 0.35rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
 }
 
@@ -2761,7 +2811,7 @@ details.st-node>summary:hover {
     padding: 0.5rem 0.75rem;
     border-left: 3px solid var(--warn);
     background: var(--warn-bg);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: var(--font-sm);
     line-height: 1.55;
     color: var(--text-secondary);
@@ -2792,7 +2842,7 @@ details.st-node>summary:hover {
     gap: 0.3rem;
     background: none;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     padding: 0.3rem 0.65rem;
     font-family: var(--font-body);
     font-size: var(--font-xs);
@@ -3070,6 +3120,7 @@ details.st-node>summary:hover {
 .footer-left {
     display: flex;
     flex-direction: column;
+    flex: 0 0 18rem;
     gap: 0.35rem;
 }
 
@@ -3147,17 +3198,6 @@ details.st-node>summary:hover {
        to sit the LinkedIn icon beside the text. */
     display: block;
 }
-.footer-linkedin {
-    color: #9ca3af;
-    opacity: 1;
-    transition: opacity 0.15s ease;
-    display: inline-flex;
-    vertical-align: middle;
-}
-.footer-linkedin:hover {
-    opacity: 1;
-    color: var(--primary-light);
-}
 
 /* ==========================================================================
    SCOPE SELECTOR
@@ -3200,7 +3240,7 @@ details.st-node>summary:hover {
     padding: 0.42rem 0.8rem;
     background: var(--bg);
     border: 1.5px solid var(--border);
-    border-radius: 100px;
+    border-radius: var(--radius-lg);
     font-family: var(--font-body);
     font-size: var(--font-sm);
     font-weight: 500;
@@ -3383,7 +3423,7 @@ details.st-node>summary:hover {
         font-size: var(--font-md);
         position: relative;
         z-index: 10;
-        border-radius: 8px;
+        border-radius: var(--radius);
     }
 
     .audit-input-card {
@@ -3422,12 +3462,17 @@ details.st-node>summary:hover {
     .banner-actions {
         width: 100%;
         flex-wrap: wrap;
+        gap: 0.375rem;
     }
 
+    /* Three buttons share 358px at 390 wide. Without nowrap "PDF Report"
+       broke onto two lines while Export and Share stayed on one. */
     .banner-actions .share-btn {
         flex: 1;
         min-width: 0;
         justify-content: center;
+        white-space: nowrap;
+        padding-inline: 0.5rem;
     }
 
     .result-header {
@@ -3454,7 +3499,7 @@ details.st-node>summary:hover {
     .record-block {
         font-size: var(--font-sm);
         padding: 0.75rem 0.85rem;
-        padding-right: 3rem;
+        padding-right: 4.25rem;
     }
 
     .vendors-grid {
@@ -3482,7 +3527,9 @@ details.st-node>summary:hover {
         align-items: center;
     }
 
+    /* In a column the 18rem basis would be a height. */
     .footer-left {
+        flex: none;
         align-items: center;
     }
 
@@ -3658,7 +3705,7 @@ details.st-node>summary:hover {
     color: var(--pass);
     background: rgba(16, 185, 129, 0.08);
     padding: 0.25rem 0.6rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 /* ==========================================================================
@@ -3715,7 +3762,7 @@ details.st-node>summary:hover {
     font-size: var(--font-xs);
     padding: 0.3rem 0.6rem;
     background: var(--bg-raised);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
 }
 
@@ -3738,7 +3785,7 @@ details.st-node>summary:hover {
     padding: 0.5rem 0.75rem;
     background: var(--bg-raised);
     border-left: 3px solid var(--primary-border);
-    border-radius: 0 5px 5px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 /* ==========================================================================
@@ -3957,8 +4004,7 @@ details.st-node>summary:hover {
 
 .edu-intro a {
     color: var(--primary-light);
-    text-decoration: none;
-    border-bottom: 1px solid var(--primary-border);
+    text-decoration: underline;
 }
 
 .edu-heading {
@@ -4041,7 +4087,7 @@ details.st-node>summary:hover {
     font-size: var(--font-xs);
     background: rgba(255, 255, 255, 0.05);
     padding: 0.05rem 0.25rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .edu-change-desc code {
@@ -4049,7 +4095,7 @@ details.st-node>summary:hover {
     font-size: var(--font-xs);
     background: rgba(255, 255, 255, 0.05);
     padding: 0.1rem 0.3rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 /* ==========================================================================
@@ -4061,7 +4107,7 @@ input[type="search"],
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    border-radius: 8px;
+    border-radius: var(--radius);
 }
 
 /* ==========================================================================
@@ -4161,7 +4207,7 @@ body {
     .record-block {
         font-size: var(--font-xs);
         padding: 0.65rem 0.75rem;
-        padding-right: 2.5rem;
+        padding-right: 4.25rem;
     }
 
     .copy-btn {
@@ -4178,7 +4224,7 @@ body {
 .scope-btn:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
-    border-radius: 100px;
+    border-radius: var(--radius-lg);
 }
 
 .share-btn:focus-visible,
@@ -4195,13 +4241,13 @@ body {
 .st-seg:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
 }
 
 .selector-toggle:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .result-header:focus-visible {
@@ -4352,7 +4398,7 @@ body {
     max-width: 280px;
     width: max-content;
     padding: 8px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     box-shadow: var(--shadow-md);
     pointer-events: none;
     opacity: 0;
@@ -4377,9 +4423,9 @@ body {
 }
 
 .protocol-name-tip[data-tooltip]:hover::before,
-.protocol-name-tip[data-tooltip]:focus::before,
 .protocol-name-tip[data-tooltip]:hover::after,
-.protocol-name-tip[data-tooltip]:focus::after {
+.result-header:focus-visible .protocol-name-tip[data-tooltip]::before,
+.result-header:focus-visible .protocol-name-tip[data-tooltip]::after {
     opacity: 1;
 }
 
@@ -4533,7 +4579,7 @@ body {
     color: var(--dmarcbis-contrast);
     font-size: var(--font-sm);
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: var(--radius);
     text-decoration: none;
     transition: opacity 0.15s var(--ease);
 }
@@ -4572,7 +4618,7 @@ body {
     background: var(--bg);
     border: 1px solid var(--border);
     padding: 0.1em 0.35em;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--primary-light);
     overflow-wrap: anywhere;
 }
@@ -4582,7 +4628,7 @@ body {
     overflow-x: auto;
     margin: 1rem 0;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
 }
 .dbis-table {
     width: 100%;
@@ -4611,7 +4657,7 @@ body {
     background: var(--bg);
     border: 1px solid var(--border);
     padding: 0.05em 0.3em;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--primary-light);
 }
 
@@ -4707,7 +4753,7 @@ body {
 .dbis-target {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 0.65rem 0.85rem;
     margin: 1rem 0;
     font-family: var(--font-mono);
@@ -4754,7 +4800,7 @@ body {
 .es-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 1.5rem 1.75rem;
     margin-bottom: var(--space-xl);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -4780,7 +4826,7 @@ body {
     padding: 0.85rem 0.5rem;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
 }
 
 .es-metric-value {
@@ -4828,7 +4874,7 @@ body {
 }
 
 .es-risk {
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 0.65rem 0.85rem;
     margin-bottom: 1rem;
 }
@@ -4866,7 +4912,7 @@ body {
     font-size: var(--font-xs);
     font-weight: 600;
     padding: 0.4rem 0.85rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     border: 1px solid var(--border);
     background: transparent;
     color: var(--primary-light);
@@ -4940,14 +4986,14 @@ body {
 .dk-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
 
 .dk-key {
     padding: 0.6rem 0.7rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     margin-bottom: 0.4rem;
     border: 1px solid var(--border);
 }
@@ -4999,7 +5045,7 @@ body {
     padding: 0.4rem 0.65rem;
     background: var(--primary-subtle);
     border-left: 2px solid var(--primary);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     margin-top: 0.5rem;
     line-height: 1.4;
 }
@@ -5009,7 +5055,7 @@ body {
 .spfd-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -5049,7 +5095,7 @@ body {
     gap: 0.5rem;
     align-items: center;
     padding: 0.3rem 0.4rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: var(--font-sm);
 }
 
@@ -5075,7 +5121,7 @@ body {
     justify-content: center;
     border-radius: 50%;
     background: var(--code-bg);
-    color: #79c0ff;
+    color: var(--primary-light);
 }
 
 .spfd-cost-zero {
@@ -5087,7 +5133,7 @@ body {
     font-size: var(--font-xs);
     font-weight: 500;
     padding: 0.1rem 0.4rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--pass-bg);
     color: var(--pass);
     white-space: nowrap;
@@ -5098,7 +5144,7 @@ body {
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.5rem 0.65rem;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     margin-bottom: 0.5rem;
 }
 
@@ -5129,7 +5175,7 @@ body {
     padding: 0.35rem 0.6rem;
     background: var(--primary-subtle);
     border-left: 2px solid var(--primary);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     margin-top: 0.4rem;
     line-height: 1.4;
 }
@@ -5144,7 +5190,7 @@ body {
 .as-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -5176,7 +5222,7 @@ body {
     background: var(--fail-bg);
     border-left: 3px solid var(--fail);
     padding: 0.4rem 0.65rem;
-    border-radius: 0 5px 5px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     margin-bottom: 0.6rem;
     line-height: 1.4;
     font-style: italic;
@@ -5190,7 +5236,7 @@ body {
 
 .as-vector {
     padding: 0.6rem 0.7rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     border: 1px solid var(--border);
 }
 
@@ -5239,7 +5285,7 @@ body {
 .sua-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem;
     margin: 0.75rem 0;
 }
@@ -5269,7 +5315,7 @@ body {
     background: var(--fail-bg);
     border-left: 3px solid var(--fail);
     padding: 0.6rem 0.8rem;
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
     margin: 0.5rem 0;
     line-height: 1.5;
 }
@@ -5375,7 +5421,7 @@ body {
     font-size: var(--font-xs);
     font-weight: 600;
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
     min-height: 28px;
@@ -5430,7 +5476,7 @@ body {
 .st-seg-group {
     display: flex;
     background: var(--border);
-    border-radius: 100px;
+    border-radius: var(--radius-lg);
     padding: 2px;
     transition: background 0.15s var(--ease);
 }
@@ -5443,7 +5489,7 @@ body {
     background: transparent;
     color: var(--text-muted-raised);
     cursor: pointer;
-    border-radius: 100px;
+    border-radius: var(--radius-lg);
     transition: all 0.2s;
     white-space: nowrap;
     min-height: 44px;
@@ -5467,7 +5513,7 @@ body {
 .st-delta {
     font-size: var(--font-xs);
     padding: 0.4rem 0.7rem;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     margin-bottom: 0.5rem;
     line-height: 1.4;
 }
@@ -5489,7 +5535,7 @@ body {
 .st-future {
     background: var(--warn-bg);
     border: 1px solid var(--warn-border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 0.75rem 1rem;
     margin: 0.5rem 0;
 }
@@ -5521,7 +5567,7 @@ body {
     font-size: var(--font-xs);
     background: rgba(255, 255, 255, 0.06);
     padding: 0.05rem 0.35rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted-raised);
     flex-shrink: 0;
 }
@@ -5542,7 +5588,7 @@ body {
 .sv-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -5639,7 +5685,7 @@ body {
     color: var(--text-muted-raised);
     background: rgba(255, 255, 255, 0.05);
     padding: 0.05rem 0.3rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     align-self: center;
 }
@@ -5647,7 +5693,7 @@ body {
 .sv-error-banner {
     background: var(--fail-bg);
     border: 1px solid var(--fail-border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 0.5rem 0.85rem;
     margin: 0.5rem 0;
     font-size: var(--font-sm);
@@ -5666,7 +5712,7 @@ body {
 .record-breakdown {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -5685,7 +5731,7 @@ body {
 
 /* Verdict */
 .rb-verdict {
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 0.6rem 0.85rem;
     margin-bottom: 0.75rem;
 }
@@ -5713,7 +5759,7 @@ body {
     font-size: var(--font-xs);
     background: rgba(255, 255, 255, 0.06);
     padding: 0.1rem 0.45rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted-raised);
 }
 
@@ -5736,7 +5782,7 @@ body {
 
 .rb-kv-row {
     padding: 0.55rem 0.6rem;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     transition: background 0.15s;
 }
 
@@ -5762,10 +5808,10 @@ body {
 .rb-value {
     font-family: var(--font-mono);
     font-size: var(--font-xs);
-    background: var(--code-bg);
-    color: #e6edf3;
+    background: var(--surface-hover);
+    color: var(--text-primary);
     padding: 0.1rem 0.4rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .rb-default {
@@ -5805,7 +5851,7 @@ body {
     margin-top: 0.25rem;
     padding: 0.25rem 0.5rem;
     background: var(--fail-bg);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border-left: 2px solid var(--fail);
 }
 
@@ -5815,7 +5861,7 @@ body {
     margin-top: 0.25rem;
     padding: 0.25rem 0.5rem;
     background: var(--warn-bg);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border-left: 2px solid var(--warn);
 }
 
@@ -5832,12 +5878,12 @@ body {
     font-family: var(--font-mono);
     font-size: var(--font-xs);
     padding: 0.12rem 0.4rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .rb-chain-active {
-    background: var(--code-bg);
-    color: #79c0ff;
+    background: var(--primary-subtle);
+    color: var(--primary-light);
     font-weight: 500;
 }
 
@@ -5868,7 +5914,7 @@ body {
 
 .rb-cw-item {
     padding: 0.5rem 0.65rem;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     margin-bottom: 0.4rem;
 }
 
@@ -5908,7 +5954,7 @@ body {
     padding: 0.35rem 0.55rem;
     background: var(--dmarcbis-bg);
     border-left: 2px solid var(--dmarcbis);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     line-height: 1.4;
 }
 
@@ -5918,7 +5964,7 @@ body {
     color: var(--dmarcbis-contrast);
     background: var(--dmarcbis);
     padding: 0.05rem 0.35rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     letter-spacing: 0.03em;
     margin-right: 0.4rem;
 }
@@ -5942,7 +5988,7 @@ body {
     padding: 0.6rem 0.85rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     cursor: pointer;
     font-size: var(--font-sm);
     font-weight: 500;
@@ -5959,7 +6005,7 @@ body {
     background: var(--bg-raised);
     border: 1px solid var(--border);
     border-top: none;
-    border-radius: 0 0 8px 8px;
+    border-radius: 0 0 var(--radius) var(--radius);
     padding: 1rem 1.25rem;
 }
 
@@ -5988,7 +6034,7 @@ body {
     margin: 0.3rem 0;
     background: rgba(255, 255, 255, 0.03);
     border-left: 2px solid var(--border);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .wd-scale {
@@ -6002,7 +6048,7 @@ body {
     font-size: var(--font-xs);
     font-weight: 500;
     padding: 0.2rem 0.5rem;
-    border-radius: 100px;
+    border-radius: var(--radius-lg);
     opacity: 0.5;
 }
 
@@ -6027,7 +6073,7 @@ body {
 .mw-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -6100,7 +6146,7 @@ body {
 .mw-record {
     margin-top: 0.3rem;
     background: var(--bg);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.35rem 0.6rem;
     overflow-x: auto;
 }
@@ -6153,7 +6199,7 @@ body {
 .dbis-readiness-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -6234,7 +6280,7 @@ body {
     font-family: var(--font-mono);
     font-size: var(--font-xs);
     padding: 0.1rem 0.4rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 .dbis-chain-active { background: var(--pass-bg); color: var(--pass); font-weight: 500; }
@@ -6254,7 +6300,7 @@ body {
     padding: 0.35rem 0.5rem;
     background: var(--surface);
     border-left: 2px solid var(--border);
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     display: flex;
     gap: 0.4rem;
     align-items: flex-start;
@@ -6303,7 +6349,7 @@ body {
 .rcb-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1rem 1.25rem;
     margin: 0.85rem 0;
 }
@@ -6340,7 +6386,7 @@ body {
     padding: 0.6rem 0.75rem;
     background: var(--warn-bg);
     border-left: 3px solid var(--warn);
-    border-radius: 0 5px 5px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     margin-bottom: 0.85rem;
 }
 
@@ -6382,7 +6428,7 @@ body {
     padding: 0.55rem 0.7rem;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     word-break: break-all;
     min-height: 3rem;
 }
@@ -6411,7 +6457,7 @@ body {
 
 .rcb-change {
     padding: 0.45rem 0.65rem;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     margin-bottom: 0.3rem;
     border-left: 3px solid var(--border);
 }
@@ -6470,32 +6516,13 @@ body {
     border-color: var(--dmarcbis-border);
 }
 
-.rcb-result-record .copy-btn {
-    background: var(--dmarcbis);
-    color: var(--dmarcbis-contrast);
-    border-color: var(--dmarcbis);
-    font-weight: 600;
-}
-
-.rcb-result-record .copy-btn:hover {
-    opacity: 0.85;
-    border-color: var(--dmarcbis);
-    color: var(--dmarcbis-contrast);
-}
-
-.rcb-result-record .copy-btn.copied {
-    background: var(--pass-solid);
-    border-color: var(--pass-solid);
-    color: #fff;
-}
-
 /* ── Deploy instructions ────────────────────────────────── */
 
 .rcb-deploy {
     padding: 0.6rem 0.75rem;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
 }
 
 .rcb-deploy-label {
@@ -6524,7 +6551,7 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 0.05rem 0.3rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--primary-light);
 }
 
@@ -6590,7 +6617,7 @@ body {
 }
 .advisory {
     padding: 0.65rem 1rem;
-    border-radius: 8px;
+    border-radius: var(--radius);
     margin-bottom: 0.5rem;
     font-size: var(--font-sm);
     line-height: 1.5;
@@ -6608,9 +6635,9 @@ body {
     color: var(--text-secondary);
 }
 .advisory-warning {
-    background: #27200f;
-    border: 1px solid #78350f;
-    color: #fbbf24;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn);
 }
 
 /* ==========================================================================
@@ -6628,9 +6655,9 @@ body {
 .deliv-callout {
     margin: 0.7em 0;
     padding: 0.65em 0.9em;
-    border-radius: 8px;
-    border: 1px solid var(--primary)22;
-    background: var(--primary)08;
+    border-radius: var(--radius);
+    border: 1px solid var(--primary-border);
+    background: var(--primary-subtle);
 }
 .deliv-header {
     display: flex;
@@ -6660,9 +6687,9 @@ body {
     gap: 0.5em;
     padding: 0.55em 0.85em;
     margin-top: 0.6em;
-    border-radius: 7px;
-    border: 1px solid var(--primary)22;
-    background: var(--primary)08;
+    border-radius: var(--radius);
+    border: 1px solid var(--primary-border);
+    background: var(--primary-subtle);
     font-size: var(--font-sm);
     color: var(--text-secondary);
     line-height: 1.5;
@@ -6682,33 +6709,33 @@ body {
     gap: 0.5em;
     font-size: var(--font-sm);
     padding: 0.35em 0.7em;
-    border-radius: 6px;
+    border-radius: var(--radius);
     margin: 0.5em 0;
     border: 1px solid var(--border-light);
     background: var(--surface);
 }
 .ttl-value {
     font-weight: 500;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     white-space: nowrap;
 }
 .ttl-detail {
     color: var(--text-secondary);
 }
 .ttl-very-short {
-    border-color: var(--warn)44;
-    background: var(--warn)0a;
+    border-color: var(--warn-border);
+    background: var(--warn-bg);
 }
 .ttl-very-short .ttl-value { color: var(--warn); }
 .ttl-short {
-    border-color: var(--primary)44;
-    background: var(--primary)0a;
+    border-color: var(--primary-border);
+    background: var(--primary-subtle);
 }
 .ttl-short .ttl-value { color: var(--primary-light); }
 .ttl-standard .ttl-value { color: var(--text-secondary); }
 .ttl-long {
-    border-color: #8b5cf644;
-    background: #8b5cf60a;
+    border-color: var(--ttl-long-border);
+    background: var(--ttl-long-bg);
 }
 .ttl-long .ttl-value { color: var(--ttl-long-text); }
 
@@ -6716,7 +6743,7 @@ body {
 .cd-section {
     margin-top: 1rem;
     border: 1px solid var(--border-light);
-    border-radius: 8px;
+    border-radius: var(--radius);
     overflow: hidden;
 }
 .cd-header {
@@ -6777,13 +6804,13 @@ body {
     color: var(--text-tertiary);
 }
 .cd-diff {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: var(--font-sm);
     line-height: 1.6;
     margin: 0.3em 0;
     padding: 0.5em 0.7em;
     background: rgba(0,0,0,0.15);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     overflow-x: auto;
 }
 .cd-diff-prefix {
@@ -6835,7 +6862,7 @@ body {
     margin-top: 0.7em;
     padding: 0.65em 0.85em;
     border: 1px solid var(--border-light);
-    border-radius: 7px;
+    border-radius: var(--radius);
     background: var(--surface);
 }
 .cf-finding-header {
@@ -6862,9 +6889,9 @@ body {
     gap: 0.5em;
     padding: 0.6em 0.85em;
     margin: 0.7em 0;
-    border-radius: 7px;
-    border: 1px solid var(--primary)33;
-    background: var(--primary)0a;
+    border-radius: var(--radius);
+    border: 1px solid var(--primary-border);
+    background: var(--primary-subtle);
     font-size: var(--font-sm);
     color: var(--text-secondary);
     line-height: 1.5;
@@ -6910,6 +6937,7 @@ body {
         --border-strong: #9aa7b8;
         --border-light: #eef1f6;
         --border-focus: #2f5fcc;
+        --radius-sm: 4px;
         --text-primary: #101828;
         --text-secondary: #475467;
         --text-tertiary: #5a6678;
@@ -6942,6 +6970,8 @@ body {
         --dmarcbis-contrast: #ffffff;
         --text-muted-raised: #516073;
         --ttl-long-text: #6d28d9;
+        --ttl-long-bg: rgba(109, 40, 217, 0.05);
+        --ttl-long-border: rgba(109, 40, 217, 0.22);
         --dmarcbis-bg: rgba(14, 114, 104, 0.08);
         --dmarcbis-border: rgba(14, 114, 104, 0.22);
         --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
@@ -6954,7 +6984,7 @@ body {
     }
 
     :where(html:not([data-theme="dark"])) .audit-input-card {
-        background: #ffffff;
+        background: var(--surface);
         border-color: var(--border);
         box-shadow: var(--shadow-md);
     }
@@ -7017,9 +7047,9 @@ body {
     }
 
     :where(html:not([data-theme="dark"])) .copy-btn:hover {
-        background: #e2e8f0;
-        color: var(--border);
-        border-color: #cbd5e1;
+        background: var(--border);
+        color: var(--text-primary);
+        border-color: var(--border-strong);
     }
 
     :where(html:not([data-theme="dark"])) .tree-walk,
@@ -7049,13 +7079,6 @@ body {
         border-top-color: var(--border);
     }
 
-    /* Pre-existing since f57332f, not part of the theme/AA commits: #9ca3af
-       on this footer's var(--surface-hover) is 2.3:1, under the 3:1 floor for a UI
-       icon. */
-    :where(html:not([data-theme="dark"])) .footer-linkedin {
-        color: var(--text-tertiary);
-    }
-
     :where(html:not([data-theme="dark"])) .scope-btn {
         background: #ffffff;
     }
@@ -7077,15 +7100,9 @@ body {
     }
 
     :where(html:not([data-theme="dark"])) .advisory-info {
-        background: #f0f9ff;
-        border-color: #bae6fd;
+        background: var(--primary-subtle);
+        border-color: var(--primary-border);
         color: var(--text-secondary);
-    }
-
-    :where(html:not([data-theme="dark"])) .advisory-warning {
-        background: var(--warn-bg);
-        border-color: var(--warn-border);
-        color: #92400e;
     }
 
     :where(html:not([data-theme="dark"])) .cd-diff {
@@ -7176,6 +7193,7 @@ body {
     --border-strong: #9aa7b8;
     --border-light: #eef1f6;
     --border-focus: #2f5fcc;
+    --radius-sm: 4px;
     --text-primary: #101828;
     --text-secondary: #475467;
     --text-tertiary: #5a6678;
@@ -7208,6 +7226,8 @@ body {
     --dmarcbis-contrast: #ffffff;
     --text-muted-raised: #516073;
     --ttl-long-text: #6d28d9;
+    --ttl-long-bg: rgba(109, 40, 217, 0.05);
+    --ttl-long-border: rgba(109, 40, 217, 0.22);
     --dmarcbis-bg: rgba(14, 114, 104, 0.08);
     --dmarcbis-border: rgba(14, 114, 104, 0.22);
     --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
@@ -7220,7 +7240,7 @@ body {
 }
 
 :where(html[data-theme="light"]) .audit-input-card {
-    background: #ffffff;
+    background: var(--surface);
     border-color: var(--border);
     box-shadow: var(--shadow-md);
 }
@@ -7279,9 +7299,9 @@ body {
 }
 
 :where(html[data-theme="light"]) .copy-btn:hover {
-    background: #e2e8f0;
-    color: var(--border);
-    border-color: #cbd5e1;
+    background: var(--border);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
 }
 
 :where(html[data-theme="light"]) .tree-walk,
@@ -7311,12 +7331,6 @@ body {
     border-top-color: var(--border);
 }
 
-/* Pre-existing since f57332f, not part of the theme/AA commits: #9ca3af
-   on this footer's var(--surface-hover) is 2.3:1, under the 3:1 floor for a UI icon. */
-:where(html[data-theme="light"]) .footer-linkedin {
-    color: var(--text-tertiary);
-}
-
 :where(html[data-theme="light"]) .scope-btn {
     background: #ffffff;
 }
@@ -7338,15 +7352,9 @@ body {
 }
 
 :where(html[data-theme="light"]) .advisory-info {
-    background: #f0f9ff;
-    border-color: #bae6fd;
+    background: var(--primary-subtle);
+    border-color: var(--primary-border);
     color: var(--text-secondary);
-}
-
-:where(html[data-theme="light"]) .advisory-warning {
-    background: var(--warn-bg);
-    border-color: var(--warn-border);
-    color: #92400e;
 }
 
 :where(html[data-theme="light"]) .cd-diff {
@@ -7511,7 +7519,8 @@ body {
 
 .domain-valid-indicator {
     position: absolute;
-    right: 5.5rem;
+    z-index: 11;
+    right: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
     font-size: var(--font-lg);
@@ -7552,6 +7561,12 @@ body {
    ========================================================================== */
 
 .request-id-display {
+    display: block;
+    background: none;
+    border: 0;
+    padding: 0;
+    font-family: inherit;
+    text-align: left;
     font-size: var(--font-xs);
     color: var(--text-muted);
     margin-top: 0.25rem;
@@ -7561,6 +7576,11 @@ body {
 
 .request-id-display:hover {
     color: var(--text-secondary);
+}
+
+.request-id-display:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .request-id-label {
@@ -7773,7 +7793,7 @@ body {
 }
 .about-card {
     background: var(--surface);
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     padding: 2.85rem 2.85rem 2.6rem;
     max-width: 720px;
     margin: 0 auto;
@@ -7895,7 +7915,7 @@ body {
     padding: 0.85rem 1rem;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     overflow-x: auto;
     font-family: var(--font-mono);
     font-size: var(--font-sm);
@@ -7918,7 +7938,7 @@ body {
     color: var(--text-primary);
     font-style: italic;
     line-height: 1.65;
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 /* Pull quote: a single standout sentence that breaks the prose */
@@ -7932,7 +7952,7 @@ body {
     font-weight: 500;
     line-height: 1.55;
     letter-spacing: -0.01em;
-    border-radius: 0 8px 8px 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 /* Prose list: for "It does not X" / "Algorithm 13. ..." style series
@@ -7979,7 +7999,7 @@ body {
    Article pages (dmarcbis, dnssec, about)
    ========================================================================== */
 
-.dbis-page { max-width: 680px; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+.dbis-page { max-width: 68ch; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
 .dbis-article { font-family: var(--font-body); color: var(--text-primary); }
 .dbis-article-title { font-size: var(--font-4xl); font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); margin-bottom: 0.25rem; line-height: 1.2; }
 .dbis-article-sub { font-size: var(--font-md); color: var(--text-muted); margin-bottom: 2rem; }
@@ -7989,10 +8009,9 @@ body {
 .dbis-section { margin-top: 3rem; }
 .dbis-section h2 { font-size: var(--font-2xl); font-weight: 700; color: var(--text-primary); letter-spacing: -0.025em; margin-bottom: 0.85rem; line-height: 1.3; }
 .dbis-section p { font-size: var(--font-md); color: var(--text-secondary); line-height: 1.75; margin-bottom: 1.1rem; }
-.dbis-section a { color: var(--primary-light); text-decoration: none; font-weight: 500; border-bottom: 1px solid var(--primary-border); transition: border-color 0.15s var(--ease); }
-.dbis-section a:hover { border-bottom-color: var(--primary-light); }
-.dbis-pullquote { margin: 2.25rem 0; padding: 1.25rem 1.5rem; border-left: 3px solid var(--dmarcbis); background: var(--surface); font-size: var(--font-lg); font-weight: 500; line-height: 1.6; color: var(--text-primary); letter-spacing: -0.01em; border-radius: 0 8px 8px 0; }
-.dbis-section code { font-family: var(--font-mono); font-size: 0.88em; background: var(--bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: 4px; color: var(--primary-light); white-space: nowrap; }
+.dbis-section a { color: var(--primary-light); text-decoration: underline; font-weight: 500; }
+.dbis-pullquote { margin: 2.25rem 0; padding: 1.25rem 1.5rem; border-left: 3px solid var(--dmarcbis); background: var(--surface); font-size: var(--font-lg); font-weight: 500; line-height: 1.6; color: var(--text-primary); letter-spacing: -0.01em; border-radius: 0 var(--radius) var(--radius) 0; }
+.dbis-section code { font-family: var(--font-mono); font-size: 0.88em; background: var(--bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: var(--radius-sm); color: var(--primary-light); white-space: nowrap; }
 .dbis-section strong { color: var(--text-primary); font-weight: 600; }
 
 /* Steps list (dmarcbis only) */
@@ -8029,7 +8048,7 @@ body {
 .dbis-compare-col {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 1.1rem 1.15rem 1.25rem;
     position: relative;
 }
@@ -8074,7 +8093,7 @@ body {
     align-items: flex-start;
     gap: 0.7rem;
     padding: 0.45rem 0.55rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     transition: background 0.15s var(--ease);
 }
 .dbis-compare-step:hover {
@@ -8087,7 +8106,7 @@ body {
     justify-content: center;
     width: 1.4rem;
     height: 1.4rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--bg);
     border: 1px solid var(--border);
     font-family: var(--font-mono);
@@ -8133,7 +8152,7 @@ body {
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 0.08em 0.4em;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     white-space: nowrap;
     overflow-wrap: anywhere;
 }
@@ -8176,7 +8195,7 @@ body {
 }
 
 /* CTA and closing */
-.dbis-cta { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: var(--dmarcbis); color: var(--dmarcbis-contrast); font-size: var(--font-md); font-weight: 600; border-radius: 8px; text-decoration: none; border: none; border-bottom: none; transition: opacity 0.15s var(--ease), transform 0.1s var(--ease); }
+.dbis-cta { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: var(--dmarcbis); color: var(--dmarcbis-contrast); font-size: var(--font-md); font-weight: 600; border-radius: var(--radius); text-decoration: none; border: none; border-bottom: none; transition: opacity 0.15s var(--ease), transform 0.1s var(--ease); }
 .dbis-cta:hover { opacity: 0.88; border-bottom: none; }
 .dbis-cta:active { transform: scale(0.98); }
 .dbis-closing { margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid var(--border); text-align: center; }
@@ -8187,8 +8206,7 @@ body {
 .about-page { max-width: 68ch; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
 .about-page h1 { font-size: var(--font-4xl); font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); margin-bottom: 2rem; line-height: 1.2; }
 .about-page p { font-size: var(--font-md); color: var(--text-secondary); line-height: 1.75; margin-bottom: 1.1rem; }
-.about-page a { color: var(--primary-light); text-decoration: none; font-weight: 500; border-bottom: 1px solid var(--primary-border); transition: border-color 0.15s var(--ease); }
-.about-page a:hover { border-bottom-color: var(--primary-light); }
+.about-page a { color: var(--primary-light); text-decoration: underline; font-weight: 500; }
 .about-page strong { color: var(--text-primary); font-weight: 600; }
 .about-closing { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
 
@@ -8247,7 +8265,7 @@ body {
     text-decoration: none;
     transition: color var(--duration) var(--ease);
 }
-.article-card-title a:focus-visible { color: var(--primary-light); outline: none; }
+.article-card-title a:focus-visible { color: var(--primary-light); outline: 2px solid var(--primary); outline-offset: 2px; }
 .article-card-description {
     font-family: var(--font-body);
     font-size: var(--font-md);
@@ -8330,7 +8348,7 @@ body {
 .theme-toggle {
     background: none;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 0.25rem;
     cursor: pointer;
     color: var(--text-secondary);
@@ -8428,6 +8446,16 @@ body {
         font-size: var(--font-xs);
     }
 
+    /* The badge is a 22px tag; without this the 44px button's border sticks
+       out above and below it. */
+    #cache-status-badge {
+        height: auto;
+    }
+
+    .request-id-display {
+        min-height: 44px;
+    }
+
 }
 
 /* ==========================================================================
@@ -8461,23 +8489,29 @@ body {
         flex-wrap: wrap;
     }
 
-    .footer-link {
+    .footer-nav .footer-link,
+    .footer-trust .footer-link {
         display: inline-flex;
         align-items: center;
         min-height: 44px;
         padding: 0 0.25rem;
     }
 
-    .footer-linkedin {
-        /* No negative margin: that only cancels the layout footprint, not
-           the hit-test box, so the 44px target bled into the row above.
-           footer-attribution sits in its own flex row with .footer-right's
-           row gap between it and footer-trust, so growing it to 44px here
-           grows that row instead of overlapping the one before it. */
-        width: 44px;
+    /* Links inside the attribution sentence get their 44px target from an
+       ::after box. Padding on an inline-flex link put a visible space
+       before the full stop in "message me on LinkedIn." */
+    .footer-attribution .footer-link {
+        position: relative;
+    }
+
+    .footer-attribution .footer-link::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
         height: 44px;
-        align-items: center;
-        justify-content: center;
+        transform: translateY(-50%);
     }
 
     /* .back-to-top is fixed at bottom:16px, height 44px, so at the true
@@ -8525,7 +8559,7 @@ body {
         align-items: center;
     }
 
-    /* Keyboard-focusable heading that shows a tooltip. Its ::before and
+    /* A heading that shows a tooltip. Its ::before and
        ::after are the tooltip, so the hit area comes from padding and the
        dotted underline moves from border-bottom to text-decoration so it
        stays under the text. */
