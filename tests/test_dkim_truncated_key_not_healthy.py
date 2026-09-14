@@ -30,8 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import result_transformer
 from audit_engine import BUSINESS_RISK
-from dkim_formatter import analyze_dkim_key_strength
-from dkim_tag_analyzer import _decode_rsa_key_bits
+from dkim_formatter import _decode_rsa_key_bits, analyze_dkim_key_strength
 
 
 def _b64_2048():
@@ -79,8 +78,8 @@ def test_truncated_key_does_not_decode(n):
 def test_truncated_key_never_reports_a_size_or_passes(n):
     """Same assertion, against the path that ships.
 
-    This ran through dkim_tag_analyzer.validate_dkim, which nothing in the
-    audit called. analyze_dkim_key_strength is the live grader.
+    This ran through a second DKIM validator, validate_dkim, which nothing
+    in the audit called. analyze_dkim_key_strength is the live grader.
     """
     result = analyze_dkim_key_strength(f"v=DKIM1; k=rsa; p={FULL_B64[:n]}")
 
@@ -146,7 +145,7 @@ def test_complete_key_still_passes():
 
 
 def test_a_truncated_key_is_undecodable_not_revoked():
-    """Was a cross-module agreement test against dkim_tag_analyzer's validator,
+    """Was a cross-module agreement test against a second DKIM validator,
     which nothing in the audit called and which has been removed. The half that
     covers shipping behaviour is the distinction between an unparseable key and
     a revoked one, since they carry different advice."""

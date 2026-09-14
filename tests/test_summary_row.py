@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from test_doc48_ui import _page, _render, browser, fixture_result  # noqa: E402,F401
+from test_ui_consistency_a11y import _page, _render, browser, fixture_result  # noqa: E402,F401
 
 TOPS_JS = """() => [...document.querySelectorAll('.summary-card')]
     .filter(c => getComputedStyle(c).display !== 'none')

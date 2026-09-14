@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pdf_report
 import result_transformer as rt
-from test_doc44_dmarc_grades import DOMAIN, RUA, _card, _run, _zone
+from test_dmarc_grades import DOMAIN, RUA, _card, _run, _zone
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -198,7 +198,7 @@ def test_pdf_does_not_call_an_unenumerated_dkim_a_failed_lookup(audit):
 # ---------------------------------------------------------------
 
 def test_no_mx_no_spf_resilience_is_not_applicable(audit):
-    from test_doc45_other_checks import _zone as zone45, D as D45
+    from test_non_dmarc_checks import _zone as zone45, D as D45
     result = audit(zone45(spf=None, mx=[], dkim=False), D45)
     res = result["resilience"]
 
