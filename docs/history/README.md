@@ -34,3 +34,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 51](doc-51.md): Repo hygiene and README
 - [Doc 52](doc-52.md): The PDF in the site's typefaces
 - [Doc 53](doc-53.md): A visible cue that the domain field is ready (sent as a second Doc 52; saved verbatim)
+- [Doc 54](doc-54.md): Rename the repo to dns-audit

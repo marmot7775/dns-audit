@@ -1,5 +1,5 @@
 [project]
-name = "dns-security-auditor"
+name = "dns-audit"
 version = "2.0.0"
 description = "DNS and email security audit: DMARC, SPF, DKIM, MTA-STS, DNSSEC, DANE, CAA, BIMI, TLS-RPT, MX, nameservers, Certificate Transparency."
 requires-python = ">=3.10"
