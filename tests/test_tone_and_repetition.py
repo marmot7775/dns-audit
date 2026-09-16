@@ -119,6 +119,20 @@ def test_no_banned_phrase_in_generated_text(phrase):
     assert not hits, "\n".join(hits)
 
 
+# Doc 56: the About and Privacy pages lost their launch-post register, and
+# these pin it out along with the Doc 47 list.
+PAGE_BANNED = BANNED + ["So I built it", "built for you", "Worth knowing", "as web servers do"]
+PROSE_PAGES = ("about.html", "privacy.html")
+
+
+@pytest.mark.parametrize("page", PROSE_PAGES)
+@pytest.mark.parametrize("phrase", PAGE_BANNED)
+def test_no_banned_phrase_on_prose_pages(page, phrase):
+    with open(os.path.join(REPO, "static", page), encoding="utf-8") as f:
+        text = f.read()
+    assert phrase not in text, f"{page}: {phrase!r}"
+
+
 # ---------------------------------------------------------------
 # Repetition: no sentence over eight words twice on one card
 # ---------------------------------------------------------------

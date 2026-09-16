@@ -59,7 +59,7 @@
                 <li>a daily visitor token, described below</li>
                 <li>the hostname of the page that linked you here, if your browser sent one. The path and query string are dropped, so a link from a private forum thread records the forum, not the thread.</li>
             </ul>
-            <p>The domain you type is the whole point of the tool, so it is recorded. Worth knowing before you audit a domain whose existence you would rather not put in someone's log file.</p>
+            <p>The domain you type is the whole point of the tool, so it is recorded. If a domain's existence is itself something you would rather keep private, audit it from a copy you run yourself.</p>
         </section>
 
         <section class="dbis-section">
@@ -87,7 +87,7 @@
         <section class="dbis-section">
             <h2>Third parties</h2>
             <p>The pages load nothing from anyone else. No analytics, no third-party scripts, no tag managers, no hosted fonts. The two typefaces are served from this domain.</p>
-            <p>Cloudflare provides DNS and CDN for the site, so your connection reaches it first and it sees the request the way any network in the path does. The web server in front of the application keeps its own connection logs, as web servers do.</p>
+            <p>Cloudflare provides DNS and CDN for the site, so your connection reaches it first and it sees the request the way any network in the path does. The web server in front of the application keeps its own connection logs.</p>
         </section>
 
         <section class="dbis-section">
@@ -97,13 +97,13 @@
 
         <section class="dbis-section">
             <h2>Checking this yourself</h2>
-            <p>None of this has to be taken on trust. The server is open source under the MIT License: the log line is written in <code>server.py</code>, the browser and OS labels come from <code>ua_classify.py</code>, the snapshot database is <code>dns_snapshots.py</code>, and every use of local storage is in <code>static/app.js</code> and <code>static/theme.js</code>. You can <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener">read it or run it yourself</a>.</p>
+            <p>You do not have to take any of this on trust. The server is open source under the MIT License: the log line is written in <code>server.py</code>, the browser and OS labels come from <code>ua_classify.py</code>, the snapshot database is <code>dns_snapshots.py</code>, and every use of local storage is in <code>static/app.js</code> and <code>static/theme.js</code>. You can <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener">read it or run it yourself</a>.</p>
         </section>
 
         <section class="dbis-section">
             <h2>Changes</h2>
             <p>This page describes the tool as it works today. When the tool changes, this page changes with it.</p>
-            <p><strong>Last updated:</strong> 9 September 2026</p>
+            <p><strong>Last updated:</strong> 16 September 2026</p>
         </section>
     </main>
     <footer class="site-footer">
