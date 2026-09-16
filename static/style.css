@@ -7201,6 +7201,7 @@ input[type="search"],
 .about-page a { color: var(--primary-light); text-decoration: underline; font-weight: 500; }
 .about-page strong { color: var(--text-primary); font-weight: 600; }
 .about-closing { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+.about-page section > h2:first-child { margin-top: 0; }
 
 /* Articles index page */
 .articles-page { padding: 3rem 0 4rem; }
