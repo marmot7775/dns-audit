@@ -21,8 +21,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=530332d">
-    <script src="/static/theme.js?v=530332d"></script>
+    <link rel="stylesheet" href="/static/style.css?v=6e0727e">
+    <script src="/static/theme.js?v=6e0727e"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -57,19 +57,18 @@
     <main class="about-page" id="main-content">
         <h1>About</h1>
         <p>The tools I wanted didn't exist.</p>
-        <p>Most DNS tools show you what records you have. They leave you to figure out whether those records are correct, whether the tag combination is dangerous, whether the RFC you're reading is the one that's actually current. I wanted something that did the analysis, showed the work, cited the RFC it was checking against, and gave me the exact record to paste.</p>
-        <p>So I built it.</p>
-        <p>It checks your DNS and email security configuration against current standards, flags misconfigurations, and gives you copy-paste fixes. DMARC validation runs against the current standard, published May 2026 in three parts: RFC 9989 for the protocol, RFC 9990 for aggregate reporting, RFC 9991 for failure reporting. It also runs against RFC 7489 behavior, which most receivers still implement while tree walk support rolls out. You see both, and what changes between them. SPF, DKIM, MX, DNSSEC, MTA-STS, TLS-RPT, DANE, CAA, BIMI, Certificate Transparency, and nameserver configuration are all covered.</p>
-        <p>If you manage DNS for a domain someone depends on, this tool was built for you.</p>
-        <p>It's free. No accounts, no cookies, no tracking. The code is open source under the MIT License. You can <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener">read it, run it locally, or fork it</a>.</p>
+        <p>Most DNS tools show you what records you have and leave you to work out the rest: whether the records are correct, whether a tag combination is dangerous, whether the RFC you're reading is still the current one. I wanted something that did the analysis, showed its work, cited the RFC it checked against, and gave me the exact record to paste. So I built it.</p>
+        <p>It runs twelve checks: DMARC, SPF, DKIM, MX, DNSSEC, MTA-STS, TLS-RPT, DANE, CAA, BIMI, Certificate Transparency, and nameserver configuration. Every check cites the standard it is judged against, and where the fix is a DNS record, you get the record.</p>
+        <p>DMARC gets checked twice. Once against the current standard, published May 2026 in three parts: RFC 9989 for the protocol, RFC 9990 for aggregate reporting, RFC 9991 for failure reporting. Once against RFC 7489, which most receivers still implement while tree walk support rolls out. You see both, and what changes between them.</p>
+        <p>It's free. No accounts, no cookies, no tracking. The code is open source under the MIT License, so you can <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener">read it, run it locally, or fork it</a>.</p>
         <section class="dbis-section">
             <h2>Who built this</h2>
-            <p>I'm Neil Anuskiewicz. I work on email deliverability and authentication from Eugene, Oregon, and have since the days when DKIM was new. At Proofpoint Professional Services I ran DMARC programs for more than 40 enterprise customers, taking them from p=none to enforcement without dropping legitimate mail. That is where most of the judgment in this tool comes from: what a real rollout breaks, and which failures are worth acting on. These days my clients are mostly small companies, MSPs, and startups on Google Workspace or Microsoft 365, and the job is usually the same one at smaller scale.</p>
+            <p>I'm Neil Anuskiewicz. I work on email deliverability and authentication from Eugene, Oregon, and have since the days when DKIM was new. At Proofpoint Professional Services I ran DMARC programs for more than 40 enterprise customers, taking them from p=none to enforcement without dropping legitimate mail. That is where most of the judgment in this tool comes from: what a real rollout breaks, and which failures are worth acting on. My clients now are mostly small companies, MSPs, and startups on Google Workspace or Microsoft 365, where the job is the same one at smaller scale.</p>
         </section>
         <section class="dbis-section about-closing">
             <h2>If your audit turned up something</h2>
-            <p>Some findings are a five-minute DNS change. Some are not, and the hard part is knowing which is which before you touch anything.</p>
-            <p>If you want a second opinion, <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener">message me on LinkedIn</a> with your domain. I'll look at the audit and tell you plainly whether it needs a consultant or just a careful hour of your own time. When it does need one, the work is scoped in writing before anything starts: what is wrong, what the change is, and what could break. You approve it, and we make the change together. Longer work, like getting a domain with a dozen sending services to DMARC enforcement, is scoped the same way.</p>
+            <p>Some findings are a five-minute DNS change. Some are not, and the hard part is knowing which before you touch anything.</p>
+            <p>If you want a second opinion, <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener">message me on LinkedIn</a> with your domain. I'll read the audit and tell you plainly whether it needs a consultant or a careful hour of your own. If it needs one, you get the scope in writing first: what is wrong, what the change is, what could break. You approve it, then we make the change together. That holds for a single record and for a domain with a dozen sending services on its way to enforcement.</p>
         </section>
     </main>
     <footer class="site-footer">
