@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DNSSEC stopped being hard. The reputation did not catch up. | dns-audit.com</title>
-    <meta name="description" content="The DNSSEC you remember required hands-on work at every step. The DNSSEC you can deploy at a major provider in 2026 is a checkbox. Here is what changed, what it actually protects against, and what good deployment looks like.">
+    <title>DNSSEC in 2026: what changed and whether you need it | dns-audit.com</title>
+    <meta name="description" content="The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like.">
     <meta name="keywords" content="DNSSEC, DNS security, RFC 9615, RFC 7344, RFC 8078, RFC 6605, ECDSA, CDS, CDNSKEY, hosted DNSSEC, DNSSEC adoption, DNSSEC 2026">
     <meta name="author" content="Neil Anuskiewicz">
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="DNS Security Auditor" />
     <meta property="og:url" content="https://dns-audit.com/articles/dnssec" />
-    <meta property="og:title" content="DNSSEC stopped being hard. The reputation did not catch up." />
-    <meta property="og:description" content="The DNSSEC you remember required hands-on work at every step. The DNSSEC you can deploy at a major provider in 2026 is a checkbox. Here is what changed, what it actually protects against, and what good deployment looks like." />
+    <meta property="og:title" content="DNSSEC in 2026: what changed and whether you need it" />
+    <meta property="og:description" content="The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like." />
     <meta property="og:image" content="https://dns-audit.com/static/og-image.png" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="DNSSEC stopped being hard. The reputation did not catch up." />
-    <meta name="twitter:description" content="The DNSSEC you remember required hands-on work at every step. The DNSSEC you can deploy at a major provider in 2026 is a checkbox. Here is what changed, what it actually protects against, and what good deployment looks like." />
+    <meta name="twitter:title" content="DNSSEC in 2026: what changed and whether you need it" />
+    <meta name="twitter:description" content="The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like." />
     <link rel="canonical" href="https://dns-audit.com/articles/dnssec">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -28,12 +28,12 @@
     {
         "@context": "https://schema.org",
         "@type": "TechArticle",
-        "headline": "DNSSEC stopped being hard. The reputation did not catch up.",
-        "description": "The DNSSEC you remember required hands-on work at every step. The DNSSEC you can deploy at a major provider in 2026 is a checkbox. Here is what changed, what it actually protects against, and what good deployment looks like.",
+        "headline": "DNSSEC in 2026: what changed and whether you need it",
+        "description": "The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like.",
         "url": "https://dns-audit.com/articles/dnssec",
         "author": { "@type": "Person", "name": "Neil Anuskiewicz" },
         "datePublished": "2026-04-26",
-        "dateModified": "2026-09-09"
+        "dateModified": "2026-09-17"
     }
     </script>
     <script type="application/ld+json">
@@ -89,76 +89,44 @@
     </header>
     <main class="dbis-page" id="main-content">
         <article class="dbis-article">
-            <h1 class="dbis-article-title">DNSSEC stopped being hard</h1>
-            <p class="dbis-article-sub">The reputation did not catch up. The DNSSEC you remember required hands-on work at every step. The DNSSEC you can deploy at a major provider in 2026 is a checkbox.</p>
-            <p class="dbis-lede">You have an opinion about DNSSEC. I did too. There's a decent chance both of us formed it before 2017 and never had a reason to revisit it.</p>
-            <p class="dbis-lede">Mine: too much operational risk for the threat it closed. KSK rollovers that broke domains. Registrars that wouldn't accept DS updates without a ticket. Algorithm choices that pushed responses into TCP fallback. I read "<a href="https://sockpuppet.org/blog/2015/01/15/against-dnssec/" target="_blank" rel="noopener">Against DNSSEC</a>" when it came out. I cited it. The <a href="https://ianix.com/pub/dnssec-outages.html" target="_blank" rel="noopener">IANIX outage list</a> was earned. None of that was wrong at the time.</p>
-            <p class="dbis-lede">What was wrong was that I left the opinion there and never came back to check on it.</p>
-            <p class="dbis-lede">This piece is the check I finally did. It walks through what changed, what DNSSEC actually protects against, where it still falls short, and what good deployment looks like now. The honest scope: less than the marketing says, more than the skeptics concede.</p>
-            <p>If you get to the end and decide DNSSEC is not for you, that's fine. I'm not here to convert anyone. I'd just rather you keep your skepticism for current reasons than for ten-year-old ones.</p>
+            <h1 class="dbis-article-title">DNSSEC in 2026: what changed and whether you need it</h1>
+            <p class="dbis-article-sub">The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like.</p>
+            <p class="dbis-lede">Most opinions about DNSSEC were formed before 2017 and never revisited. Mine was that it carried too much operational risk for the threat it closed: KSK rollovers broke domains, registrars wanted a ticket for every DS update, and RSA signatures pushed responses into TCP fallback. That was a fair reading at the time. It is out of date now, and this article is the check I should have done sooner: what changed, what DNSSEC protects against, where it still falls short, and what a good deployment looks like.</p>
             <section class="dbis-section">
-                <h2>The thing that quietly got fixed</h2>
-                <p>The DNSSEC you remember required hands-on work at every step. Sign your zone. Get the DS record from your DNS host into your registrar's web form. Keep it there through every key rollover. Forget the registrar step on a KSK rotation and your domain went dark for every recursive resolver doing validation. By the late 2010s, that was a meaningful slice of the public internet.</p>
-                <p>The math was always fine. The operations were the problem.</p>
-                <p>Three RFCs closed the operations problem. None of them went viral. All of them mattered.</p>
-                <p>RFC 7344, back in 2014, introduced CDS and CDNSKEY records. The idea is the kind that seems obvious after someone else thinks of it: your DNS host publishes "here is my new DS record" directly in your zone, and the registrar picks it up automatically. No web form. No 2am copy-paste session. No forgetting which registrar has which login.</p>
-                <p>RFC 8078 followed in 2017, extending CDS/CDNSKEY to cover initial DS provisioning and removal of a secure entry point, not just rollover. A growing set of registries, mostly ccTLDs such as .ch, .cz, .li, .se, and .nl, now run CDS scanners that pick those signals up automatically. In the big gTLDs the same job falls to your registrar.</p>
-                <p>Then in July 2024, RFC 9615 closed the bootstrap problem: how to enable DNSSEC for the first time when no chain of trust yet exists. This was the chicken-and-egg case that had kept the whole thing manual for years. Solved.</p>
-                <p>Algorithm 13, ECDSA P-256, became the default. It's defined in RFC 6605 from 2012, but it took most of a decade for providers to make it standard. RSA-SHA256 still works, but ECDSA signatures are small enough to fit in a UDP response without forcing TCP fallback. A meaningful share of the "DNSSEC broke my domain" stories came from exactly that: the fallback.</p>
-                <p>CSYNC, RFC 7477, sits next to CDS and does the same job for NS and glue records. The child zone announces, the parent syncs. No human in the loop.</p>
-                <p>Add it up. The DNSSEC you remember was a hands-on process run through a registrar UI you had to remember the password for. The DNSSEC you can deploy at a major provider in 2026 is a checkbox. Cloudflare made it a checkbox. deSEC made it a checkbox. Route 53, NS1, Google Cloud DNS: all checkboxes.</p>
-                <p>The standards took twelve years. The provider rollout that made them matter mostly happened in the last six. Most of it was boring. None of it generated a viral blog post called "Actually, Maybe DNSSEC Is Fine Now," because nobody writes those. Slow, incremental improvement is the worst possible content for the internet to surface.</p>
+                <h2>What got fixed</h2>
+                <p>The DNSSEC of the 2010s needed a person at every step. You signed the zone, copied the DS record out of your DNS host, pasted it into your registrar's form, and did it again at every key rollover. Miss the registrar step on a KSK rotation and every validating resolver treated your domain as bogus. The cryptography was never the problem. The handoffs were.</p>
+                <p>Three RFCs removed the handoffs. RFC 7344, in 2014, introduced CDS and CDNSKEY records: the DNS host publishes the new DS in the zone itself and the parent picks it up, with no form and no copying. RFC 8078, in 2017, extended that to the first DS and to removal, not only rollover. RFC 9615, in July 2024, closed the last gap, which was how to establish trust for a zone that has no chain yet. A growing set of registries, mostly country codes such as .ch, .cz, .li, .se, and .nl, scan for CDS records directly; in the large generic TLDs the registrar does that job. CSYNC, RFC 7477, does the same for NS and glue records.</p>
+                <p>Algorithm choice changed too. ECDSA P-256, algorithm 13, was defined in RFC 6605 in 2012 but took most of a decade to become the provider default. Its signatures are small enough to fit in a UDP response, and a good share of the old "DNSSEC broke my domain" stories were TCP fallback from oversized RSA responses.</p>
+                <p>The standards took twelve years. The provider work that made them matter happened mostly in the last six. At Cloudflare, deSEC, Route 53, NS1, and Google Cloud DNS, signing is a checkbox and the provider handles the keys and the rollovers. None of this made news, because slow fixes do not.</p>
             </section>
             <section class="dbis-section">
-                <h2>What it actually protects against</h2>
-                <p>Most DNSSEC posts will tell you it "secures DNS." That sentence is doing a lot of work. Too much, honestly.</p>
-                <p>Here's what DNSSEC actually does. It signs DNS answers. When your resolver asks "what's the IP for example.com," DNSSEC lets it verify that the answer really came from example.com's zone and wasn't changed along the way. Origin authentication. Integrity. That's the whole job.</p>
-                <p>That's not nothing. Cache poisoning is real. The Kaminsky attack of 2008 was real. On-path DNS tampering happens on coffee shop wifi, on cut-rate ISPs, and at the borders of entire countries. If your <a href="/articles/dane">DANE</a> or SSHFP records have ever done anything useful, DNSSEC is why they weren't lies.</p>
-                <p>Now here's what DNSSEC does not do, despite what some marketing copy implies.</p>
-                <p>It does not stop phishing. An attacker can register paypa1.com, sign it perfectly, and your validator will happily confirm the answer came from paypa1.com. DNSSEC has no opinion on whether you should have typed that URL.</p>
-                <p>It does not stop email spoofing. That's SPF, DKIM, and DMARC. All three sit above DNSSEC and have nothing to do with it.</p>
-                <p>It does not encrypt your DNS queries. That's DoH or DoT. Different protocol, different problem. Often confused.</p>
-                <p>It does not protect against an attacker who compromises your DNS provider's signing infrastructure. If they control the signer, they can sign whatever they want.</p>
-                <p>It does not protect against an attacker who hijacks your domain at the registrar. They can change the DS record, and then they're the legitimate chain of trust.</p>
-                <p>The honest pitch is narrower than the marketing pitch and stronger because of it. DNSSEC closes a specific class of DNS-layer attacks that no other protocol closes. If you don't deploy it, you're trusting every resolver and every network between you and your authoritative server. Some of them are not honest.</p>
+                <h2>What it protects against</h2>
+                <p>DNSSEC signs DNS answers. When a resolver asks for a domain's address, DNSSEC lets it verify that the answer came from the zone's signer and was not altered on the way. That is the whole job: origin authentication and integrity for DNS data.</p>
+                <p>It matters. Cache poisoning is real, the Kaminsky attack of 2008 was real, and on-path tampering happens on hotel networks and cheap ISPs, and some governments do it at national scale. Any protocol that stores security data in DNS, <a href="/articles/dane">DANE</a> and SSHFP among them, depends on DNSSEC to make that data trustworthy.</p>
+                <p>It also has clear limits, which vendor copy tends to blur. DNSSEC does not stop phishing: an attacker can register a lookalike domain and sign it perfectly. It does not stop email spoofing; that is SPF, DKIM, and DMARC, which sit above it. It does not encrypt queries; that is DNS over HTTPS or DNS over TLS, a different protocol for a different problem. And it does not help if an attacker controls your DNS provider's signer or hijacks the domain at the registrar, because then the attacker holds the chain of trust. Within those limits it closes a class of attack that nothing else closes. Without it, you are trusting every resolver and every network between a user and your authoritative servers.</p>
             </section>
             <section class="dbis-section">
                 <h2>Where it still falls short</h2>
-                <p>Adoption depends on what you measure. Signed zones in the major TLDs sit in the low single digits of registered domains. Verisign's <a href="https://www.verisign.com/resources/dnssec-tools/dnssec-scoreboard/" target="_blank" rel="noopener">DNSSEC Scoreboard</a> tracks how many .com and .net domains carry a DS record; the share has been creeping up and remains low. <a href="https://stats.labs.apnic.net/dnssec" target="_blank" rel="noopener">APNIC Labs</a> measures the other end, the share of users behind a validating resolver, and as of September 2026 it reports 38% validating worldwide, or 47% counting partial validation. Both numbers are moving up. Signing is the slower one. Real progress. Real ceiling.</p>
-                <p>The story underneath that number is more interesting than the number itself. Adoption isn't really a domain-owner decision. It's a provider decision. The domain owner mostly finds out which side they're on after the fact.</p>
-                <p>Think back to HTTPS adoption a decade ago. Site operators didn't wake up one morning and decide they wanted TLS certificates. They'd been told for years that HTTPS was important. Most of them filed it under "yes, eventually." Then Let's Encrypt launched. Cloudflare flipped TLS on by default. Hosting providers started auto-provisioning certificates at signup. The question stopped being "do you want HTTPS?" and started being "do you even know whether your site is on HTTPS?" Most operators just woke up one day to find their provider had turned it on.</p>
-                <p>DNSSEC is in the early innings of the same transition. The providers who automated it have high adoption among their customers. The providers who didn't, don't.</p>
-                <p>Here's the practical picture.</p>
-                <p>If your DNS is at Cloudflare, deSEC, Route 53, NS1, or Google Cloud DNS, you can have DNSSEC in a few clicks. The provider handles signing and key rollover. Getting the DS record to the registry is the handoff that still varies: some registrars pick up CDS records automatically, many still want you to paste the DS into a web form.</p>
-                <p>If your DNS is at a budget tier of a registrar that doesn't list DNSSEC as a feature, or at a generic shared-hosting setup, you have a problem. Not a hard problem. A "you might need to switch DNS hosting" problem. That's real friction. No point pretending it isn't.</p>
-                <p>If your TLD is .com, .net, .org, .io, .dev, or .app, the registry takes your DS record from your registrar and nowhere else, so your registrar is the bottleneck. Some ccTLD registries, .ch, .cz, .li, .se, and .nl among them, scan your zone for CDS records directly and skip the registrar entirely. Check which model your TLD uses before you assume automation exists.</p>
-                <p>If your TLD is one of the long-tail TLDs with weak DNSSEC support, the bottleneck is the registry. Some TLDs still have incomplete automation. Check before assuming. <a href="https://www.iana.org/domains/root/db" target="_blank" rel="noopener">IANA's Root Zone Database</a> shows which TLDs are signed. It will not tell you whether the registry automates DS updates, so ask the registry or your registrar for that.</p>
-                <p>The honest summary: at a major provider on a major TLD, deploying DNSSEC in 2026 is straightforward. If you're not at one of those, you might need to migrate something before the checkbox is available to you. The protocol is no longer the bottleneck. The provider lottery still is.</p>
+                <p>Adoption depends on what you count. Signed zones in the large TLDs are in the low single digits of registered domains; Verisign's <a href="https://www.verisign.com/resources/dnssec-tools/dnssec-scoreboard/" target="_blank" rel="noopener">DNSSEC Scoreboard</a> tracks the .com and .net share, and it creeps up slowly. Validation is further along. <a href="https://stats.labs.apnic.net/dnssec" target="_blank" rel="noopener">APNIC Labs</a> measures users behind validating resolvers, and as of September 2026 it reports 38% worldwide, or 47% counting partial validation.</p>
+                <p>The signing number is low because signing is mostly a provider decision, not a domain owner's. HTTPS went the same way: site owners did not wake up wanting certificates; Let's Encrypt and the hosting providers turned it on for them. Providers that automated DNSSEC have high adoption among their customers, and providers that did not, do not.</p>
+                <p>So the practical question is where your DNS lives. At Cloudflare, deSEC, Route 53, NS1, or Google Cloud DNS, you can sign in a few clicks, and the only variable is how the DS reaches the registry: some registrars read CDS records, and many still want the DS pasted into a form. At a budget registrar or a shared hosting panel that does not list DNSSEC, you have a migration ahead of you before the checkbox exists. On .com, .net, .org, .io, .dev, and .app, the registry takes the DS only from your registrar, so the registrar is the bottleneck. Some country-code registries scan your zone for CDS and skip the registrar. On a long-tail TLD, check the registry itself: <a href="https://www.iana.org/domains/root/db" target="_blank" rel="noopener">IANA's Root Zone Database</a> shows whether a TLD is signed, but not whether it automates DS updates.</p>
             </section>
             <section class="dbis-section">
-                <h2>What good looks like</h2>
-                <p>You can tell within thirty seconds whether someone deployed DNSSEC well or just deployed DNSSEC. Bad DNSSEC is signed. Good DNSSEC is signed and survives Tuesday.</p>
-                <p><strong>Algorithm 13, ECDSA P-256, or algorithm 15, Ed25519.</strong> RSA-SHA256 is still a fine algorithm and the IANA registry still recommends it, but its signatures are large enough to push responses toward TCP fallback, which is where a good share of the old DNSSEC-broke-my-domain stories came from. RSA-SHA1, algorithms 5 and 7, is a different matter: the registry marks it MUST NOT for signing. If you're signing fresh in 2026 and your provider still defaults to RSA, ask them why.</p>
-                <p><strong>Automated key rollover via CDS and CDNSKEY.</strong> If your DNSSEC deployment requires a human to copy a DS record from one panel to another, you don't have a deployment. You have a future incident with a date attached. The whole point of the last decade of standards work was to make that part go away.</p>
-                <p><strong>A monitored DS record at the registrar.</strong> Not a one-time check. Continuous. The failure mode of DNSSEC isn't "wrong key." It's "key that used to be right." If your DS drifts out of sync with your zone, your domain goes dark for every validating resolver. Pingdom doesn't catch this. Most uptime monitors don't. You need something that actually validates the chain.</p>
-                <p><strong>End-to-end validation tested, not assumed.</strong> Run DNSViz on your domain. Run Verisign's DNSSEC analyzer. Run dns-audit.com. Each of these tools will tell you whether your chain of trust is intact from root to your zone, or whether you have a quiet break that will get loud the next time a resolver tightens its validation strictness.</p>
-                <p><strong>Hosted signing, not hand-rolled.</strong> Unless you're running DNS for a registry, a TLD, or a national CERT, you shouldn't be running your own signers. The major providers run signers at a scale and reliability you won't match in-house, and they're the ones who made RFC 9615 actually work in production.</p>
-                <p><strong>A KSK rollover plan you've actually rehearsed.</strong> Once. Just once. Most operators have never rolled their KSK, which means the first time will be in production, under pressure, with a registrar interface they haven't looked at in three years. Pick a quarter. Do a rollover. Take notes. Now it's muscle memory.</p>
-                <p>That's the bar. Most domains that "have DNSSEC" are signed and that's roughly where the work stopped. Signed is the floor. Signed, automated, monitored, hosted, validated, and rehearsed is the ceiling. Anything less is a domain that works until it doesn't.</p>
+                <h2>What a good deployment looks like</h2>
+                <p>Signed is the floor. A deployment that will still be working in three years has these properties.</p>
+                <p><strong>Algorithm 13 or 15.</strong> ECDSA P-256 or Ed25519. RSA-SHA256 remains a recommended algorithm in the IANA registry, but its signature size is what pushed responses into TCP fallback. RSA-SHA1, algorithms 5 and 7, is marked MUST NOT for signing; if a provider still defaults to it, ask why.</p>
+                <p><strong>Automated rollover through CDS and CDNSKEY.</strong> If a person has to copy a DS record between two panels at each rollover, you do not have a deployment. You have a future outage with a date on it.</p>
+                <p><strong>A monitored DS at the registrar.</strong> The DNSSEC failure mode is not a wrong key; it is a key that used to be right. When the DS drifts from the zone, the domain goes dark for every validating resolver, and ordinary uptime monitors do not notice. Use something that validates the chain, continuously.</p>
+                <p><strong>Validation tested, not assumed.</strong> Run DNSViz, Verisign's DNSSEC Analyzer, or dns-audit.com against the domain and read the chain from the root down. A quiet break stays quiet until a resolver tightens its validation.</p>
+                <p><strong>Hosted signing.</strong> Unless you run a registry, a TLD, or a national CERT, you should not be running your own signers. The large providers run them at a scale and reliability you will not match, and they are the ones who made RFC 9615 work in production.</p>
+                <p><strong>A rehearsed KSK rollover.</strong> Most operators have never rolled a KSK, so the first time happens in production, under pressure, in a registrar interface nobody has opened in years. Do one deliberately, take notes, and it stops being an event.</p>
             </section>
             <section class="dbis-section">
-                <h2>The closer</h2>
-                <p>Most posts about DNSSEC tell you to deploy it because deployment numbers must go up, or to skip it because deployment numbers prove it failed. Neither take is honest. Both treat DNSSEC like a cause.</p>
-                <p>DNSSEC is not a cause. It's infrastructure.</p>
-                <p>You enable it where it makes sense. You skip it where it doesn't.</p>
-                <p>If you run a bank, a registrar, a CA, a software update channel, a government domain, or anything where a DNS hijack ends up on a regulator's desk: deploy it, deploy it well, deploy it to the bar above. The threat model is real and nothing else closes it.</p>
-                <p>If you run a marketing site, a personal blog, or a domain that mostly redirects somewhere else: sign it if your provider makes it easy, skip it if they don't. The threat model doesn't justify migrating DNS hosting for a brochure site. Don't feel bad about that call.</p>
-                <p>Here's the one thing I do want you to stop doing: repeating ten-year-old talking points as if nothing changed.</p>
-                <p>The "DNSSEC is too complicated" line was true in 2014. It's mostly false in 2026 if you're at a provider that bothered.</p>
-                <p>The "DNSSEC doesn't even encrypt anything" line confuses the threat model with someone else's threat model.</p>
-                <p>The "nobody uses it" line ignores that the people who need it most are quietly using it. You just don't hear from them.</p>
-                <p>Give it a fresh look. Run DNSViz, Verisign's DNSSEC analyzer, or dns-audit.com on a domain you care about and see what the chain actually looks like. Then decide.</p>
-                <p>Most domains land in one of three places. Signed and clean. Signed but broken at the registrar handoff. Unsigned because the provider doesn't offer it. All three are useful answers. None of them is the answer you formed in 2014.</p>
+                <h2>Whether you need it</h2>
+                <p>DNSSEC is infrastructure, not a cause, and the decision is the threat model.</p>
+                <p>If a DNS hijack of your domain would end up on a regulator's desk, sign it and meet the bar above. That covers banks, registrars, certificate authorities, software update channels, government domains, and anything that publishes DANE records. Nothing else closes that threat.</p>
+                <p>If the domain is a marketing site, a blog, or a redirect, sign it when your provider makes it a checkbox and skip it when it would mean moving DNS hosting. The threat model does not justify a migration for a brochure site.</p>
+                <p>Whichever it is, retire the arguments from 2014. "Too complicated" was true then and is mostly false now at a provider that did the work. "It does not encrypt anything" answers a question DNSSEC never asked. "Nobody uses it" misses that the operators who need it most already do. Run one of the validators on a domain you care about and see what the chain looks like today. Most domains land in one of three states: signed and clean, signed but broken at the registrar handoff, or unsigned because the provider offers nothing. Each of those is a useful answer, and none of them is the one you formed a decade ago.</p>
             </section>
             <section class="dbis-section">
                 <h2>Further reading</h2>

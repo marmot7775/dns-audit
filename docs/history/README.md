@@ -39,3 +39,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 56](doc-56.md): About and Privacy, rewritten (sent as a second Doc 55; saved verbatim)
 - [Doc 57](doc-57.md): The DMARC article, rewritten
 - [Doc 58](doc-58.md): The DMARC article scrolls sideways on phones
+- [Doc 59](doc-59.md): The DNSSEC article, rewritten
