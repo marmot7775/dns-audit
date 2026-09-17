@@ -36,6 +36,12 @@ _ct_cache = {}
 _ct_cache_lock = _ct_threading.Lock()
 CT_CACHE_TTL = 86400  # 24 hours
 CT_CACHE_MAX_SIZE = 2000
+# A crt.sh timeout is remembered for a short while in its own map, so a
+# domain crt.sh cannot answer for does not make every audit in the next few
+# minutes wait out the same timeout again. It lives apart from _ct_cache so
+# it never overwrites a real past result, which _get_stale_ct still serves.
+_ct_timeout_cache = {}
+CT_TIMEOUT_CACHE_TTL = 900  # 15 minutes
 
 
 def _get_cached_ct(domain):
@@ -66,6 +72,31 @@ def _set_cached_ct(domain, data):
             oldest_keys = sorted(_ct_cache, key=lambda k: _ct_cache[k]['timestamp'])[:100]
             for key in oldest_keys:
                 _ct_cache.pop(key, None)
+
+
+def _get_cached_ct_timeout(domain):
+    with _ct_cache_lock:
+        entry = _ct_timeout_cache.get(domain)
+        if entry and (time.time() - entry['timestamp']) < CT_TIMEOUT_CACHE_TTL:
+            return dict(entry['data'])
+    return None
+
+
+def _set_cached_ct_timeout(domain, data):
+    with _ct_cache_lock:
+        _ct_timeout_cache[domain] = {
+            'data': {**data, 'unavailable_reason': 'timeout_cached'},
+            'timestamp': time.time(),
+        }
+        if len(_ct_timeout_cache) > CT_CACHE_MAX_SIZE:
+            now = time.time()
+            for key in [k for k, v in _ct_timeout_cache.items()
+                        if now - v['timestamp'] >= CT_TIMEOUT_CACHE_TTL]:
+                _ct_timeout_cache.pop(key, None)
+            if len(_ct_timeout_cache) > CT_CACHE_MAX_SIZE:
+                oldest_keys = sorted(_ct_timeout_cache, key=lambda k: _ct_timeout_cache[k]['timestamp'])[:100]
+                for key in oldest_keys:
+                    _ct_timeout_cache.pop(key, None)
 
 
 import dns.resolver
@@ -3916,12 +3947,25 @@ def _raw_check_dane(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================================
 
 def _raw_check_ct(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
-    """CT check with 24-hour caching and stale-cache fallback on timeout."""
+    """CT check with 24-hour caching and stale-cache fallback on timeout.
+
+    A timeout is remembered for CT_TIMEOUT_CACHE_TTL and served as
+    unavailable_reason "timeout_cached" without asking crt.sh again. A real
+    past result still wins over it.
+    """
     cached = _get_cached_ct(domain)
     if cached is not None:
         return cached
 
+    timed_out = _get_cached_ct_timeout(domain)
+    if timed_out is not None:
+        stale = _get_stale_ct(domain)
+        return stale if stale is not None else timed_out
+
     result = _raw_check_ct_uncached(domain, raw_results)
+
+    if result.get("unavailable_reason") == "timeout":
+        _set_cached_ct_timeout(domain, result)
 
     # On failure, try returning stale cache
     if result.get("unavailable_reason") in ("timeout", "request_error"):
@@ -3988,8 +4032,15 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
             # exclude=expired keeps a domain with a long certificate history
             # from burying every currently-valid cert under thousands of
             # expired rows before the 200-cert cap below ever sees them.
-            params={"q": f"%.{domain}", "output": "json", "exclude": "expired"},
-            timeout=10,
+            # deduplicate=Y drops the precertificate twin of each leaf, which
+            # the serial dedupe below would strip anyway, so the response is
+            # about half the size.
+            params={"q": f"%.{domain}", "output": "json", "exclude": "expired",
+                    "deduplicate": "Y"},
+            # Three seconds to connect, five to read. A query crt.sh has not
+            # answered in five seconds it has not answered in ten either, and
+            # Phase 2 waits for its slowest check.
+            timeout=(3, 5),
             headers={"User-Agent": "dns-audit.com/1.0"},
             allow_redirects=False,
         )
