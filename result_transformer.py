@@ -6873,6 +6873,19 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
                 "Use crt.sh directly to browse certificates for this domain."
             )
             detail_text = "CT log response too large to analyze automatically"
+        elif unavailable_reason in ("timeout", "timeout_cached"):
+            verdict = "Not checked by this audit"
+            explanation = (
+                "Certificate Transparency was not assessed. This audit reads CT data from "
+                "the public crt.sh service, which did not answer within five seconds. That "
+                "is common for domains with thousands of certificates and says nothing about "
+                "your certificates either way. To review them yourself, search this domain on "
+                "<a href=\"https://crt.sh\" target=\"_blank\" rel=\"noopener\">crt.sh</a>."
+            )
+            detail_text = (
+                "crt.sh did not answer in time. This is a gap in the audit, not a finding "
+                "about your domain."
+            )
         else:
             verdict = "Not checked by this audit"
             explanation = (
