@@ -65,3 +65,46 @@ def test_no_article_links_to_captaindns():
         f"an article still links to captaindns.com, an uncited vendor blog: "
         f"{offenders!r}"
     )
+
+
+# Doc 60: the DANE article was rewritten word for word, and its five
+# sources had to stay on the phrases they anchored before. Each href is
+# pinned to its anchor text, so a rewrite that drops or moves one fails.
+_DANE_SOURCES = {
+    "wrote the obituary in 2015":
+        "https://www.imperialviolet.org/2015/01/17/notdane.html",
+    "RFC 7672": "https://datatracker.ietf.org/doc/html/rfc7672",
+    "September 2025 sample of the 10,000 domains most often emailed by "
+    "Zivver's Dutch customers":
+        "https://www.zivver.com/blog/use-of-email-security-standards-in-the-"
+        "netherlands-september-2025-only-14-dane-6-mta-sts",
+    "October 2024":
+        "https://techcommunity.microsoft.com/blog/exchange/announcing-general-"
+        "availability-of-inbound-smtp-dane-with-dnssec-for-exchange-on/4281292",
+    "TLS-RPT": "https://datatracker.ietf.org/doc/html/rfc8460",
+}
+
+
+def _anchors(content):
+    return re.findall(r'<a href="([^"]+)"[^>]*>([^<]+)</a>', content)
+
+
+def test_dane_article_keeps_its_five_sources_on_their_phrases():
+    with open(os.path.join(ARTICLES_DIR, "dane.html"), encoding="utf-8") as f:
+        anchors = _anchors(f.read())
+    by_text = {text: href for href, text in anchors}
+    for text, href in _DANE_SOURCES.items():
+        assert by_text.get(text) == href, f"dane.html: {text!r} should link {href}"
+    external = [href for href, _ in anchors if href.startswith("http")
+                and "dns-audit.com" not in href and "github.com" not in href
+                and "linkedin.com" not in href]
+    assert sorted(external) == sorted(_DANE_SOURCES.values())
+
+
+def test_dane_article_internal_links_resolve_to_pages():
+    with open(os.path.join(ARTICLES_DIR, "dane.html"), encoding="utf-8") as f:
+        anchors = _anchors(f.read())
+    for href, _ in anchors:
+        if href.startswith("/articles/") and href != "/articles/":
+            name = href[len("/articles/"):] + ".html"
+            assert os.path.exists(os.path.join(ARTICLES_DIR, name)), href
