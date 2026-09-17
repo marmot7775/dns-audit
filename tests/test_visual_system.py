@@ -42,7 +42,10 @@ def _serve_static(route):
         return route.abort()
     path = url.path
     local = (os.path.join(REPO_ROOT, path.lstrip("/")) if path.startswith("/static/")
-             else os.path.join(STATIC, "index.html") if path in ("", "/") else None)
+             else os.path.join(STATIC, "index.html") if path in ("", "/")
+             else os.path.join(STATIC, "articles", "index.html") if path.rstrip("/") == "/articles"
+             else os.path.join(STATIC, path.lstrip("/") + ".html") if path.startswith("/articles/")
+             else None)
     if not local or not os.path.isfile(local):
         return route.fulfill(status=404, body="")
     with open(local, "rb") as f:
@@ -199,3 +202,37 @@ def test_the_focus_ring_is_the_primary_token_in_both_themes(browser):
     for theme, m in seen.items():
         assert m["focused"] == "domain-input", (theme, m)
         assert m["border"] == m["primary"], (theme, m)
+
+
+# ---------------------------------------------------------------
+# Doc 58: no article page scrolls sideways on a phone
+# ---------------------------------------------------------------
+
+ARTICLE_PATHS = ["/articles", "/articles/dmarcbis", "/articles/dnssec", "/articles/dane"]
+
+OVERFLOW_JS = """() => {
+    const vw = window.innerWidth;
+    const over = [...document.querySelectorAll('body *')]
+        .filter(el => !el.closest('.dbis-table-fig'))
+        .filter(el => el.getBoundingClientRect().right > vw + 1)
+        .map(el => el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).split(' ').join('.') : '')
+             + ' ' + Math.round(el.getBoundingClientRect().right));
+    return {vw, scroll: document.documentElement.scrollWidth, over: over.slice(0, 10)};
+}"""
+
+
+@pytest.mark.parametrize("width", [375, 390])
+@pytest.mark.parametrize("path", ARTICLE_PATHS)
+def test_article_pages_do_not_scroll_sideways_on_a_phone(browser, path, width):
+    """Doc 58: at 375 and 390 wide, /articles/dmarcbis was 519px wide. Long
+    inline code now wraps, and the changes table scrolls inside its figure."""
+    ctx = browser.new_context(viewport={"width": width, "height": 800})
+    page = ctx.new_page()
+    page.route("**/*", _serve_static)
+    page.goto("http://dns-audit.test" + path)
+    page.wait_for_load_state("load")
+    m = page.evaluate(OVERFLOW_JS)
+    ctx.close()
+
+    assert m["scroll"] == width, m
+    assert m["over"] == [], m
