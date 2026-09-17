@@ -121,13 +121,17 @@ def test_no_banned_phrase_in_generated_text(phrase):
 
 # Doc 56: the About and Privacy pages lost their launch-post register, and
 # these pin it out along with the Doc 47 list.
-# The DMARC article lost the same register, and its viral-post phrases join
-# the list.
+# The DMARC and DNSSEC articles lost the same register, and their viral-post
+# phrases join the list.
 PAGE_BANNED = BANNED + ["So I built it", "built for you", "Worth knowing", "as web servers do",
                         "mildly absurd", "Here is the part", "You made it work",
                         "in the trenches", "Now the honest part",
-                        "You do not need to panic", "tidy up your side of the fence"]
-PROSE_PAGES = ("about.html", "privacy.html", "articles/dmarcbis.html")
+                        "You do not need to panic", "tidy up your side of the fence",
+                        "quietly got fixed", "survives Tuesday", "That's not nothing",
+                        "The closer", "Just once", "Actually, Maybe DNSSEC",
+                        "in the early innings"]
+PROSE_PAGES = ("about.html", "privacy.html", "articles/dmarcbis.html",
+               "articles/dnssec.html")
 
 
 @pytest.mark.parametrize("page", PROSE_PAGES)
