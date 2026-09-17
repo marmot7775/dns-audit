@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DANE didn't fail. The web version did. | dns-audit.com</title>
-    <meta name="description" content="DANE for browsers and DANE for SMTP got buried in the same obituary. Only one of them was actually dead. The honest 2026 picture of where DANE stands and what it protects.">
+    <title>DANE for email in 2026 | dns-audit.com</title>
+    <meta name="description" content="The browser version was abandoned a decade ago. The SMTP version is where mail transport security has settled, and the operational objections to it have mostly gone.">
     <meta name="keywords" content="DANE, TLSA, SMTP DANE, RFC 7672, MTA-STS, DNSSEC, email security, transport security, STARTTLS stripping, DANE-EE, TLS-RPT">
     <meta name="author" content="Neil Anuskiewicz">
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="DNS Security Auditor" />
     <meta property="og:url" content="https://dns-audit.com/articles/dane" />
-    <meta property="og:title" content="DANE didn't fail. The web version did." />
-    <meta property="og:description" content="DANE for browsers and DANE for SMTP got buried in the same obituary. Only one of them was actually dead. The honest 2026 picture of where DANE stands and what it protects." />
+    <meta property="og:title" content="DANE for email in 2026" />
+    <meta property="og:description" content="The browser version was abandoned a decade ago. The SMTP version is where mail transport security has settled, and the operational objections to it have mostly gone." />
     <meta property="og:image" content="https://dns-audit.com/static/og-image.png" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="DANE didn't fail. The web version did." />
-    <meta name="twitter:description" content="DANE for browsers and DANE for SMTP got buried in the same obituary. Only one of them was actually dead. The honest 2026 picture of where DANE stands and what it protects." />
+    <meta name="twitter:title" content="DANE for email in 2026" />
+    <meta name="twitter:description" content="The browser version was abandoned a decade ago. The SMTP version is where mail transport security has settled, and the operational objections to it have mostly gone." />
     <link rel="canonical" href="https://dns-audit.com/articles/dane">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -28,12 +28,12 @@
     {
         "@context": "https://schema.org",
         "@type": "TechArticle",
-        "headline": "DANE didn't fail. The web version did.",
-        "description": "DANE for browsers and DANE for SMTP got buried in the same obituary. Only one of them was actually dead. The honest 2026 picture of where DANE stands and what it protects.",
+        "headline": "DANE for email in 2026",
+        "description": "The browser version was abandoned a decade ago. The SMTP version is where mail transport security has settled, and the operational objections to it have mostly gone.",
         "url": "https://dns-audit.com/articles/dane",
         "author": { "@type": "Person", "name": "Neil Anuskiewicz" },
         "datePublished": "2026-05-13",
-        "dateModified": "2026-09-09"
+        "dateModified": "2026-09-17"
     }
     </script>
 </head>
@@ -57,44 +57,39 @@
     </header>
     <main class="dbis-page" id="main-content">
         <article class="dbis-article">
-            <h1 class="dbis-article-title">DANE didn't fail. The web version did.</h1>
-            <p class="dbis-article-sub">You read that DANE failed. You were half right.</p>
-            <p class="dbis-lede">DANE for browsers and DANE for SMTP got buried in the same obituary, and only one of them was actually dead.</p>
-            <p class="dbis-lede">The version meant to put TLS keys in DNS for browsers, supplementing or replacing certificate authorities, is gone. Chrome never shipped it. Firefox never shipped it. Adam Langley <a href="https://www.imperialviolet.org/2015/01/17/notdane.html" target="_blank" rel="noopener">wrote the obituary in 2015</a> and the obituary stuck.</p>
-            <p class="dbis-lede">The other version, DANE for SMTP (<a href="https://datatracker.ietf.org/doc/html/rfc7672" target="_blank" rel="noopener">RFC 7672</a>), now reaches a serious share of Dutch mail. In a <a href="https://www.zivver.com/blog/use-of-email-security-standards-in-the-netherlands-september-2025-only-14-dane-6-mta-sts" target="_blank" rel="noopener">September 2025 sample of the 10,000 domains most often emailed by Zivver's Dutch customers</a>, 12.6% of domains published TLSA records, but those domains took 25% of the mail by volume. Big receivers are doing it; small ones are not. Microsoft turned on DANE for Exchange Online in two stages. Outbound rolled out through 2022. Inbound went GA in <a href="https://techcommunity.microsoft.com/blog/exchange/announcing-general-availability-of-inbound-smtp-dane-with-dnssec-for-exchange-on/4281292" target="_blank" rel="noopener">October 2024</a>. Most "DANE is dead" posts collapse the two protocols into one story and end up wrong on both halves.</p>
+            <h1 class="dbis-article-title">DANE for email in 2026</h1>
+            <p class="dbis-article-sub">The browser version was abandoned a decade ago. The SMTP version is where mail transport security has settled, and the operational objections to it have mostly gone.</p>
+            <p class="dbis-lede">There are two protocols called DANE, and most writing about it treats them as one. The version meant to put TLS keys in DNS for browsers is gone: Chrome never shipped it, Firefox never shipped it, and Adam Langley <a href="https://www.imperialviolet.org/2015/01/17/notdane.html" target="_blank" rel="noopener">wrote the obituary in 2015</a>. The version for mail servers, DANE for SMTP in <a href="https://datatracker.ietf.org/doc/html/rfc7672" target="_blank" rel="noopener">RFC 7672</a>, is alive and carrying a serious share of mail in the places that adopted it. This article is about the second one: what it protects, who runs it, and what changed about running it.</p>
             <section class="dbis-section">
-                <h2>Why the web case was impossible</h2>
-                <p>The Chrome story is the cleanest to tell because the people involved wrote it down. Langley's arguments came down to three structural realities that haven't changed.</p>
-                <p>DNS is messy at the edge. Chrome ran experiments looking up records they knew existed on connections they knew were working. Four to five percent of users couldn't get the answer back. Captive portals, ISPs, and middleboxes were stripping the records. A browser that hard-fails on a missing lookup gets called broken. A browser that ignores the failure isn't doing security.</p>
-                <p>The web already had a different plan. Certificate Transparency was the long-term bet for catching misissuance, and CT needs certificates from trusted CAs. Anyone can publish a TLSA record. That's a feature for an SMTP operator who wants to skip the CA. It's a problem for a transparency log that wants a known, manageable set of roots. On top of that, DNSSEC zones were full of 1024-bit RSA keys the web PKI had spent a decade purging from its own trust stores. No browser was going to import the mess.</p>
+                <h2>Why the browser version was abandoned</h2>
+                <p>The Chrome case is the cleanest to tell because the people involved wrote it down, and Langley's reasons still hold. DNS is unreliable at the edge: Chrome ran experiments looking up records it knew existed on connections it knew were working, and four to five percent of users could not get the answer back, because captive portals, ISPs, and middleboxes stripped the records. A browser that fails hard on a missing lookup gets called broken; a browser that ignores the failure is not doing security.</p>
+                <p>The web also had a different plan. Certificate Transparency was the long-term bet for catching misissuance, and CT depends on certificates from a known set of trusted CAs. Anyone can publish a TLSA record, which is the point for a mail operator who wants to skip the CA and a problem for a transparency log that wants a manageable set of roots. On top of that, DNSSEC zones at the time were full of 1024-bit RSA keys the web PKI had spent a decade removing from its own trust stores. No browser was going to import that.</p>
             </section>
             <section class="dbis-section">
-                <h2>The email side never stopped</h2>
-                <p>RFC 7672 shipped in October 2015, the same year as the web obituary. It solved a problem browsers didn't have. SMTP between mail servers has always run on opportunistic TLS. Most servers try to encrypt but have no way to verify the identity of the receiver. A network attacker who strips the STARTTLS command from the greeting gets cleartext mail. The CA system doesn't help here because SMTP server certs rarely map cleanly to MX hostnames.</p>
-                <p>DANE for SMTP closes that gap. The receiver publishes an authoritative TLSA record, signs the zone with DNSSEC, and the sender validates the chain. Now the sender has a cryptographic mandate. If the attacker tries to downgrade to cleartext or swap in a different cert, the connection fails closed.</p>
-                <p>This worked where the web case failed because the endpoints are servers, not user devices. Servers run validating resolvers that don't get blocked by hotel Wi-Fi. And mail has retry semantics. A temporary DNSSEC failure is a deferral. It never becomes a user-facing error page.</p>
+                <h2>Why the mail version works</h2>
+                <p>RFC 7672 was published in October 2015, the same year as the web obituary, and it solved a problem browsers did not have. SMTP between mail servers has always used opportunistic TLS: most servers try to encrypt, but a sender has no way to verify who it is talking to. An attacker on the path who strips the STARTTLS offer from the greeting gets the mail in cleartext, and the CA system does not help because SMTP server certificates rarely map cleanly to MX hostnames.</p>
+                <p>DANE for SMTP closes that gap. The receiver publishes a TLSA record for each MX host, signs the zone with DNSSEC, and the sender validates the chain. The sender then has a cryptographic requirement: if the connection is downgraded to cleartext or a different certificate is presented, delivery fails closed instead of proceeding.</p>
+                <p>It works where the browser case failed because the endpoints are servers, not user devices. Servers run validating resolvers that hotel Wi-Fi cannot interfere with, and mail has retry semantics, so a temporary DNSSEC failure is a deferral rather than an error page in front of a person.</p>
             </section>
             <section class="dbis-section">
-                <h2>What DANE actually protects</h2>
-                <p>The scope is narrow on purpose. DANE stops STARTTLS stripping. It stops attackers from using certificates issued by rogue or compromised CAs. It also lets self-signed certificates work, which is a quiet win for internal mail routing.</p>
-                <p>It does nothing for mail at rest. Once the message lands in the inbox, DANE's job is done. It does not authenticate the sender. SPF, DKIM, and DMARC still own that. DANE is the armored car for the transport hop. SPF and DKIM are the wax seals on the letter inside. You need both.</p>
+                <h2>What DANE protects, and what it does not</h2>
+                <p>The scope is deliberately narrow. DANE stops STARTTLS stripping. It stops an attacker from using a certificate issued by a rogue or compromised CA. It lets self-signed certificates work, which is useful for internal mail routing.</p>
+                <p>It does nothing for mail at rest; once the message is in the mailbox, DANE's job is over. It does not authenticate the sender, which is what SPF, DKIM, and DMARC do. DANE protects the connection between two servers, and the authentication protocols protect the message inside it. A domain that handles anything sensitive wants both.</p>
             </section>
             <section class="dbis-section">
-                <h2>The state of play in 2026</h2>
-                <p>SMTP DANE is real, useful, and regionally dominant. It has also produced a split over trust models.</p>
-                <p>Google publishes no TLSA records for Google Workspace domains and points senders at MTA-STS instead. MTA-STS fetches a transport policy over HTTPS and validates the receiver's certificate through the web PKI, with CT logs as the auditable backstop. Google's position is that the web PKI is more accountable than the DNS hierarchy for transport keys.</p>
-                <p>That isn't stubbornness. It's a position. And it produces a provider lottery. If your inbound mail lands at a European provider that publishes TLSA records, you have DANE on the wire. Microsoft 365 can do it, but not on its own: outbound DANE validation is on by default, while inbound is opt-in per domain. An admin has to enable DNSSEC for the domain, swap the MX record for the one Exchange Online hands back, and turn on inbound DANE. Until someone does that, a Microsoft 365 tenant publishes no TLSA records. If you're a Google Workspace shop, you don't have inbound DANE either, unless you front it with a secure email gateway like Proofpoint or Mimecast. Plenty of enterprises now do exactly that. They get DANE protection at the gateway hop even when their mailbox provider won't publish TLSA records.</p>
+                <h2>Who runs it</h2>
+                <p>SMTP DANE is real, useful, and concentrated by region and by provider. In a <a href="https://www.zivver.com/blog/use-of-email-security-standards-in-the-netherlands-september-2025-only-14-dane-6-mta-sts" target="_blank" rel="noopener">September 2025 sample of the 10,000 domains most often emailed by Zivver's Dutch customers</a>, 12.6% of domains published TLSA records, but those domains received 25% of the mail by volume. Large receivers do it; small ones mostly do not.</p>
+                <p>Microsoft turned on DANE for Exchange Online in two stages: outbound validation rolled out through 2022, and inbound went generally available in <a href="https://techcommunity.microsoft.com/blog/exchange/announcing-general-availability-of-inbound-smtp-dane-with-dnssec-for-exchange-on/4281292" target="_blank" rel="noopener">October 2024</a>. Inbound is opt-in per domain. An admin has to enable DNSSEC for the domain, swap the MX record for the one Exchange Online hands back, and switch on inbound DANE. Until someone does that, a Microsoft 365 tenant publishes no TLSA records.</p>
+                <p>Google publishes no TLSA records for Google Workspace domains and points senders at MTA-STS instead. MTA-STS fetches a transport policy over HTTPS and validates the receiver's certificate through the web PKI, with CT logs as the audit trail. Google's position is that the web PKI is more accountable than the DNS hierarchy for transport keys, and that is a considered position, not neglect. The result is a provider lottery: a European receiver that publishes TLSA gives you DANE on the wire, a Microsoft 365 tenant can have it if an admin does the work, and a Google Workspace domain cannot have inbound DANE at all unless a secure email gateway such as Proofpoint or Mimecast sits in front of it. Plenty of enterprises do exactly that and get DANE at the gateway hop even though their mailbox provider will not publish TLSA.</p>
             </section>
             <section class="dbis-section">
-                <h2>The operational trap, and what changed it</h2>
-                <p>DANE couples your certificate renewal to your DNS. The classic failure mode is the admin who renews the mail server cert and forgets to update the TLSA record. Because DANE fails closed, inbound mail stops. In regulated environments that's the deal you signed up for. For everyone else it used to be a source of constant low-grade anxiety.</p>
-                <p>Two things changed the calculus. <a href="/articles/dnssec">DNSSEC stopped being hard</a>. The sign-the-zone checkbox at major DNS providers means the foundation isn't the barrier it was a decade ago. And cert automation caught up. ACME-aware tooling that rotates TLSA alongside the certificate (uacme, danectl, the DANE paths in modern Postfix and Exim deployments) turns the coupling into a scripted handoff. Use DANE-EE (3 1 1) with the SPKI selector and the hash survives renewals as long as you keep the key pair. The friction isn't gone, but it's tractable.</p>
+                <h2>The operational objection, and what changed it</h2>
+                <p>DANE couples your certificate to your DNS. The classic failure is the admin who renews the mail server certificate and forgets the TLSA record; because DANE fails closed, inbound mail stops. In a regulated environment that is the trade you agreed to. Everywhere else it was a standing source of anxiety, and a fair reason to stay away.</p>
+                <p>Two things changed that. DNSSEC stopped being hard, as <a href="/articles/dnssec">the DNSSEC article</a> covers: at the major DNS providers, signing the zone is a checkbox, so the foundation is no longer the obstacle. And certificate automation caught up. ACME-aware tooling that rotates the TLSA record alongside the certificate, such as uacme, danectl, and the DANE paths in current Postfix and Exim deployments, turns the coupling into a scripted handoff. Publish DANE-EE, usage 3 1 1, with the SPKI selector, and the hash survives renewals for as long as you keep the same key pair. The friction is not gone, but it is manageable by a normal operations team.</p>
             </section>
             <section class="dbis-section">
-                <h2>The honest version</h2>
-                <p>Most posts will tell you DANE either lost or won. Neither line holds up.</p>
-                <p>DANE for the web is gone. The reasons are still good. DANE for SMTP is where transport security has converged for anyone serious about it. If you handle sensitive correspondence or regulated data, publish TLSA records and validate inbound. Pair with MTA-STS for senders that won't do DNSSEC. Pair both with <a href="https://datatracker.ietf.org/doc/html/rfc8460" target="_blank" rel="noopener">TLS-RPT</a> so you find your failures before your senders do.</p>
-                <p>If you haven't looked at the protocol since 2018, the picture has moved.</p>
+                <h2>What to do with this</h2>
+                <p>If you handle sensitive correspondence or regulated data, publish TLSA records for your MX hosts and validate inbound. Pair DANE with MTA-STS for senders that will not do DNSSEC, and pair both with <a href="https://datatracker.ietf.org/doc/html/rfc8460" target="_blank" rel="noopener">TLS-RPT</a> so you hear about failures before your senders do. If you last looked at the protocol before 2018, the picture has moved, and the objections you remember were about operations that have since been automated.</p>
             </section>
         </article>
     </main>
