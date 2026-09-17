@@ -37,3 +37,5 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 54](doc-54.md): Rename the repo to dns-audit
 - [Doc 55](doc-55.md): About page copy and heading spacing
 - [Doc 56](doc-56.md): About and Privacy, rewritten (sent as a second Doc 55; saved verbatim)
+- [Doc 57](doc-57.md): The DMARC article, rewritten
+- [Doc 58](doc-58.md): The DMARC article scrolls sideways on phones
