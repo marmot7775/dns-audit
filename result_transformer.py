@@ -4491,17 +4491,20 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
         if part.lower() == "v=spf1":
             continue
 
-        # Determine type and lookup cost
-        p_lower = part.lower()
+        # Determine type and lookup cost. An explicit qualifier is legal on
+        # every mechanism (RFC 7208 section 4.6.2), so classify the token
+        # with the qualifier removed. "raw" still shows what is published.
+        stripped = part.lstrip("+-~?")
+        p_lower = stripped.lower()
         cost = 0
         mech_type = "unknown"
         provider = None
-        value = part
+        value = stripped
 
         if p_lower.startswith("include:"):
             mech_type = "include"
             cost = 1
-            domain = part.split(":", 1)[1] if ":" in part else ""
+            domain = stripped.split(":", 1)[1]
             value = domain
             # Provider lookup
             for pattern, name in _SPF_PROVIDER_MAP.items():
@@ -4512,29 +4515,29 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
                 provider = "Unknown service"
         elif p_lower.startswith("ip4:"):
             mech_type = "ip4"
-            value = part.split(":", 1)[1] if ":" in part else ""
+            value = stripped.split(":", 1)[1]
         elif p_lower.startswith("ip6:"):
             mech_type = "ip6"
-            value = part.split(":", 1)[1] if ":" in part else ""
+            value = stripped.split(":", 1)[1]
         elif p_lower.startswith("redirect="):
             mech_type = "redirect"
             cost = 1
-            value = part.split("=", 1)[1] if "=" in part else ""
+            value = stripped.split("=", 1)[1]
         elif p_lower.startswith("exists:"):
             mech_type = "exists"
             cost = 1
-            value = part.split(":", 1)[1] if ":" in part else ""
-        elif p_lower in ("a", "+a") or p_lower.startswith("a:") or p_lower.startswith("a/"):
+            value = stripped.split(":", 1)[1]
+        elif p_lower == "a" or p_lower.startswith("a:") or p_lower.startswith("a/"):
             mech_type = "a"
             cost = 1
-        elif p_lower in ("mx", "+mx") or p_lower.startswith("mx:") or p_lower.startswith("mx/"):
+        elif p_lower == "mx" or p_lower.startswith("mx:") or p_lower.startswith("mx/"):
             mech_type = "mx"
             cost = 1
-        elif p_lower.startswith("ptr") or p_lower == "ptr":
+        elif p_lower.startswith("ptr"):
             mech_type = "ptr"
             cost = 1
             has_ptr = True
-        elif p_lower in ("-all", "~all", "+all", "?all"):
+        elif part.lower() in ("-all", "~all", "+all", "?all"):
             all_mechanism = part
             continue
         else:
