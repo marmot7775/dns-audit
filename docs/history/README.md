@@ -42,3 +42,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 59](doc-59.md): The DNSSEC article, rewritten
 - [Doc 60](doc-60.md): The DANE article, rewritten
 - [Doc 61](doc-61.md): The Certificate Transparency check sets the audit's wall time
+- [Doc 62](doc-62.md): Explicit SPF qualifiers get a valid record failed
