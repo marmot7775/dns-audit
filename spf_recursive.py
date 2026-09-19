@@ -58,7 +58,12 @@ def repair_spf_missing_spaces(record: str) -> Tuple[str, bool]:
         r'(?<![A-Za-z0-9])-all(?=\s|$)',
     ]
 
-    pattern = r'(?<=\S)(' + '|'.join(SPLIT_BEFORE) + ')'
+    # Split only when the preceding character could end a mechanism token.
+    # A qualifier (+, -, ~, ?) cannot, so "+include:example.com" is one token
+    # with an explicit qualifier and not a jammed record. A hostname label
+    # cannot end in a hyphen and an IP or CIDR cannot end in any of the four,
+    # so no genuine boundary is lost by excluding them.
+    pattern = r'(?<=[^\s+~?-])(' + '|'.join(SPLIT_BEFORE) + ')'
     repaired = re.sub(pattern, r' \1', record, flags=re.IGNORECASE)
 
     # Handle v=spf1 not followed by a space (e.g. "v=spf1ip4:...")
