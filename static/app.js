@@ -18,6 +18,19 @@ const SCOPE_CHECKS = {
 // Severity sort order (lower = higher priority = displayed first)
 const SEVERITY_ORDER = { fail: 0, warn: 1, pass: 2, absent: 3, unavailable: 4 };
 
+// The shape a domain has to have before we send it to the API. Doc 68 made
+// this one constant; it was three identical literals (the ?d= handler, the
+// submit handler and the live validity indicator), which is three places to
+// miss when the rule changes. It is ASCII only on purpose: normalizeDomain
+// punycodes an internationalized name before anything is tested against it.
+//
+// Source-identical to config.DOMAIN_PATTERN, and
+// tests/test_domain_pattern.py fails if the two drift. The three copies were
+// a stale fork of it: they ended `\.[A-Za-z]{2,}$`, which rejects every
+// punycode TLD, so converting a Cyrillic or Arabic name to xn--e1afmkfd.xn--p1ai
+// would have walked it straight into the same refusal.
+const DOMAIN_RE = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z][A-Za-z0-9-]{1,62}(?<!-)$/;
+
 // One icon set: 16px, stroke 1.75, round caps and joins, drawn in
 // currentColor so the wrapper's status class colours it. Five statuses, five
 // shapes, so colour is never the only signal.
@@ -169,8 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (domain) {
         const normalized = normalizeDomain(domain);
-        const DOMAIN_RE_URL = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$/;
-        if (DOMAIN_RE_URL.test(normalized)) {
+        if (DOMAIN_RE.test(normalized)) {
             domainInput.value = normalized;
             runAudit(normalized);
         }
@@ -248,7 +260,6 @@ auditForm.addEventListener('submit', (e) => {
     }
 
     // Basic format validation before sending to the server
-    const DOMAIN_RE = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$/;
     if (!DOMAIN_RE.test(domain)) {
         // Provide helpful suggestion
         if (raw.includes('/')) {
@@ -296,6 +307,22 @@ function normalizeDomain(input) {
     d = d.split('/')[0].split('?')[0].split('#')[0];
     // Strip port (e.g. example.com:443)
     if (d.includes(':')) d = d.split(':')[0];
+    // Doc 68: punycode, so an internationalized name reaches DOMAIN_RE and
+    // the API in the form both expect. The server has always done this
+    // (dns_tools.normalize_domain runs idna.encode at the same point); the
+    // page did not, so it refused bucher.de with an umlaut as invalid while
+    // the API audited it happily. The URL constructor is the browser's own
+    // IDNA and needs no library.
+    try {
+        const host = new URL('http://' + d).hostname;
+        // It does not throw on a string that is not a hostname: it
+        // percent-encodes what cannot appear in one. That is a rejection,
+        // not a conversion, so the typed text is kept and DOMAIN_RE turns it
+        // into the inline error the reader already gets.
+        if (!host.includes('%')) d = host;
+    } catch (e) {
+        // Same reasoning, for the inputs it does throw on.
+    }
     d = d.replace(/\.$/, '');
     return d;
 }
@@ -4102,7 +4129,6 @@ function _realtimeValidate() {
     }
 
     const domain = normalizeDomain(raw);
-    const DOMAIN_RE = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$/;
 
     if (domain && DOMAIN_RE.test(domain)) {
         indicator.className = 'domain-valid-indicator valid';
