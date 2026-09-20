@@ -155,23 +155,6 @@ document.getElementById('selector-toggle').addEventListener('click', () => {
     }
 });
 
-// -- Protocol tooltip descriptions --
-const PROTOCOL_TOOLTIPS = {
-    'DMARC': 'Tells receivers what to do with unauthenticated email from your domain',
-    'SPF': 'Lists which servers are authorized to send email for your domain',
-    'DKIM': 'Cryptographic signature proving emails haven\'t been tampered with',
-    'BIMI': 'Displays your brand logo in email clients that support it',
-    'MTA-STS': 'Tells sending servers that support it to require TLS when delivering to your domain',
-    'TLS-RPT': 'Receives reports when TLS connections to your domain fail',
-    'DANE': 'Uses DNSSEC to verify mail server TLS certificates',
-    'DNSSEC': 'Cryptographically signs DNS records to prevent spoofing',
-    'CAA': 'Controls which Certificate Authorities can issue certificates for your domain',
-    'MX Records': 'Specifies which mail servers accept email for your domain',
-    'MX': 'Specifies which mail servers accept email for your domain',
-    'Nameservers': 'The DNS servers that answer queries about your domain',
-    'Certificate Transparency': 'Public logs of certificates issued for your domain',
-};
-
 // -- Check URL for domain parameter on load --
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
@@ -1047,19 +1030,12 @@ function createResultCard(check, index) {
 
     const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
 
-    // The header is the one focusable control. The tooltip shows on hover,
-    // and on the header's keyboard focus, and reaches assistive technology
-    // through aria-describedby on the header, from a node outside it so it
-    // does not also become part of the button's name.
-    const tooltipText = PROTOCOL_TOOLTIPS[check.name] || '';
-    const titleHtml = tooltipText
-        ? `<h3 class="result-title protocol-name-tip" data-tooltip="${escapeHtml(tooltipText)}">${escapeHtml(check.name)}</h3>`
-        : `<h3 class="result-title">${escapeHtml(check.name)}</h3>`;
+    // Doc 67: the protocol description was a hover tooltip on this title,
+    // which a phone never showed and the PDF never carried. It is now the
+    // first line inside the opened card, from check.what_this_is.
+    const titleHtml = `<h3 class="result-title">${escapeHtml(check.name)}</h3>`;
 
     const bodyId = `body-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    const tipId = `tip-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    const tipHtml = tooltipText
-        ? `<span class="sr-only" id="${tipId}">${escapeHtml(tooltipText)}</span>` : '';
     card.innerHTML = `
         <div class="result-header">
             <span class="status-icon ${safeClass(check.status)}" title="${STATUS_TITLES[check.status] || 'Failed'}" aria-hidden="true">${ICON[check.status] || ICON.fail}</span>
@@ -1068,7 +1044,6 @@ function createResultCard(check, index) {
             <div class="result-verdict">${escapeHtml(check.verdict || '')}</div>
             <div class="result-chevron" aria-hidden="true">${ICON.chevron}</div>
         </div>
-        ${tipHtml}
         <div class="result-body" id="${bodyId}">
             <div class="result-body-inner">
                 ${renderCheckBody(check)}
@@ -1088,7 +1063,6 @@ function createResultCard(check, index) {
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', 'false');
     header.setAttribute('aria-controls', bodyId);
-    if (tooltipText) header.setAttribute('aria-describedby', tipId);
     header.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -1233,6 +1207,17 @@ function _renderDetailItem(d) {
 
 function renderCheckBody(check) {
     let html = '';
+
+    // Doc 67: what the protocol is, then what this run found. A check with no
+    // what_this_is string renders neither the label nor an empty line, and
+    // then "What we found" has nothing to contrast with, so it is dropped too.
+    if (check.what_this_is) {
+        html += `<div class="check-part-label">What this is</div>`;
+        html += `<div class="what-this-is">${escapeHtml(check.what_this_is)}</div>`;
+        if (check.explanation) {
+            html += `<div class="check-part-label">What we found</div>`;
+        }
+    }
 
     // Explanation (always visible -- the impact statement)
     if (check.explanation) {

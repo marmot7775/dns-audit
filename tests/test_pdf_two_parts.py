@@ -186,11 +186,15 @@ def test_the_dmarc_check_comes_before_the_divider_and_its_validation_after(compl
     assert "p=none (monitoring only, no enforcement)" in " ".join(part1.split())
 
 
-def test_part_one_stays_within_eight_pages(complete):
+def test_part_one_stays_within_ten_pages(complete):
+    # Doc 65 set this at eight. Doc 67 gave every check a two-sentence line
+    # saying what its protocol is, in the Checks section, which is two pages
+    # of report the reader now gets before the appendix starts. The budget
+    # moved by exactly what was added and no further.
     pages = _pages(complete)
     divider = _divider_index(pages)
 
-    assert divider <= 8, f"Part 1 runs to {divider} pages"
+    assert divider <= 10, f"Part 1 runs to {divider} pages"
 
 
 def test_each_check_points_at_the_appendix_that_holds_its_detail(complete):

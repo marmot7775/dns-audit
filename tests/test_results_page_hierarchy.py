@@ -202,7 +202,12 @@ def test_an_opened_card_shows_findings_and_one_closed_details_section(
                     && document.getElementById(h.getAttribute('aria-controls'))),
             };
         }""")
-        assert "explanation" in m["body"][0]
+        # Doc 67: the body opens with "What this is" and its line, then the
+        # "What we found" label, and only then the explanation that used to
+        # be first.
+        assert m["body"][:3] == ["check-part-label", "what-this-is",
+                                 "check-part-label"], m["body"]
+        assert "explanation" in m["body"][3]
         assert any(c.startswith("detail-item") for c in m["body"]), m["body"]
         assert "record-block" in m["body"], m["body"]
         assert m["body"][-1] == "card-details-wrap", m["body"]

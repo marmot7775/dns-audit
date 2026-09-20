@@ -155,6 +155,7 @@ from dns_tools import (
 )
 
 from result_transformer import (
+    attach_what_this_is,
     transform_dmarc,
     transform_spf,
     transform_dkim,
@@ -5564,6 +5565,11 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 checks.append(_lookup_unavailable_card(
                     display_name, {"domain": domain}, subject,
                 ))
+
+    # Doc 67: every card says what its protocol is before it says what is
+    # wrong with it. Stamped here, on the finished list, so the stub cards a
+    # deadline produced above get the line too.
+    attach_what_this_is(checks)
 
     # --- Assemble final response ---
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()

@@ -2636,6 +2636,33 @@ details.st-node>summary:hover {
     .st-ips { padding-left: 0.75rem; }
 }
 
+/* Doc 67: the two labelled parts an opened card starts with. The label
+   matches .plan-part-label so a card and a plan row read the same, and the
+   line itself matches .explanation so the two parts sit at one weight. */
+.check-part-label {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-top: var(--space-md);
+    margin-bottom: var(--space-xs);
+}
+
+.result-body-inner > .check-part-label:first-child {
+    margin-top: 0;
+}
+
+.check-part-label + .explanation,
+.check-part-label + .what-this-is {
+    margin-top: 0;
+}
+
+.what-this-is {
+    font-size: var(--font-base);
+    color: var(--text-secondary);
+    line-height: 1.75;
+    margin: 0.6rem 0;
+}
+
 /* Explanation text */
 .explanation {
     font-size: var(--font-base);
@@ -3374,7 +3401,8 @@ details.st-node>summary:hover {
         min-height: 44px;
     }
 
-    .explanation {
+    .explanation,
+    .what-this-is {
         font-size: var(--font-sm);
     }
 
@@ -3930,59 +3958,6 @@ input[type="search"],
         bottom: 16px;
         right: 16px;
     }
-}
-
-/* ==========================================================================
-   TOOLTIP SYSTEM
-   ========================================================================== */
-.protocol-name-tip {
-    position: relative;
-    cursor: help;
-    border-bottom: 1px dotted var(--text-tertiary);
-}
-
-.protocol-name-tip[data-tooltip]::before {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--surface-hover);
-    color: var(--text-primary);
-    font-size: var(--font-sm);
-    font-weight: 400;
-    max-width: 280px;
-    width: max-content;
-    padding: 8px 12px;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-md);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 150ms ease;
-    z-index: 200;
-    line-height: 1.45;
-    text-transform: none;
-    letter-spacing: 0;
-}
-
-.protocol-name-tip[data-tooltip]::after {
-    content: '';
-    position: absolute;
-    bottom: calc(100% - 2px);
-    left: 50%;
-    transform: translateX(-50%);
-    border: 5px solid transparent;
-    border-top-color: var(--surface-hover);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 150ms ease;
-}
-
-.protocol-name-tip[data-tooltip]:hover::before,
-.protocol-name-tip[data-tooltip]:hover::after,
-.result-header:focus-visible .protocol-name-tip[data-tooltip]::before,
-.result-header:focus-visible .protocol-name-tip[data-tooltip]::after {
-    opacity: 1;
 }
 
 /* ==========================================================================
@@ -7648,18 +7623,6 @@ input[type="search"],
         min-height: 44px;
         display: flex;
         align-items: center;
-    }
-
-    /* A heading that shows a tooltip. Its ::before and
-       ::after are the tooltip, so the hit area comes from padding and the
-       dotted underline moves from border-bottom to text-decoration so it
-       stays under the text. */
-    .protocol-name-tip {
-        border-bottom: none;
-        text-decoration: underline dotted var(--text-tertiary);
-        text-underline-offset: 3px;
-        padding: 10px 9px;
-        margin: -10px -9px;
     }
 
     /* Full-width block controls: grow downward, displace nothing below. */
