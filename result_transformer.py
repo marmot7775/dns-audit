@@ -203,7 +203,8 @@ def _spoofing_detail(vectors: List[Dict]) -> str:
     return "Every spoofing vector protected"
 
 
-def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
+def build_executive_summary(checks: List[Dict], roadmap: Dict,
+                            is_no_mail: bool = False) -> Dict:
     """Build the executive summary card shown at the very top of results.
 
     Returns a dict with: verdict, spoofing_protection, dmarcbis_readiness,
@@ -561,7 +562,15 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
     # also not something to pass over in silence, because the all-clear below
     # would otherwise read as covering it. It gets a caveat, not a finding.
 
-    if deliverability_issues:
+    if is_no_mail:
+        # A null MX domain sends no mail, so there is no inbox placement to
+        # report on. Everything below is about mail this domain does not
+        # send, including the caveats.
+        deliverability_summary = (
+            "This domain publishes a null MX, so it sends no mail. Its "
+            "authentication records are configured to say so."
+        )
+    elif deliverability_issues:
         top_issue = deliverability_issues[0]
         if "no DMARC" in top_issue:
             deliverability_summary = (
@@ -621,7 +630,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
     # this, the branch above names SPF, DKIM and DMARC as properly set up on
     # a run that never read them. Real findings are kept and annotated rather
     # than replaced, since a real finding still matters here.
-    if auth_unavailable:
+    if auth_unavailable and not is_no_mail:
         caveat = (f"The {unread_names} {unread_verb} not complete, so that part of the "
                   "configuration was not assessed.")
         if deliverability_issues:
@@ -636,7 +645,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
     # Said last so it survives whichever branch above ran. Without it the
     # all-clear reads as covering DKIM, which this audit did not establish
     # either way.
-    if dkim_unconfirmed:
+    if dkim_unconfirmed and not is_no_mail:
         deliverability_summary += (
             " DKIM could not be confirmed by probing, since a selector cannot be "
             "enumerated from DNS. Re-run the audit at dns-audit.com with the selector "
@@ -920,10 +929,24 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # sentence these rows have, and it is already the action, so these
         # rows carry no impact: the action shows on its own.
         fix = _roadmap_fix_text(card)
+        if fix:
+            items.append({"priority": "high" if card["status"] == "fail" else "low",
+                          "protocol": name, "action": fix, "impact": ""})
+            continue
+        # No fix text. "Review the X findings" with nothing under "Why it
+        # matters" is a row that asks the reader to go and work it out, and
+        # the card it points at has plenty to say. Take the card's own
+        # words: its first bad detail as the action, its verdict as the
+        # reason the row is here. A card with neither a fix nor a bad
+        # detail has nothing for the reader to do, so it gets no row at all
+        # rather than a row that says nothing.
+        bad = next((d.get("text", "") for d in card.get("details", [])
+                    if d.get("type") in ("error", "warning") and d.get("text")), "")
+        if not bad:
+            continue
         items.append({"priority": "high" if card["status"] == "fail" else "low",
-                      "protocol": name,
-                      "action": fix or f"Review the {name} findings",
-                      "impact": ""})
+                      "protocol": name, "action": bad,
+                      "impact": card.get("verdict") or ""})
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -932,8 +955,13 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # Within a tier, rows about something wrong come before rows about
     # something not yet adopted.
     for item in items:
-        _card_status = check_map.get(item["protocol"], {}).get("status")
+        _card = check_map.get(item["protocol"], {})
+        _card_status = _card.get("status")
         item["status"] = _card_status if _card_status in ("fail", "warn", "absent") else "info"
+        # A check whose fix is not a DNS record says so in its own words,
+        # and the row prints that under "What to change".
+        if _card.get("plan_note"):
+            item["what_note"] = _card["plan_note"]
     items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), i["status"] == "absent"))
 
     # Count by tier
@@ -2118,13 +2146,19 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         else:
             details.append({"type": "warning", "text": "No aggregate reporting (rua) configured"})
 
-        if report_dests and raw.get("ruf"):
+        # The engine says this itself, in _check_report_authorization, and
+        # that issue is merged into the details above. Saying it here too
+        # printed the same note twice, three lines apart. Said here only
+        # when the authorization check produced nothing, which is when the
+        # engine's sentence never reaches the card.
+        if raw.get("ruf") and not raw.get("ruf_provider_note"):
             details.append({
                 "type": "info",
-                "text": "Forensic reporting (ruf) configured (note: most mailbox providers do not send failure reports because of PII concerns)",
+                "text": (
+                    "Forensic reporting (ruf) is configured. Most mailbox providers "
+                    "do not send failure reports because of PII concerns."
+                ),
             })
-        elif raw.get("ruf"):
-            details.append({"type": "good", "text": "Forensic reporting (ruf) is configured"})
 
         if raw.get("sp"):
             sp_val = raw["sp"]
@@ -4330,7 +4364,9 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         if _limit_reported:
             pass
         elif lookups <= 8:
-            details.append({"type": "good", "text": f"{lookups} DNS lookups (well within the 10-lookup limit)"})
+            details.append({"type": "good",
+                            "text": (f"{lookups} DNS lookup{'s' if lookups != 1 else ''} "
+                                     "(well within the 10-lookup limit)")})
         elif lookups <= 10:
             details.append({"type": "warning", "text": f"{lookups} DNS lookups ({'at' if lookups == 10 else 'near'} the 10-lookup limit)"})
         else:
@@ -7078,6 +7114,13 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
     if wildcards:
         details.append({"type": "info", "text": f"{len(wildcards)} wildcard certificate{'s' if len(wildcards) != 1 else ''} found"})
 
+    # The check's own findings. They summarize what the per-certificate rows
+    # below show one at a time, so they come first: the Priorities row built
+    # from this card takes the first bad detail as its action, and one
+    # expiring subdomain is not what the reader has to act on.
+    for issue in issues:
+        details.append(_issue_to_detail(issue))
+
     # Expiring
     for exp in expiring[:3]:
         _days = exp["days_left"]
@@ -7111,10 +7154,6 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
     if subdomains:
         details.append({"type": "info", "text": f"{len(subdomains)} unique subdomain{'s' if len(subdomains) != 1 else ''} discovered via CT"})
 
-    # Append raw issues
-    for issue in issues:
-        details.append(_issue_to_detail(issue))
-
     # Fix (only for CAA mismatches)
     fix = None
     if caa_mismatches:
@@ -7136,6 +7175,11 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
         "details": details,
         "fix": fix,
         "fix_records": None,
+        # Every other Priorities row ends at a record to publish. This one
+        # cannot, so the check says where the change is actually made rather
+        # than sending the reader to look for a record that does not exist.
+        "plan_note": ("Certificates are renewed with the certificate authority "
+                      "or the host that issued them, not in DNS."),
     }
 
 

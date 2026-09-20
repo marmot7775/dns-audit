@@ -1826,7 +1826,12 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
             _add("tag_values", f"{tag_name.upper()}_VALID", "pass",
                  f"{tag_name}={val} is valid.")
 
-    # Check 11: Percentage
+    # Check 11: Percentage. RFC 9989 §C.5.2 removes pct, so this validator
+    # cannot pass it: the panel said the record passed strict validation
+    # while the plan beside it carried a row to take the tag out, and
+    # spec_comparison counted no difference between the two specs. A value
+    # that is also malformed keeps its fail or its leading-zeros warning
+    # and does not get this one on top.
     pct_val = tag_dict.get("pct")
     if pct_val is not None:
         if not re.match(r'^-?\d+$', pct_val):
@@ -1841,7 +1846,18 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
                 _add("tag_values", "PCT_LEADING_ZEROS", "warn",
                      f"pct={pct_val} has leading zeros. Use pct={pct_int}.")
             else:
-                _add("tag_values", "PCT_VALID", "pass", f"pct={pct_val} is valid.")
+                _add("tag_values", "PCT_REMOVED", "warn",
+                     "pct is removed in RFC 9989 (§C.5.2). Receivers on "
+                     "RFC 9989 ignore it.")
+
+    # rf and ri are removed by the same section and had no row here at all.
+    # The legacy validator below is right to leave all three alone: RFC 7489
+    # defines them, and that difference is what the spec comparison shows.
+    for removed_tag in ("rf", "ri"):
+        if tag_dict.get(removed_tag) is not None:
+            _add("tag_values", f"{removed_tag.upper()}_REMOVED", "warn",
+                 f"{removed_tag} is removed in RFC 9989 (§C.5.2). "
+                 "Receivers on RFC 9989 ignore it.")
 
     # Check 12: URI validation (STRICT)
     for tag_name in ("rua", "ruf"):
@@ -5571,7 +5587,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "defensive_signals": defensive_signals,
         "resilience": resilience_result,
         "security_roadmap": _roadmap,
-        "executive_summary": build_executive_summary(checks, _roadmap),
+        "executive_summary": build_executive_summary(checks, _roadmap,
+                                                     is_no_mail=is_defensive),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
         "consistency_findings": consistency,
