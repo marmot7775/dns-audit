@@ -701,6 +701,12 @@ def _plan_what_to_change(data, item, card, S):
     edit, otherwise the card's fix_records. Nothing here invents a record.
     """
     protocol = item.get("protocol", "")
+
+    # A check whose fix is not a DNS record says where the change is made.
+    note = item.get("what_note")
+    if note:
+        return [Paragraph(_safe(note), S["body"])]
+
     readiness = (card or {}).get("dmarcbis_readiness") or {}
     if protocol == "DMARC" and readiness.get("suggested_record"):
         host = f"_dmarc.{_strip_html(data.get('domain', ''))}"

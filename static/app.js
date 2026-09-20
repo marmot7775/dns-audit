@@ -2998,6 +2998,14 @@ function _planRecordBlock(host, type, value, comment) {
 // text when there is no record to publish. Nothing here is invented: a row
 // with neither says so and sends the reader to the card.
 function _planWhat(item, card, anchor) {
+    // A check whose fix is not a DNS record says where the change is made.
+    // Without it the row fell through to a button that sent the reader back
+    // to a card with no record to publish.
+    if (item.what_note) {
+        return { html: `<div class="plan-fix">${escapeHtml(item.what_note)}</div>`,
+                 hasPropagation: false };
+    }
+
     const readiness = card && card.dmarcbis_readiness;
     if (item.protocol === 'DMARC' && readiness && readiness.suggested_record) {
         const host = `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
