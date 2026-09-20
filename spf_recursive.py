@@ -553,7 +553,8 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             "issue": f"SPF approaching lookup limit ({total}/10)",
             "plain_english": (
                 f"You are using {total} of 10 allowed DNS lookups. "
-                f"Only {10 - total} slots remain."
+                + ("Only 1 slot remains." if 10 - total == 1
+                   else f"Only {10 - total} slots remain.")
             ),
             "impact": "Limited room for adding new email services.",
             "fix": "Monitor lookup count when adding new services.",
@@ -561,7 +562,8 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
     else:
         result["status"] = "pass"
         result["summary"] = (
-            f"{total} DNS lookups (well within the 10-lookup limit)."
+            f"{total} DNS lookup{'s' if total != 1 else ''} "
+            "(well within the 10-lookup limit)."
         )
 
     # A DNS failure we could not resolve one way or the other. Say so, and do
