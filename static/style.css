@@ -1103,8 +1103,14 @@ main {
 }
 
 .priority-row {
+    border-radius: var(--radius);
+}
+
+/* The one-line instruction. Opening it is what the click does now; the link
+   into the card is a control inside the opened row. */
+.priority-head {
     display: grid;
-    grid-template-columns: 16px auto auto 1fr;
+    grid-template-columns: 16px auto auto 1fr auto;
     align-items: center;
     column-gap: var(--space-sm);
     min-height: 44px;
@@ -1117,9 +1123,19 @@ main {
     transition: background var(--duration) var(--ease);
 }
 
-.priority-row:hover,
-.priority-row:focus-visible {
+.priority-head:hover,
+.priority-head:focus-visible {
     background: var(--surface-hover);
+}
+
+.priority-chevron {
+    display: inline-flex;
+    color: var(--text-tertiary);
+    transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.priority-head[aria-expanded="true"] .priority-chevron {
+    transform: rotate(180deg);
 }
 
 .priority-protocol {
@@ -1127,14 +1143,67 @@ main {
     white-space: nowrap;
 }
 
+/* Why it matters, what to change, how to confirm. */
+.priority-body {
+    padding: var(--space-sm) var(--space-sm) var(--space-md) calc(16px + var(--space-md));
+    font-size: var(--font-sm);
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.plan-part {
+    margin-bottom: var(--space-md);
+}
+
+.plan-part-label {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-xs);
+}
+
+.plan-part-body .record-block {
+    margin: var(--space-xs) 0;
+}
+
+.plan-record-host {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+.plan-record-note {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin-top: var(--space-xs);
+}
+
+.plan-fix {
+    color: var(--text-secondary);
+}
+
+.plan-card-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: var(--font-sm);
+    color: var(--primary-light);
+    cursor: pointer;
+    text-align: left;
+}
+
+.plan-card-link:hover {
+    text-decoration: underline;
+}
+
 @media (max-width: 640px) {
-    .priority-row {
-        grid-template-columns: 16px auto 1fr;
+    .priority-head {
+        grid-template-columns: 16px auto 1fr auto;
         row-gap: var(--space-xs);
         padding-block: var(--space-sm);
     }
 
-    .priority-row .tag {
+    .priority-head .tag {
         justify-self: start;
     }
 
@@ -3446,21 +3515,6 @@ details.st-node>summary:hover {
    Authentication Resilience
    ========================================================================== */
 
-.resilience-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-md) var(--space-lg);
-    margin-bottom: var(--space-xl);
-}
-
-.resilience-header {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--primary-light);
-    margin-bottom: 0.65rem;
-}
-
 .resilience-summary {
     display: flex;
     align-items: center;
@@ -4124,6 +4178,14 @@ input[type="search"],
     font-size: var(--font-sm);
     color: var(--text-primary);
     line-height: 1.45;
+}
+
+/* The headline is what to do; this is why it matters. */
+.es-risk-detail {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    line-height: 1.45;
+    margin-top: var(--space-xs);
 }
 
 .es-actions {
