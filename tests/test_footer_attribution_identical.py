@@ -16,6 +16,12 @@ identical-footer check is unchanged.
 Doc 54 renamed the repo to dns-audit. Every GitHub link on the pages points
 at the new name, and the old name survives only where it names the droplet's
 checkout directory, plus the doc history.
+
+Doc 68: the identical-footer check compared the .footer-attribution block
+alone, so the footer-trust row (version, Security Policy, MIT License) sat on
+index.html and on none of the other seven pages for as long as it has existed
+and no test noticed. The comparison is now the whole <footer> element, which
+covers the trust row, the nav and anything added beside them later.
 """
 import os
 import re
@@ -26,6 +32,8 @@ import pytest
 from static_pages import PAGES, STATIC
 
 ATTRIBUTION_RE = re.compile(r'<div class="footer-attribution">.*?</div>', re.DOTALL)
+FOOTER_RE = re.compile(r'<footer class="site-footer">.*?</footer>', re.DOTALL)
+TRUST_RE = re.compile(r'<div class="footer-trust">.*?</div>\s*</div>', re.DOTALL)
 LINKEDIN = "https://www.linkedin.com/in/neilanuskiewicz/"
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
 ADDRESS_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]+")
@@ -45,12 +53,62 @@ def _attribution(path):
     return blocks[0]
 
 
+def _footer(path):
+    blocks = FOOTER_RE.findall(_read(path))
+    assert len(blocks) == 1, (
+        f"{os.path.relpath(path, STATIC)}: expected exactly one "
+        f"<footer class=\"site-footer\"> element, found {len(blocks)}"
+    )
+    return blocks[0]
+
+
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
 def test_footer_attribution_is_identical_to_index(path):
     reference = _attribution(os.path.join(STATIC, "index.html"))
     assert _attribution(path) == reference, (
         f"{os.path.relpath(path, STATIC)}: .footer-attribution differs from index.html"
     )
+
+
+@pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
+def test_the_whole_footer_is_identical_to_index(path):
+    """Doc 68: the whole element, not the attribution line alone.
+
+    The narrower check let the footer-trust row live on index.html only.
+    """
+    reference = _footer(os.path.join(STATIC, "index.html"))
+    assert _footer(path) == reference, (
+        f"{os.path.relpath(path, STATIC)}: <footer> differs from index.html"
+    )
+
+
+@pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
+def test_every_page_carries_the_trust_row(path):
+    """Named separately so a regression says which row went missing."""
+    footer = _footer(path)
+    rel = os.path.relpath(path, STATIC)
+    assert '<div class="footer-trust">' in footer, rel
+    assert '<span class="footer-version">' in footer, rel
+    assert ">Security Policy</a>" in footer, rel
+    assert ">MIT License</a>" in footer, rel
+
+
+def test_the_trust_row_sits_between_the_nav_and_the_attribution():
+    footer = _footer(os.path.join(STATIC, "index.html"))
+    nav = footer.index('<div class="footer-nav">')
+    trust = footer.index('<div class="footer-trust">')
+    attribution = footer.index('<div class="footer-attribution">')
+    assert nav < trust < attribution
+
+
+def test_the_footer_version_matches_the_packaged_version():
+    """v2.0.0 in the footer is pyproject's version, not a hand-typed string."""
+    import tomllib
+    repo = os.path.dirname(STATIC)
+    with open(os.path.join(repo, "pyproject.toml"), "rb") as f:
+        version = tomllib.load(f)["project"]["version"]
+    footer = _footer(os.path.join(STATIC, "index.html"))
+    assert f'<span class="footer-version">v{version}</span>' in footer, version
 
 
 def test_footer_attribution_says_what_neil_does():
