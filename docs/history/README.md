@@ -47,3 +47,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 64](doc-64.md): Priorities becomes a plan the reader can follow
 - [Doc 65](doc-65.md): The PDF gets the same shape as the page
 - [Doc 66](doc-66.md): The report still contradicts itself in five places
+- [Doc 67](doc-67.md): Every check says what it is first
