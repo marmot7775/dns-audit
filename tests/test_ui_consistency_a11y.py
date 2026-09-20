@@ -492,10 +492,9 @@ def test_results_render_without_layout_defects(browser, fixture_result, theme, w
                 h1: [...document.querySelectorAll('h1')].filter(h => h.offsetParent)
                     .map(h => h.textContent.trim()),
                 h4: [...document.querySelectorAll('#check-dmarc h4')].map(h => h.textContent.trim()),
-                absentExpanded: [...document.querySelectorAll('.result-card[data-status="absent"]')]
-                    .filter(c => c.classList.contains('expanded')).length,
-                otherCollapsed: [...document.querySelectorAll('.result-card:not([data-status="absent"])')]
-                    .filter(c => !c.classList.contains('expanded')).length,
+                cardsExpanded: document.querySelectorAll('.result-card.expanded').length,
+                headersOpen: document.querySelectorAll(
+                    '.result-header[aria-expanded="true"]').length,
                 describedBy: [...document.querySelectorAll('.result-header[aria-describedby]')]
                     .every(h => document.getElementById(h.getAttribute('aria-describedby'))),
                 tipsFocusable: document.querySelectorAll('.protocol-name-tip[tabindex]').length,
@@ -510,7 +509,8 @@ def test_results_render_without_layout_defects(browser, fixture_result, theme, w
         assert m["h1"] == [DOMAIN], m["h1"]
         assert {"Strict Record Validation", "DMARC Record Breakdown",
                 "DMARC Policy Discovery (Tree Walk)", "DMARC Evaluation"} <= set(m["h4"]), m["h4"]
-        assert m["absentExpanded"] == 0 and m["otherCollapsed"] == 0
+        # Doc 63: every card renders collapsed, whatever its status.
+        assert m["cardsExpanded"] == 0 and m["headersOpen"] == 0
         assert m["expandedNoControls"] == 0
         assert errors == []
     finally:
@@ -589,12 +589,21 @@ def test_every_page_renders_a_skip_link_and_one_main_landmark(browser, path):
         ctx.close()
 
 
+def _open_spec_toggle(page):
+    """Doc 63 filed the toggle under Details: card, Details, first section."""
+    page.click("#check-dmarc .result-header")
+    page.click('#check-dmarc .card-details > [role="heading"] > .cd-header')
+    page.click('#check-dmarc .cd-subsection > [role="heading"] > .cd-header')
+
+
 def test_spec_toggle_works_on_a_second_audit(browser, fixture_result):
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
         _render(page, fixture_result)
+        _open_spec_toggle(page)
         page.click(".st-seg-legacy")
         _render(page, fixture_result)
+        _open_spec_toggle(page)
         page.click(".st-seg-legacy")
         assert page.get_attribute(".st-seg-legacy", "aria-checked") == "true"
         assert errors == []

@@ -1,6 +1,6 @@
 /* ==========================================================================
    DNS Security Auditor - Frontend Application
-   v2.0: scoped audits, severity sorting, absent cards start collapsed
+   v2.0: scoped audits, severity sorting, every card starts collapsed
    ========================================================================== */
 
 const API_BASE = '/api';
@@ -595,10 +595,17 @@ function renderResults(data) {
         // Compact the input section so results are visible above the fold
         document.querySelector('.audit-input-section')?.classList.add('compact');
 
-        // Scroll to top of results
-        const yOffset = -10;
-        const y = resultsSection.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        window.scrollTo({ top: y, behavior: 'smooth' });
+        // Scroll to top of results, unless the URL names a card: a
+        // #check-dmarc link from a report or a shared URL opens that card
+        // and lands on it instead of on the top of the list.
+        const hashId = (window.location.hash || '').replace(/^#/, '');
+        if (hashId && document.getElementById(hashId)) {
+            openCard(hashId);
+        } else {
+            const yOffset = -10;
+            const y = resultsSection.getBoundingClientRect().top + window.pageYOffset + yOffset;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+        }
 
         // Update URL for sharing
         const url = new URL(window.location);
@@ -641,11 +648,7 @@ function renderResults(data) {
             esSlot.style.display = 'block';
             // Wire up scroll buttons
             esSlot.querySelectorAll('[data-scroll-to]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const target = document.getElementById(btn.dataset.scrollTo)
-                        || document.querySelector(`[id="${btn.dataset.scrollTo}"]`);
-                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                });
+                btn.addEventListener('click', () => openCard(btn.dataset.scrollTo));
             });
         } else {
             esSlot.innerHTML = '';
@@ -765,10 +768,7 @@ function renderResults(data) {
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
         priorityList.innerHTML = renderPriorities(rm);
         priorityList.querySelectorAll('[data-scroll-to]').forEach(el => {
-            const go = () => {
-                const target = document.getElementById(el.dataset.scrollTo);
-                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            };
+            const go = () => openCard(el.dataset.scrollTo);
             el.addEventListener('click', go);
             el.addEventListener('keydown', ev => {
                 if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); }
@@ -779,7 +779,7 @@ function renderResults(data) {
         prioritySection.style.display = 'none';
     }
 
-    // -- Result cards (sorted; absent cards start collapsed, the rest open) --
+    // -- Result cards (sorted; every card starts collapsed) --
     const resultsList = document.getElementById('results-list');
     resultsList.innerHTML = '';
 
@@ -893,8 +893,8 @@ function renderResults(data) {
         resultsList.appendChild(createResultCard(check, i));
     });
 
-    // Cards render mixed: absent ones collapsed, every other state expanded.
-    // The button has to say what the next click will do.
+    // Every card renders collapsed, so the button offers Expand All. It has
+    // to say what the next click will do.
     syncToggleAllLabel();
 
     // Vendors
@@ -993,7 +993,7 @@ function applyDeferredStyles(root) {
 }
 
 // ============================================================
-// Result card: absent cards start collapsed, every other state starts open
+// Result card: every card starts collapsed
 // ============================================================
 
 // A check can also come back "unavailable": it did not run, so it is neither
@@ -1033,10 +1033,10 @@ function shareTweetText(d) {
 
 function createResultCard(check, index) {
     const card = document.createElement('div');
-    // An absent card (an optional protocol that is not published) starts
-    // collapsed: nothing in it needs reading. Every other state starts open.
-    const isExpanded = check.status !== 'absent';
-    card.className = isExpanded ? 'result-card expanded' : 'result-card';
+    // Every card starts collapsed. The header carries the status pill and the
+    // one-line verdict, so the closed list reads as one row per check: name,
+    // status, verdict. Opening a card is how the reader asks for more.
+    card.className = 'result-card';
     card.id = `check-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.dataset.status = check.status;
     card.style.animationDelay = `${index * 60}ms`;
@@ -1082,7 +1082,7 @@ function createResultCard(check, index) {
     const header = card.querySelector('.result-header');
     header.setAttribute('tabindex', '0');
     header.setAttribute('role', 'button');
-    header.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    header.setAttribute('aria-expanded', 'false');
     header.setAttribute('aria-controls', bodyId);
     if (tooltipText) header.setAttribute('aria-describedby', tipId);
     header.addEventListener('keydown', (e) => {
@@ -1279,96 +1279,6 @@ function renderCheckBody(check) {
         `;
     }
 
-    // Spec Mode Toggle (Prompt 5) — only for DMARC with both validations
-    if (check.spec_comparison && check.strict_validation && check.legacy_validation) {
-        html += renderSpecToggle(check.spec_comparison);
-    }
-
-    // RFC 9989 Strict Validation (shown in RFC 9989 mode)
-    if (check.strict_validation) {
-        html += `<div class="spec-dmarcbis">`;
-        html += renderStrictValidation(check.strict_validation);
-        html += `</div>`;
-    }
-
-    // Legacy Validation (hidden by default, shown in Legacy mode)
-    if (check.legacy_validation) {
-        html += `<div class="spec-legacy is-hidden">`;
-        html += renderStrictValidation(check.legacy_validation, 'RFC 7489');
-        html += `</div>`;
-    }
-
-    // Structural errors banner for subsequent sections
-    if (check.strict_validation && check.strict_validation.has_structural_errors) {
-        html += `<div class="sv-error-banner spec-dmarcbis">This record has structural errors that affect parsing, so the results below may be unreliable.</div>`;
-    }
-
-    // Attack Surface View (Prompt 6)
-    if (check.attack_surface) {
-        html += renderAttackSurface(check.attack_surface);
-    }
-
-    // Subdomain Security Audit (Prompt 17)
-    if (check._subdomain_audit) {
-        html += renderSubdomainAudit(check._subdomain_audit);
-    }
-
-    // DMARC Record Breakdown (RFC 9989 mode only — has RFC 9989 notes, health verdict, migration, etc.)
-    if (check.tag_breakdown) {
-        html += `<div class="spec-dmarcbis">`;
-        html += renderDmarcTagBreakdown(check.tag_breakdown);
-        html += `</div>`;
-    }
-
-    // SPF execution trace
-    if (check._spf_execution) {
-        html += renderSpfExecution(check._spf_execution);
-    }
-
-    // Tree walk visualization (DMARC only)
-    if (check._tree_walk) {
-        html += renderTreeWalk(check._tree_walk);
-    }
-
-    // Record Builder for "no record" case (not inside tag_breakdown)
-    if (check.record_builder) {
-        html += `<div class="spec-dmarcbis">`;
-        html += renderRecordBuilder(check.record_builder);
-        html += `</div>`;
-    }
-
-    // RFC 9989 readiness (after tree walk, before evaluation) — RFC 9989 mode only
-    if (check.dmarcbis_readiness) {
-        html += `<div class="spec-dmarcbis">`;
-        html += renderDmarcbisReadiness(check.dmarcbis_readiness);
-        html += `</div>`;
-    }
-
-    // DMARC evaluation summary (after tree walk)
-    if (check._dmarc_eval) {
-        html += renderDmarcEvaluation(check._dmarc_eval);
-    }
-
-    // DMARC report delivery chain
-    if (check._report_chain) {
-        html += renderReportChain(check._report_chain);
-    }
-
-    // SPF Deep Analysis (Prompt 7)
-    if (check.spf_deep) {
-        html += renderSpfDeepAnalysis(check.spf_deep);
-    }
-
-    // DKIM Deep Analysis (Prompt 8)
-    if (check.dkim_deep) {
-        html += renderDkimKeyAnalysis(check.dkim_deep);
-    }
-
-    // SPF include tree
-    if (check._spf_tree) {
-        html += renderSpfTree(check._spf_tree);
-    }
-
     // Propagation warning (Prompt 18, Part 3)
     if (check.ttl_info && check.fix_records && check.fix_records.length > 0) {
         html += renderPropagationWarning(check.ttl_info, check.name);
@@ -1379,26 +1289,303 @@ function renderCheckBody(check) {
         html += renderFixPreview(check.fix_records);
     }
 
-    // Change History (Prompt 18, Part 1)
-    if (check._change_history && check._change_history.length > 0) {
-        html += renderChangeHistory(check._change_history);
-    } else if (check._change_status === 'first_audit') {
-        html += `<div class="cd-first-audit">
-            <span class="cd-first-icon">${ICON.history}</span>
-            This domain is now tracked; run another audit later to see what changed.
-        </div>`;
+    // Structural errors banner. It qualifies everything filed under Details,
+    // so it stays above Details rather than inside it.
+    if (check.strict_validation && check.strict_validation.has_structural_errors) {
+        html += `<div class="sv-error-banner spec-dmarcbis">This record has structural errors that affect parsing, so the results below may be unreliable.</div>`;
     }
 
-    // Consistency findings (Prompt 18, Part 4)
-    if (check._consistency_findings && check._consistency_findings.length > 0) {
-        html += renderConsistencyFindings(check._consistency_findings);
-    }
+    // Everything that explains, validates or traces the finding
+    html += renderCardDetails(cardDetailSections(check));
 
     if (!html) {
         html = '<div class="explanation">No issues detected.</div>';
     }
 
     return html;
+}
+
+// ============================================================
+// Details: the reference half of a card
+// ============================================================
+
+// An opened card answers "what did you find". Everything that explains,
+// validates or traces that finding is filed under one collapsed Details
+// section, one sub-section per panel, each labelled with what it holds so
+// that a closed Details section reads as a table of contents. Nothing is
+// removed and nothing is reworded; the panels render exactly as before,
+// one click further in.
+
+function _count(n, word) {
+    return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function _strictValidationSummary(sv) {
+    if (!sv || !sv.total_count) return '';
+    if (sv.fail_count > 0) return `${sv.fail_count} of ${sv.total_count} checks fail`;
+    return `Passes RFC 9989, ${sv.pass_count} of ${sv.total_count}`;
+}
+
+function _attackSurfaceSummary(as) {
+    const vectors = (as && as.vectors) || [];
+    if (!vectors.length) return '';
+    const exposed = vectors.filter(v => v.status === 'exposed').length;
+    return exposed > 0
+        ? `${exposed} of ${vectors.length} paths exposed`
+        : `${_count(vectors.length, 'path')}, none exposed`;
+}
+
+function _subdomainAuditSummary(sa) {
+    const subs = (sa && sa.subdomains) || [];
+    if (!subs.length) return '';
+    const probed = sa.total_probed || subs.length;
+    const exposed = subs.filter(s => s.status === 'exposed').length;
+    return exposed > 0
+        ? `${exposed} of ${probed} probed subdomains exposed`
+        : `${_count(probed, 'subdomain')} probed, none exposed`;
+}
+
+function _tagBreakdownSummary(bd) {
+    const tags = (bd && bd.tags) || [];
+    if (!tags.length) return '';
+    const removed = tags.filter(t => t.dmarcbis === 'deprecated').length;
+    return removed > 0
+        ? `${_count(tags.length, 'tag')}, ${removed} removed in RFC 9989`
+        : _count(tags.length, 'tag');
+}
+
+function _treeWalkSummary(tw) {
+    const steps = (tw && tw.steps) || [];
+    if (!steps.length) return '';
+    if (!tw.policy_source) return 'No policy found';
+    const idx = steps.findIndex(s => s.found && s.domain === tw.policy_source);
+    if (idx <= 0) return 'Record found at the domain itself';
+    return `Found ${_count(idx, 'label')} up`;
+}
+
+function _dmarcEvalSummary(ev) {
+    if (!ev) return '';
+    if (ev.spf_aligned && ev.dkim_aligned) return 'SPF and DKIM aligned';
+    return ev.explanation || '';
+}
+
+function _reportChainSummary(rc) {
+    const dests = (rc && rc.report_destinations) || [];
+    if (!dests.length) return '';
+    const unauthorized = dests.filter(d => d.authorized === false).length;
+    return unauthorized > 0
+        ? `${_count(dests.length, 'destination')}, ${unauthorized} not authorized`
+        : `${_count(dests.length, 'destination')}, all authorized`;
+}
+
+function _spfExecutionSummary(exec) {
+    if (!exec || typeof exec.total_lookups !== 'number') return '';
+    return `${_count(exec.total_lookups, 'lookup')} of 10`;
+}
+
+function _spfTreeSummary(tree) {
+    if (!tree || typeof tree.total_lookups !== 'number') return '';
+    return `${tree.total_lookups} of ${tree.limit || 10} lookups used`;
+}
+
+function _dkimDeepSummary(dk) {
+    const keys = (dk && dk.keys) || [];
+    if (!keys.length) return '';
+    const bits = keys.map(k => k.bits).filter(b => b > 0);
+    const found = `${_count(keys.length, 'selector')} found`;
+    return bits.length ? `${found}, weakest ${Math.min(...bits)}-bit` : found;
+}
+
+// One entry per panel, in the order the card used to stack them. `spec` puts
+// the RFC-9989-only panels back behind the mode toggle: the class goes on the
+// whole sub-section, so the toggle hides its header with its body.
+function cardDetailSections(check) {
+    const sections = [];
+
+    if (check.strict_validation || check.legacy_validation) {
+        let body = '';
+        if (check.spec_comparison && check.strict_validation && check.legacy_validation) {
+            body += renderSpecToggle(check.spec_comparison);
+        }
+        if (check.strict_validation) {
+            body += `<div class="spec-dmarcbis">${renderStrictValidation(check.strict_validation)}</div>`;
+        }
+        if (check.legacy_validation) {
+            body += `<div class="spec-legacy is-hidden">${renderStrictValidation(check.legacy_validation, 'RFC 7489')}</div>`;
+        }
+        sections.push({
+            title: 'Strict Record Validation',
+            summary: _strictValidationSummary(check.strict_validation),
+            html: body,
+        });
+    }
+
+    if (check.attack_surface) {
+        sections.push({
+            title: 'Email Spoofing Attack Surface',
+            summary: _attackSurfaceSummary(check.attack_surface),
+            html: renderAttackSurface(check.attack_surface),
+        });
+    }
+
+    if (check._subdomain_audit) {
+        sections.push({
+            title: 'Subdomain Security',
+            summary: _subdomainAuditSummary(check._subdomain_audit),
+            html: renderSubdomainAudit(check._subdomain_audit),
+        });
+    }
+
+    if (check.tag_breakdown) {
+        sections.push({
+            title: 'DMARC Record Breakdown',
+            summary: _tagBreakdownSummary(check.tag_breakdown),
+            spec: 'spec-dmarcbis',
+            html: `<div class="spec-dmarcbis">${renderDmarcTagBreakdown(check.tag_breakdown)}</div>`,
+        });
+    }
+
+    if (check._spf_execution) {
+        sections.push({
+            title: 'SPF Evaluation Trace',
+            summary: _spfExecutionSummary(check._spf_execution),
+            html: renderSpfExecution(check._spf_execution),
+        });
+    }
+
+    if (check._tree_walk) {
+        sections.push({
+            title: 'DMARC Policy Discovery (Tree Walk)',
+            summary: _treeWalkSummary(check._tree_walk),
+            html: renderTreeWalk(check._tree_walk),
+        });
+    }
+
+    if (check.record_builder) {
+        sections.push({
+            title: check.record_builder.mode === 'first_record'
+                ? 'Your First DMARC Record' : 'Record Builder',
+            summary: '',
+            spec: 'spec-dmarcbis',
+            html: `<div class="spec-dmarcbis">${renderRecordBuilder(check.record_builder)}</div>`,
+        });
+    }
+
+    if (check.dmarcbis_readiness) {
+        const tile = (_execSummary && _execSummary.dmarcbis_readiness) || {};
+        sections.push({
+            title: 'RFC 9989 Readiness',
+            summary: tile.label || '',
+            spec: 'spec-dmarcbis',
+            html: `<div class="spec-dmarcbis">${renderDmarcbisReadiness(check.dmarcbis_readiness)}</div>`,
+        });
+    }
+
+    if (check._dmarc_eval) {
+        sections.push({
+            title: 'DMARC Evaluation',
+            summary: _dmarcEvalSummary(check._dmarc_eval),
+            html: renderDmarcEvaluation(check._dmarc_eval),
+        });
+    }
+
+    if (check._report_chain) {
+        sections.push({
+            title: 'DMARC Report Delivery Chain',
+            summary: _reportChainSummary(check._report_chain),
+            html: renderReportChain(check._report_chain),
+        });
+    }
+
+    if (check.spf_deep) {
+        sections.push({
+            title: 'SPF Record Analysis',
+            summary: '',
+            html: renderSpfDeepAnalysis(check.spf_deep),
+        });
+    }
+
+    if (check.dkim_deep) {
+        sections.push({
+            title: 'DKIM Key Analysis',
+            summary: _dkimDeepSummary(check.dkim_deep),
+            html: renderDkimKeyAnalysis(check.dkim_deep),
+        });
+    }
+
+    if (check._spf_tree) {
+        sections.push({
+            title: 'SPF Lookup Budget',
+            summary: _spfTreeSummary(check._spf_tree),
+            html: renderSpfTree(check._spf_tree),
+        });
+    }
+
+    if (check._change_history && check._change_history.length > 0) {
+        sections.push({
+            title: 'Change History',
+            icon: ICON.history,
+            summary: `${_count(check._change_history.length, 'change')} detected`,
+            html: renderChangeHistory(check._change_history),
+        });
+    } else if (check._change_status === 'first_audit') {
+        sections.push({
+            title: 'Change History',
+            icon: ICON.history,
+            summary: 'First audit',
+            html: `<div class="cd-first-audit">
+                <span class="cd-first-icon">${ICON.history}</span>
+                This domain is now tracked; run another audit later to see what changed.
+            </div>`,
+        });
+    }
+
+    if (check._consistency_findings && check._consistency_findings.length > 0) {
+        sections.push({
+            title: 'Consistency Findings',
+            summary: _count(check._consistency_findings.length, 'finding'),
+            html: renderConsistencyFindings(check._consistency_findings),
+        });
+    }
+
+    return sections;
+}
+
+// Built the way Change History already is (cd-section, cd-header, cd-body),
+// so the card's existing click handler and the is-hidden class carry over.
+function renderCardDetails(sections) {
+    const shown = sections.filter(s => s && s.html);
+    if (shown.length === 0) return '';
+
+    let inner = '';
+    for (const s of shown) {
+        const bodyId = `cd-body-${++_cdSectionSeq}`;
+        inner += `<div class="cd-section cd-subsection${s.spec ? ' ' + s.spec : ''}">
+            <div role="heading" aria-level="5">
+            <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${bodyId}">
+                ${s.icon ? `<span class="cd-header-icon">${s.icon}</span>` : ''}
+                <span class="cd-header-title">${escapeHtml(s.title)}</span>
+                ${s.summary ? `<span class="cd-header-count">${escapeHtml(s.summary)}</span>` : ''}
+                <span class="cd-chevron">${ICON.chevron}</span>
+            </div>
+            </div>
+            <div class="cd-body is-hidden" id="${bodyId}">${s.html}</div>
+        </div>`;
+    }
+
+    const outerId = `cd-body-${++_cdSectionSeq}`;
+    return `<div class="card-details-wrap">
+        <div class="cd-section card-details">
+            <div role="heading" aria-level="4">
+            <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${outerId}">
+                <span class="cd-header-title">Details</span>
+                <span class="cd-header-count">${_count(shown.length, 'section')}</span>
+                <span class="cd-chevron">${ICON.chevron}</span>
+            </div>
+            </div>
+            <div class="cd-body is-hidden" id="${outerId}">${inner}</div>
+        </div>
+    </div>`;
 }
 
 // ============================================================
@@ -1474,20 +1661,9 @@ function renderTtlBadge(ttlInfo) {
 function renderChangeHistory(changes) {
     if (!changes || changes.length === 0) return '';
 
-    // The heading wraps the toggle (a button cannot contain a heading), so
-    // Change History is reachable by heading navigation like the other
-    // sections of the card.
-    const cdBodyId = `cd-body-${++_cdSectionSeq}`;
-    let html = `<div class="cd-section">
-        <div role="heading" aria-level="4">
-        <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${cdBodyId}">
-            <span class="cd-header-icon">${ICON.history}</span>
-            <span class="cd-header-title">Change History</span>
-            <span class="cd-header-count">${changes.length} change${changes.length !== 1 ? 's' : ''} detected</span>
-            <span class="cd-chevron">${ICON.chevron}</span>
-        </div>
-        </div>
-        <div class="cd-body is-hidden" id="${cdBodyId}">`;
+    // The collapsible header and its count now come from the Details section
+    // this renders into, so this builds the timeline only.
+    let html = '';
 
     for (const change of changes) {
         const dateStr = change.timestamp ? new Date(change.timestamp + 'Z').toLocaleDateString('en-US', {
@@ -1516,7 +1692,6 @@ function renderChangeHistory(changes) {
             </div>`;
     }
 
-    html += `</div></div>`;
     return html;
 }
 
@@ -3179,6 +3354,22 @@ document.getElementById('pdf-btn').addEventListener('click', () => {
         syncToggleAllLabel();
     });
 })();
+
+// A link into a card has to open it. Scrolling to a collapsed row lands the
+// reader on a header with the answer still shut inside it. Used by the
+// executive summary buttons, the Priorities rows and a #check- URL hash.
+function openCard(id) {
+    const target = document.getElementById(id);
+    if (!target) return;
+    const card = target.closest('.result-card');
+    if (card) {
+        card.classList.add('expanded');
+        const header = card.querySelector('.result-header');
+        if (header) header.setAttribute('aria-expanded', 'true');
+        syncToggleAllLabel();
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function majorityExpanded() {
     const cards = document.querySelectorAll('.result-card');
