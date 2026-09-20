@@ -290,7 +290,9 @@ def test_a_recommendation_on_a_passing_card_gets_the_info_status():
              "tag_breakdown": {"health": {"status": "compatible",
                                           "reasons": ["removed tags: pct"]}}}
     rm = build_security_roadmap([dmarc])
-    row = next(i for i in rm["items"] if i["action"] == "Address: removed tags: pct")
+    # Doc 64: the row says what to do, not which health reason produced it.
+    row = next(i for i in rm["items"]
+               if i["action"] == "Remove the tag RFC 9989 retired: pct")
     assert row["status"] == "info"
     assert all(i["status"] != "pass" for i in rm["items"])
 
@@ -660,7 +662,8 @@ def test_view_priorities_button_only_with_rows(browser, fixture_result):
                                   [es, {"items": [{"protocol": "DMARC"}]}])
         without = page.evaluate("([es, rm]) => renderExecutiveSummary(es, rm)",
                                 [es, {"items": []}])
-        assert "View Priorities" in with_rows
-        assert "View Priorities" not in without
+        # Doc 64 renamed the section and the button that scrolls to it.
+        assert "What to do" in with_rows
+        assert "What to do" not in without
     finally:
         ctx.close()

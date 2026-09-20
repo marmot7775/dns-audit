@@ -505,6 +505,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
         # The roadmap gates on "fail", so an unread record contributes no item
         # and some minor nicety floats to the top. Presenting that as the
         # biggest risk implies the real ones were weighed, and they were not.
+        biggest_risk_detail = ""
         biggest_risk = (
             "This audit could not read part of this domain's DNS, so it cannot name the "
             f"biggest risk. The {unread_names} {unread_verb} not complete. Re-run the audit "
@@ -519,14 +520,21 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
         risk_candidates = [i for i in roadmap_items if i.get("priority") != "low"]
         if risk_candidates:
             top = risk_candidates[0]
-            biggest_risk = top.get("impact", top.get("action", ""))
+            # The action is the headline and the impact is the line under it.
+            # Showing the impact alone printed a card verdict ("SPF record
+            # configured") as the biggest risk, and sentences that start
+            # "These keys" with nothing for "these" to point at.
+            biggest_risk = top.get("action") or top.get("impact", "")
+            biggest_risk_detail = top.get("impact", "") if top.get("action") else ""
         elif roadmap_items:
-            biggest_risk = "No urgent risks found. The Priorities list below names smaller improvements."
+            biggest_risk = "No urgent risks found. The plan below names smaller improvements."
+            biggest_risk_detail = ""
         else:
             # An empty roadmap hides the Priorities list, so the sentence above
             # would point at nothing. Every fail or warn card has a roadmap row,
             # so an empty one means nothing that was assessed needs fixing.
             biggest_risk = "Nothing to fix. Every check the audit could assess passed."
+            biggest_risk_detail = ""
 
     # ── Part 4: has_record_builder flag ──────────────────────
     has_record_builder = dmarc.get("record_builder") is not None
@@ -584,7 +592,16 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
         _out_of_scope = [n for n in ("SPF", "DKIM", "DMARC")
                          if n not in _assessed_auth and not _unconfirmed(n)]
         if len(_assessed_auth) == 3:
-            deliverability_summary = "Your configuration looks solid. SPF, DKIM, and DMARC are properly set up, giving you the best chance of reaching inboxes."
+            # "Properly set up" is a claim about the records, not about whether
+            # the lookups ran. A warn card is a record that works and is weak,
+            # so the all-clear used to sit above a verdict of "significant gaps"
+            # and under a plan telling the reader what to change.
+            _auth_all_pass = all(check_map.get(n, {}).get("status") == "pass"
+                                 for n in ("SPF", "DKIM", "DMARC"))
+            if _auth_all_pass:
+                deliverability_summary = "Your configuration looks solid. SPF, DKIM, and DMARC are properly set up, giving you the best chance of reaching inboxes."
+            else:
+                deliverability_summary = "SPF, DKIM, and DMARC are all in place. The plan below has what to tighten."
         elif _assessed_auth:
             deliverability_summary = (
                 f"No inbox placement issues found in what this audit checked. "
@@ -642,6 +659,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict) -> Dict:
         "dmarcbis_readiness": dmarcbis_readiness,
         "protocol_coverage": protocol_coverage,
         "biggest_risk": biggest_risk,
+        "biggest_risk_detail": biggest_risk_detail,
         "biggest_risk_severity": biggest_risk_severity,
         "has_record_builder": has_record_builder,
         "deliverability_summary": deliverability_summary,
@@ -808,12 +826,26 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "action": "Consider DANE TLSA records",
                       "impact": "Without DANE, a sending server has no way to check your mail server's certificate against DNS; it trusts whichever certificate authority issued it."})
 
-    # RFC 9989 readiness gaps
+    # RFC 9989 readiness gaps. The reason strings are written for the health
+    # panel, so they are restated here as something to do: a row that reads
+    # "Address: Removed tags: pct, ri" is a label, not an instruction.
     if health.get("status") in ("compatible", "attention"):
         for reason in health.get("reasons", []):
-            items.append({"priority": "medium", "protocol": "DMARC",
-                          "action": f"Address: {reason}",
-                          "impact": "Record is not fully RFC 9989-ready."})
+            if reason.lower().startswith("removed tags:"):
+                _tags = [t.strip() for t in reason.split(":", 1)[1].split(",") if t.strip()]
+                _noun = "tag" if len(_tags) == 1 else "tags"
+                _impact = "Receivers on RFC 9989 ignore them."
+                if len(_tags) == 1:
+                    _impact = "Receivers on RFC 9989 ignore it."
+                if "pct" in _tags:
+                    _impact = (_impact[:-1] + ", and pct never gave predictable control.")
+                items.append({"priority": "medium", "protocol": "DMARC",
+                              "action": f"Remove the {_noun} RFC 9989 retired: {', '.join(_tags)}",
+                              "impact": _impact})
+            else:
+                items.append({"priority": "medium", "protocol": "DMARC",
+                              "action": reason,
+                              "impact": ""})
 
     # ── Low ─────────────────────────────────────────────────
     bimi = check_map.get("BIMI", {})
@@ -834,9 +866,37 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # so subdomains are already covered. Worth a low-priority note only
     # because an explicit np= is one less thing for a reader of the record
     # to infer, not because anything is unprotected without it.
+    #
+    # Unless sp= is published weaker than p=, in which case subdomains do not
+    # inherit the enforcing policy and the note above is false about this
+    # domain. That gap is the finding, and the np row is dropped for it: the
+    # only DMARC row on ibm.com used to be "Consider adding an explicit np="
+    # with "subdomains already inherit your enforcing policy" beside a card
+    # saying sp=none contradicts p=reject.
     if _assessed(dmarc) and dmarc.get("record"):
         _dmarc_tags = _parse_record_tags(dmarc["record"])
-        if _dmarc_tags.get("p", "").lower() in ("reject", "quarantine") and "np" not in _dmarc_tags:
+        _p_val = _dmarc_tags.get("p", "").lower()
+        _sp_val = _dmarc_tags.get("sp", "").lower()
+        _pol_rank = {"none": 0, "quarantine": 1, "reject": 2}
+        _sp_is_weaker = (_p_val in ("reject", "quarantine") and _sp_val in _pol_rank
+                         and _pol_rank[_sp_val] < _pol_rank[_p_val])
+        if _sp_is_weaker:
+            if _sp_val == "none":
+                _sp_impact = (
+                    "sp=none leaves every subdomain unprotected while the "
+                    "organizational domain is enforced; spoofed mail from any "
+                    "subdomain passes."
+                )
+            else:
+                _sp_impact = (
+                    f"sp={_sp_val} gives subdomains a weaker policy than the "
+                    f"organizational domain; mail that fails authentication from "
+                    f"any subdomain is {_sp_val}d rather than {_p_val}ed."
+                )
+            items.append({"priority": "high", "protocol": "DMARC",
+                          "action": f"Bring the subdomain policy up to p={_p_val}",
+                          "impact": _sp_impact})
+        elif _p_val in ("reject", "quarantine") and "np" not in _dmarc_tags:
             items.append({"priority": "low", "protocol": "DMARC",
                           "action": "Consider adding an explicit np= tag",
                           "impact": "Purely optional. Subdomains already inherit your enforcing policy without it."})
@@ -853,11 +913,17 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         name = card.get("name", "")
         if name in covered or card.get("status") not in ("fail", "warn"):
             continue
+        # The impact is why the row matters. A card verdict states what was
+        # found ("SPF record configured"), so using it here printed the
+        # current state where the reason belongs, and then carried it into
+        # the biggest-risk slot. The card's fix text is the only other
+        # sentence these rows have, and it is already the action, so these
+        # rows carry no impact: the action shows on its own.
         fix = _roadmap_fix_text(card)
         items.append({"priority": "high" if card["status"] == "fail" else "low",
                       "protocol": name,
                       "action": fix or f"Review the {name} findings",
-                      "impact": card.get("verdict") or fix or ""})
+                      "impact": ""})
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -1707,6 +1773,14 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             i for i in raw["issues"]
             if i.get("issue") != "No aggregate reporting (rua) configured"
         ]
+        # The engine set raw["status"] from the issues list before this strip,
+        # so a domain whose only issue was the rua gap kept a warning status
+        # with nothing left on the card to show for it: every detail good or
+        # info, and a Warning pill driving the Warnings tile.
+        if raw.get("status") in ("error", "warning"):
+            _left = [i.get("severity") for i in raw["issues"]]
+            raw["status"] = ("error" if "error" in _left
+                             else "warning" if "warning" in _left else "ok")
 
     status = _map_status(raw.get("status", "error"))
     policy = raw.get("policy", "")
@@ -1806,12 +1880,17 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         elif pct < 100:
             verdict = _partial
             status = "warn"
-        elif not raw.get("rua"):
+        elif not raw.get("rua") and not is_no_mail:
             # Amber, not green and not red. The policy is enforcing and the
             # record is compliant, since rua is OPTIONAL in RFC 7489 section
             # 6.3 and RFC 9989, so this is not a failure. But the owner cannot
             # see what their own policy is doing, and a green card would say
             # there is nothing to look at.
+            #
+            # On a no-mail domain there is no legitimate mail to monitor, so
+            # there is nothing for a report to show. The card says as much in
+            # its explanation and in an info detail row; grading it amber as
+            # well contradicted both.
             status = "warn"
         else:
             status = "pass"
@@ -3647,6 +3726,111 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
     return {"sections": sections}
 
 
+def _dmarc_end_state(tags: Dict[str, str], domain: str = "") -> tuple:
+    """The one enforcement end state for a DMARC record, and the edits to it.
+
+    Returns (record, changes). Three panels used to propose a record for the
+    same domain and none of them agreed: the Migration Path built its target
+    from a fixed list of four tags, so it silently dropped adkim, aspf and
+    anything else the record had; the Record Builder kept those but never
+    added a rua when the record had none. Both now come from here, so the
+    end state is one record.
+
+    The readiness panel's suggested_record is deliberately not this: it is
+    the next edit at the current policy, and it is labelled as such.
+    """
+    rec = {k.lower(): v for k, v in tags.items() if k}
+    rec["v"] = "DMARC1"
+    changes: List[Dict] = []
+
+    # 1. Policy progression. p=reject is the end state.
+    cur_p = (rec.get("p") or "none").lower()
+    if cur_p != "reject":
+        rec["p"] = "reject"
+        changes.append({
+            "tag": "p", "action": "changed", "old": cur_p, "value": "reject",
+            "reason": ("Upgrade from quarantine to reject for full spoofing protection."
+                       if cur_p == "quarantine" else
+                       "Enforce reject to block spoofed mail. Use t=y if you need a testing period first."),
+        })
+
+    target_p = rec["p"]
+
+    # 2. Subdomain policy, stated rather than inherited.
+    cur_sp = (rec.get("sp") or "").lower()
+    if cur_sp != target_p:
+        rec["sp"] = target_p
+        changes.append({
+            "tag": "sp", "action": "changed" if cur_sp else "added",
+            "old": cur_sp if cur_sp else "(not set)", "value": target_p,
+            "reason": "Makes the subdomain policy explicit; it already inherits the root policy.",
+        })
+
+    # 3. Non-existent subdomain policy.
+    cur_np = (rec.get("np") or "").lower()
+    if "np" not in rec:
+        rec["np"] = target_p
+        changes.append({
+            "tag": "np", "action": "added", "value": target_p,
+            "reason": "Makes the non-existent subdomain policy explicit; the tag comes from RFC 9091.",
+        })
+    elif cur_np == "none" and target_p == "reject":
+        rec["np"] = "reject"
+        changes.append({
+            "tag": "np", "action": "changed", "old": "none", "value": "reject",
+            "reason": "Closes non-existent subdomain gap. Matches root policy.",
+        })
+
+    # 4. Reporting. Without rua nothing in the end state can be verified,
+    #    and the migration path's first step adds it, so the target has it.
+    if not rec.get("rua"):
+        rec["rua"] = f"mailto:dmarc@{domain}" if domain else "mailto:dmarc@example.com"
+        changes.append({
+            "tag": "rua", "action": "added", "value": rec["rua"],
+            "reason": "Aggregate reporting address. Replace with your actual address.",
+        })
+
+    # 5. fo. RFC 9989 section 4.7: the tag is ignored without ruf=, and
+    #    nothing here adds ruf, so fo only appears when ruf is already set.
+    if rec.get("ruf"):
+        cur_fo = rec.get("fo", "")
+        if cur_fo != "1":
+            rec["fo"] = "1"
+            changes.append({
+                "tag": "fo", "action": "changed" if cur_fo else "added",
+                "old": cur_fo if cur_fo else "(not set)", "value": "1",
+                "reason": "Reports when either SPF or DKIM fails, not just when both do.",
+            })
+    else:
+        rec.pop("fo", None)
+
+    # 6. Tags RFC 9989 retired.
+    _dep_reasons = {
+        "pct": "Removed in RFC 9989. Replaced by the t= tag.",
+        "rf": "Removed in RFC 9989. Only afrf was ever implemented.",
+        "ri": "Removed in RFC 9989. Receivers standardize on daily reports.",
+    }
+    for dep in ("pct", "rf", "ri"):
+        if dep in rec:
+            changes.append({
+                "tag": dep, "action": "removed", "old": rec[dep], "value": None,
+                "reason": _dep_reasons[dep],
+            })
+            del rec[dep]
+
+    # 7. Test mode has nothing left to test at full reject.
+    if rec.get("t") == "y" and rec.get("p") == "reject":
+        rec.pop("t", None)
+        changes.append({
+            "tag": "t", "action": "removed", "old": "y", "value": None,
+            "reason": "Test mode is no longer needed at full reject enforcement.",
+        })
+
+    parts = [f"{k}={rec[k]}" for k in _RECORD_TAG_ORDER if k in rec]
+    parts += [f"{k}={v}" for k, v in rec.items() if k not in _RECORD_TAG_ORDER]
+    return "; ".join(parts), changes
+
+
 def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str, domain: str = "") -> Optional[Dict]:
     """Generate a personalized step-by-step migration path to RFC 9989 Ready.
 
@@ -3831,14 +4015,11 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "tags_changed": deprecated,
         })
 
-    # Final target record. fo=1 is only meaningful alongside ruf= (RFC 9989
-    # section 4.7); this migration path does not add ruf, so fo=1 is only
-    # included when the current record already has it.
-    _target_parts = ["v=DMARC1", "p=reject", "sp=reject", "np=reject"]
-    if has_ruf:
-        _target_parts.append("fo=1")
-    _target_parts.append(f"rua={rua_placeholder}")
-    target = "; ".join(_target_parts)
+    # Final target record. The same end state the Record Builder recommends,
+    # from the same function, so the two panels cannot propose different
+    # records for one domain. fo=1 is only meaningful alongside ruf= (RFC
+    # 9989 section 4.7), which _dmarc_end_state enforces.
+    target, _ = _dmarc_end_state(tags, domain)
 
     return {
         "status": "migration",
@@ -3904,6 +4085,7 @@ def _build_record_builder(
         }
 
     # ── Build recommended record from current ──────────────────
+    # One end state, shared with the Migration Path's target record.
     rec_tags: Dict[str, str] = {}
     for part in record.split(";"):
         part = part.strip()
@@ -3911,109 +4093,7 @@ def _build_record_builder(
             k, _, v = part.partition("=")
             rec_tags[k.strip().lower()] = v.strip()
 
-    changes: list = []
-
-    # 1. Fix policy progression — target is p=reject for RFC 9989 Ready
-    cur_p = rec_tags.get("p", "none").lower()
-    if cur_p != "reject":
-        rec_tags["p"] = "reject"
-        if cur_p == "quarantine":
-            reason = "Upgrade from quarantine to reject for full spoofing protection."
-        else:
-            reason = "Enforce reject to block spoofed mail. Use t=y if you need a testing period first."
-        changes.append({
-            "tag": "p", "action": "changed",
-            "old": cur_p, "value": "reject",
-            "reason": reason,
-        })
-
-    # 2. Fix sp
-    cur_sp = rec_tags.get("sp", "").lower()
-    target_p = rec_tags["p"]
-    if cur_sp != target_p:
-        old_val = cur_sp if cur_sp else "(not set)"
-        rec_tags["sp"] = target_p
-        changes.append({
-            "tag": "sp", "action": "changed" if cur_sp else "added",
-            "old": old_val, "value": target_p,
-            "reason": "Makes the subdomain policy explicit; it already inherits the root policy.",
-        })
-
-    # 3. Add np=
-    if "np" not in rec_tags:
-        rec_tags["np"] = target_p
-        changes.append({
-            "tag": "np", "action": "added", "value": target_p,
-            "reason": "Makes the non-existent subdomain policy explicit; the tag comes from RFC 9091.",
-        })
-    elif rec_tags.get("np", "").lower() == "none" and target_p == "reject":
-        rec_tags["np"] = "reject"
-        changes.append({
-            "tag": "np", "action": "changed",
-            "old": "none", "value": "reject",
-            "reason": "Closes non-existent subdomain gap. Matches root policy.",
-        })
-
-    # 4. Fix fo. RFC 9989 section 4.7: "This tag's content MUST be ignored
-    # if a ruf tag is not also specified." This builder does not add ruf,
-    # so setting fo=1 only does something when the current record already
-    # has ruf.
-    if rec_tags.get("ruf"):
-        cur_fo = rec_tags.get("fo", "")
-        if cur_fo != "1":
-            old_val = cur_fo if cur_fo else "(not set)"
-            rec_tags["fo"] = "1"
-            changes.append({
-                "tag": "fo", "action": "changed" if cur_fo else "added",
-                "old": old_val, "value": "1",
-                "reason": "Reports when either SPF or DKIM fails, not just when both do.",
-            })
-
-    # 5. (removed) psd= is not injected. RFC 9989 section 4.7 makes it
-    # OPTIONAL with a default of "u", and psd=n declares this exact name the
-    # Organizational Domain: published on a subdomain it terminates the tree
-    # walk there, changing relaxed-alignment scope and external rua
-    # authorization.
-
-    # 6. Remove deprecated tags
-    for dep in ("pct", "rf", "ri"):
-        if dep in rec_tags:
-            dep_reasons = {
-                "pct": "Removed in RFC 9989. Replaced by the t= tag.",
-                "rf": "Removed in RFC 9989. Only afrf was ever implemented.",
-                "ri": "Removed in RFC 9989. Receivers standardize on daily reports.",
-            }
-            changes.append({
-                "tag": dep, "action": "removed",
-                "old": rec_tags[dep], "value": None,
-                "reason": dep_reasons[dep],
-            })
-            del rec_tags[dep]
-
-    # 7. Remove t=y if present and policy is already reject
-    if rec_tags.get("t") == "y" and rec_tags.get("p") == "reject":
-        rec_tags.pop("t", None)
-        changes.append({
-            "tag": "t", "action": "removed",
-            "old": "y", "value": None,
-            "reason": "Test mode is no longer needed at full reject enforcement.",
-        })
-
-    # 8. (removed) The old rule rewrote every psd=y to psd=n without ever
-    # testing whether the domain is a public suffix, so it told a registry
-    # operator with a correct record to break it.
-
-    # Assemble recommended record in canonical order
-    rec_parts = []
-    for tag_key in _RECORD_TAG_ORDER:
-        if tag_key in rec_tags:
-            rec_parts.append(f"{tag_key}={rec_tags[tag_key]}")
-    # Include any remaining tags not in canonical order (preserve unknowns)
-    for tag_key, val in rec_tags.items():
-        if tag_key not in _RECORD_TAG_ORDER:
-            rec_parts.append(f"{tag_key}={val}")
-
-    recommended = "; ".join(rec_parts)
+    recommended, changes = _dmarc_end_state(rec_tags, domain)
 
     return {
         "mode": "fix",

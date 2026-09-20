@@ -35,6 +35,7 @@ DMARC_SECTIONS = [
     "RFC 9989 Readiness",
     "DMARC Evaluation",
     "DMARC Report Delivery Chain",
+    "Authentication resilience",
     "Change History",
 ]
 
