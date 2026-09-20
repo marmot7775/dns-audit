@@ -1024,13 +1024,16 @@ def _dmarc_deep_dive(data, S, number=3):
     # policy and cleans the record. The plan in section 2 carries this one.
     readiness = dmarc.get("dmarcbis_readiness") or {}
     if readiness.get("suggested_record"):
+        # Hoisted: a backslash inside an f-string expression is a syntax
+        # error on the 3.11 CI runs, and legal on the 3.12 this is written on.
+        _bullet = _glyphs("\u2022")
         els.append(Spacer(1, SP_MD))
         els.append(Paragraph("<b>Next edit: clean up the record, same policy</b>",
                              S["body_small"]))
         els.extend(_record_block(readiness["suggested_record"], S, small=True))
         for change in readiness.get("changes", []):
             els.append(Paragraph(
-                f"{_glyphs('\u2022')}  <b>{_safe(change.get('tag', ''))}</b> "
+                f"{_bullet}  <b>{_safe(change.get('tag', ''))}</b> "
                 f"({_safe(change.get('type', ''))}): {_safe(change.get('reason', ''))}",
                 S["body_small"]))
 
