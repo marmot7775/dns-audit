@@ -5518,9 +5518,18 @@ input[type="search"],
     gap: 0.5rem;
     padding: 0.15rem 0;
     font-size: var(--font-xs);
+    /* Doc 68: the row is a tag, a source badge, a spec reference and a
+       reason sentence. On one unwrapped line at phone width the reason
+       started past the right edge and the container clipped rather than
+       scrolled, so it could not be read at all. */
+    flex-wrap: wrap;
 }
 
-.dbis-dep-reason { color: var(--text-muted); }
+/* The reason always starts its own line under the tags. */
+.dbis-dep-reason {
+    color: var(--text-muted);
+    flex-basis: 100%;
+}
 
 .dbis-np-chain {
     margin: 0.15rem 0 0.3rem 1.5rem;
@@ -5552,7 +5561,8 @@ input[type="search"],
     font-family: var(--font-mono);
     font-size: var(--font-xs);
     color: var(--text-muted);
-    flex-shrink: 0;
+    /* No flex-shrink: 0. It kept the reference on the badges' line however
+       narrow the row got, which is what pushed the reason off screen. */
 }
 
 .dbis-editorial-note {
