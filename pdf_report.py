@@ -566,12 +566,18 @@ def _executive_summary_page(data, S, number=1):
         _risk_glyph, _risk_title = WARN_ICON, "YOUR BIGGEST RISK RIGHT NOW"
         _risk_bg, _risk_rule = FAIL_BG, FAIL_CLR
     if biggest_risk:
+        # Doc 64: biggest_risk is the top item's action and the detail is its
+        # impact. Printing the action alone would drop the sentence this
+        # callout used to carry.
         risk_content = [
             [Paragraph(
                 f'<font color="{_risk_rule.hexval()}">{_risk_glyph}  {_risk_title}</font>',
                 S["callout"]),],
             [Paragraph(_safe(biggest_risk), S["callout_body"])],
         ]
+        _risk_detail = es.get("biggest_risk_detail", "")
+        if _risk_detail:
+            risk_content.append([Paragraph(_safe(_risk_detail), S["callout_body"])])
         rt = Table(risk_content, colWidths=[6.5*inch])
         rt.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,-1), _risk_bg),
