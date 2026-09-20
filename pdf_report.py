@@ -146,8 +146,11 @@ LIGHT_BLUE_BG = colors.HexColor("#eaf0fb")
 # The order _protocol_details renders protocol cards in, and the shorter names
 # the table of contents uses for two of them. Both read from here so the
 # contents page cannot promise a section the body does not contain.
+# The site's card order: the three email authentication checks first, then
+# the rest. DMARC is in this list now because the Checks section renders all
+# twelve; its deep material is Appendix A.
 PROTOCOL_SECTION_ORDER = [
-    "SPF", "DKIM", "MTA-STS", "TLS-RPT", "DANE", "DNSSEC",
+    "DMARC", "SPF", "DKIM", "MTA-STS", "TLS-RPT", "DANE", "DNSSEC",
     "CAA", "MX Records", "Nameservers", "BIMI", "Certificate Transparency",
 ]
 PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
@@ -161,6 +164,10 @@ STATUS_LBL = {"pass": "Pass",   "warn": "Warning", "fail": "Issue",
 # Helvetica has no glyph for U+26A0 (warning sign), so it rendered as a
 # filled .notdef box on every warning line. A bold "!" needs no font.
 WARN_ICON = "<b>!</b>"
+# The same sentence the site prints under an end-state record (Doc 64).
+END_STATE_NOTE = ("Reach this through the migration steps, moving only when your "
+                  "aggregate reports show every legitimate sender aligned. There is "
+                  "no date on that.")
 DETAIL_ICON = {"good": "\u2713", "error": "\u2717", "warning": WARN_ICON, "info": "\u2022"}
 # The card statuses in the same four glyphs; absent and info share the bullet
 # and are told apart by colour.
@@ -303,7 +310,7 @@ def _styles():
     s["record"]      = ParagraphStyle("R",  fontName=FONTS["mono"],           fontSize=9.5, textColor=RECORD_FG, leading=13)
     s["record_sm"]   = ParagraphStyle("RS", fontName=FONTS["mono"],           fontSize=8.5, textColor=RECORD_FG, leading=12)
     s["fix_label"]   = ParagraphStyle("FL", fontName=FONTS["sans_bold"],    fontSize=10, textColor=PASS_CLR, leading=13, spaceAfter=3)
-    s["fix_text"]    = ParagraphStyle("FT", fontName=FONTS["sans"],         fontSize=11, textColor=TEXT_PRI, leading=16)
+    s["fix_text"]    = ParagraphStyle("FT", fontName=FONTS["sans"],         fontSize=10, textColor=TEXT_PRI, leading=14)
     s["toc"]         = ParagraphStyle("TOC", fontName=FONTS["sans"],        fontSize=11, textColor=NAVY, leading=18)
     s["callout"]     = ParagraphStyle("CO", fontName=FONTS["sans_bold"],    fontSize=11, textColor=FAIL_CLR, leading=16)
     s["callout_body"]= ParagraphStyle("CB", fontName=FONTS["sans"],         fontSize=11, textColor=TEXT_PRI, leading=16)
@@ -312,7 +319,12 @@ def _styles():
     s["section_num"] = ParagraphStyle("SN", fontName=FONTS["sans_bold"],    fontSize=10, textColor=colors.white, leading=14)
     s["page_title"]  = ParagraphStyle("PG", fontName=FONTS["sans_bold"],    fontSize=20, textColor=NAVY, leading=26, spaceBefore=4, spaceAfter=8)
     for k, clr in [("good",PASS_CLR),("warning",WARN_CLR),("error",FAIL_CLR),("info",TEXT_SEC)]:
-        s[f"d_{k}"] = ParagraphStyle(f"D{k}", fontName=FONTS["sans"], fontSize=10.5, textColor=clr, leading=15, spaceBefore=1, spaceAfter=1, leftIndent=12)
+        s[f"d_{k}"] = ParagraphStyle(f"D{k}", fontName=FONTS["sans"], fontSize=10, textColor=clr, leading=13, spaceBefore=0.5, spaceAfter=0.5, leftIndent=12)
+    # The Checks section carries all twelve checks (Doc 65), so the card
+    # title is a heading inside a section, not a section heading.
+    s["card_title"] = ParagraphStyle("CT2", fontName=FONTS["sans_bold"], fontSize=13,
+                                     textColor=TEXT_PRI, leading=17,
+                                     spaceBefore=2, spaceAfter=2)
     return s
 
 
@@ -470,6 +482,10 @@ def _cover_page(data, S, toc_items=None):
     els.append(Spacer(1, SP_XS))
     for item in (toc_items or []):
         els.append(Paragraph(item, S["toc"]))
+    if any("Part 2" in i for i in (toc_items or [])):
+        els.append(Spacer(1, SP_XS))
+        els.append(Paragraph("Part 1 is the report. Part 2 holds the detail behind it.",
+                             S["body_small"]))
     els.append(Spacer(1, SP_MD))
 
     # Scope line. A scoped report that does not say it is scoped implies
@@ -530,7 +546,7 @@ def _executive_summary_page(data, S, number=1):
     """Build the executive summary page."""
     es = data.get("executive_summary", {})
     els = [PageBreak()]
-    els.extend(_section_header(str(number), "Executive Summary", S))
+    els.extend(_section_header(str(number), "Summary", S))
 
     # Verdict
     verdict = es.get("verdict", "")
@@ -666,12 +682,100 @@ def _executive_summary_page(data, S, number=1):
 # Page 3: Priorities
 # ================================================================
 
+def _plan_confirm_line(card):
+    """Doc 64's confirm line, with the propagation time when the card has one."""
+    text = ("Run this audit again after the change has propagated. "
+            "This item disappears when the check passes.")
+    ttl = (card or {}).get("ttl_info") or {}
+    if ttl.get("ttl"):
+        text += (f" The current {card.get('name', 'DNS')} record has a TTL of "
+                 f"{ttl['ttl']}s ({ttl.get('human', '')}), so allow that long "
+                 "for resolvers to pick up the change.")
+    return text
+
+
+def _plan_what_to_change(data, item, card, S):
+    """The record to publish, or the card's fix text, or a pointer.
+
+    The same choice the web row makes: for DMARC the readiness panel's next
+    edit, otherwise the card's fix_records. Nothing here invents a record.
+    """
+    protocol = item.get("protocol", "")
+    readiness = (card or {}).get("dmarcbis_readiness") or {}
+    if protocol == "DMARC" and readiness.get("suggested_record"):
+        host = f"_dmarc.{_strip_html(data.get('domain', ''))}"
+        els = [Paragraph(f"TXT record at <b>{_safe(host)}</b>", S["body_small"])]
+        els.extend(_record_block(readiness["suggested_record"], S, small=True))
+        els.append(Paragraph(
+            "This is the next edit at your current policy. Appendix A carries "
+            "the migration steps and the enforcement end state.", S["body_tiny"]))
+        return els
+
+    fix_records = (card or {}).get("fix_records") or []
+    if fix_records:
+        els = []
+        for fr in fix_records:
+            els.append(Paragraph(
+                f"{_safe(fr.get('type', 'TXT'))} record at <b>{_safe(fr.get('host', ''))}</b>",
+                S["body_small"]))
+            els.extend(_record_block(fr.get("value") or fr.get("suggested") or "",
+                                     S, small=True))
+            if fr.get("comment"):
+                els.append(Paragraph(_safe(fr["comment"]), S["body_tiny"]))
+        return els
+
+    fix = (card or {}).get("fix") or ""
+    if fix:
+        return [Paragraph(_safe(_strip_html(fix)).replace("\n", "<br/>"), S["body"])]
+
+    return [Paragraph(f"See the {_safe(protocol)} check in section 3.", S["body"])]
+
+
+def _plan_item(data, item, S):
+    """One roadmap item: the action, why it matters, what to change, how to confirm."""
+    priority = item.get("priority", "low")
+    p_clr = PRIORITY_CLR.get(priority, TEXT_SEC)
+    st = item.get("status")
+    s_clr = STATUS_CLR.get(st, NEUTRAL_CLR)
+    glyph = STATUS_GLYPH.get(st, "\u2022")
+    card = _get_check(data, item.get("protocol", "")) or {}
+
+    head = Table([[
+        Paragraph(f'<font color="{s_clr.hexval()}">{_glyphs(glyph)}</font>', S["body"]),
+        Paragraph(f"<b>{_safe(item.get('action', ''))}</b>", S["body_large"]),
+        Paragraph(f'<font color="{p_clr.hexval()}" size="9"><b>{priority.upper()}</b></font>',
+                  S["body_small"]),
+    ]], colWidths=[0.3*inch, 5.2*inch, 1.0*inch])
+    head.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("ALIGN", (2,0), (2,0), "RIGHT"),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+    ]))
+
+    body = [head, Paragraph(f"{_safe(item.get('protocol', ''))}", S["body_tiny"])]
+
+    impact = item.get("impact", "")
+    if impact:
+        body.append(Paragraph("<b>Why it matters</b>", S["body_small"]))
+        body.append(Paragraph(_safe(impact), S["body"]))
+
+    body.append(Paragraph("<b>What to change</b>", S["body_small"]))
+    body.extend(_plan_what_to_change(data, item, card, S))
+
+    body.append(Paragraph("<b>How to confirm</b>", S["body_small"]))
+    body.append(Paragraph(_safe(_plan_confirm_line(card)), S["body"]))
+    body.append(Spacer(1, SP_MD))
+    body.append(HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=SP_MD))
+    return [KeepTogether(body)]
+
+
 def _roadmap_page(data, S, number=2):
     """Build the Priorities section: the one prioritized list, as on the web."""
     roadmap = data.get("security_roadmap", {})
     items = roadmap.get("items", [])
     els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "Priorities", S))
+    els.extend(_section_header(str(number), "What to do", S))
 
     # Summary
     summary = roadmap.get("summary", "")
@@ -705,44 +809,13 @@ def _roadmap_page(data, S, number=2):
         els.append(tier_bar)
         els.append(Spacer(1, SP_MD))
 
-    # Roadmap items table
-    if items:
-        header = [
-            Paragraph("", S["body_small"]),
-            Paragraph("<b>Priority</b>", S["body_small"]),
-            Paragraph("<b>Protocol</b>", S["body_small"]),
-            Paragraph("<b>Action</b>", S["body_small"]),
-            Paragraph("<b>Business Impact</b>", S["body_small"]),
-        ]
-        rows = [header]
-        for item in items:
-            p = item.get("priority", "low")
-            p_clr = PRIORITY_CLR.get(p, TEXT_SEC)
-            st = item.get("status")
-            s_clr = STATUS_CLR.get(st, NEUTRAL_CLR)
-            glyph = STATUS_GLYPH.get(st, "\u2022")
-            rows.append([
-                Paragraph(f'<font color="{s_clr.hexval()}">{_glyphs(glyph)}</font>', S["body"]),
-                Paragraph(f'<font color="{p_clr.hexval()}"><b>{p.upper()}</b></font>', S["body_small"]),
-                Paragraph(_safe(item.get("protocol", "")), S["body"]),
-                Paragraph(_safe(item.get("action", "")), S["body"]),
-                Paragraph(_safe(item.get("impact", "")), S["body_small"]),
-            ])
-        # Priority needs room for CRITICAL in bold caps and Protocol for
-        # MTA-STS and TLS-RPT; at 0.8in both wrapped mid-word. The width
-        # comes out of Business Impact, which has the most slack.
-        rt = Table(rows, colWidths=[0.3*inch, 1.0*inch, 0.95*inch, 2.1*inch, 2.15*inch])
-        cmds = [
-            ("VALIGN", (0,0), (-1,-1), "TOP"),
-            ("TOPPADDING", (0,0), (-1,-1), 5),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-            ("LINEBELOW", (0,0), (-1,0), 0.5, NAVY),
-            ("LINEBELOW", (0,1), (-1,-2), 0.3, BORDER),
-            ("BACKGROUND", (0,0), (-1,0), SURFACE_BG),
-        ]
-        _alt_rows(cmds, len(rows))
-        rt.setStyle(TableStyle(cmds))
-        els.append(rt)
+    # One block per item, in roadmap order, carrying the same three parts as
+    # the web row. The table this replaces gave a line per item with no
+    # record and a "Business Impact" column, so a reader who wanted to act
+    # had to find the check further down and assemble the change there.
+    for item in items:
+        els.extend(_plan_item(data, item, S))
+
     # No else branch: roadmap["summary"], printed above, already covers an
     # empty items list for every case (a real all-clear, a scoped run that
     # names what did not run, and a failed lookup that says "this is not an
@@ -763,72 +836,14 @@ def _dmarc_deep_dive(data, S, number=3):
         return []
 
     els = [PageBreak()]
-    els.extend(_section_header(str(number), "DMARC Deep Dive", S))
+    els.extend(_section_header(str(number), "DMARC in depth", S))
+    els.append(Paragraph(
+        "The evidence behind the DMARC check in section 3. Its status, "
+        "verdict, record and findings are there; what follows is the "
+        "validation, the tag by tag reading, and the records this audit "
+        "would publish.", S["body_small"]))
 
     status = dmarc.get("status", "pass")
-    s_clr = STATUS_CLR.get(status, TEXT_SEC)
-    s_lbl = dmarc.get("pill_label") or STATUS_LBL.get(status, "Info")
-
-    # Status + verdict
-    hdr = Table([
-        [Paragraph("<b>DMARC</b>", S["heading"]),
-         Paragraph(f'<font color="{s_clr.hexval()}" size="10"><b> {s_lbl} </b></font>', S["body"])],
-    ], colWidths=[5.0*inch, 1.5*inch])
-    hdr.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("ALIGN", (1,0), (1,0), "RIGHT"),
-        ("TOPPADDING", (0,0), (-1,-1), 0),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
-    ]))
-    els.append(hdr)
-
-    verdict = dmarc.get("verdict", "")
-    if verdict:
-        els.append(Paragraph(_safe(verdict), S["verdict"]))
-
-    # Current record
-    record = dmarc.get("record", "")
-    if record:
-        els.append(Paragraph("Current Record", S["subheading"]))
-        els.extend(_record_block(record, S))
-
-    # Findings and fix, the same way _protocol_card renders every other
-    # check. DMARC has no _protocol_card pass (it renders here instead, not
-    # in _protocol_details), so without this the per-tag findings this check
-    # computed (a broken reporting destination, a missing record, a syntax
-    # error) never reach the document at all.
-    details = dmarc.get("details", [])
-    for d in details:
-        dt = d.get("type", "info")
-        icon = DETAIL_ICON.get(dt, "•")
-        sk = f"d_{dt}" if f"d_{dt}" in S else "d_info"
-        els.append(Paragraph(f"{_glyphs(icon)}  {_safe(d.get('text', ''))}", S[sk]))
-
-    explanation = dmarc.get("explanation", "")
-    if explanation:
-        exp_text = _strip_html(explanation)
-        if exp_text and exp_text != verdict:
-            els.append(Spacer(1, SP_SM))
-            els.append(Paragraph(_safe(exp_text), S["body_small"]))
-
-    fix = dmarc.get("fix", "")
-    if fix and status in ("warn", "fail", "absent"):
-        fp = _strip_html(fix)
-        fs = _safe(fp).replace("\n", "<br/>")
-        fc = [Paragraph("<b>RECOMMENDED FIX</b>", S["fix_label"]),
-              Paragraph(fs, S["fix_text"])]
-        ft = Table([[fc]], colWidths=[6.5*inch])
-        ft.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,-1), FIX_BG),
-            ("TOPPADDING", (0,0), (-1,-1), 8),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
-            ("LEFTPADDING", (0,0), (-1,-1), 10),
-            ("RIGHTPADDING", (0,0), (-1,-1), 10),
-            ("LINEBEFORE", (0,0), (0,-1), 2.5, FIX_BORDER),
-            ("ROUNDEDCORNERS", [0,4,4,0]),
-        ]))
-        els.append(Spacer(1, SP_SM))
-        els.append(ft)
 
     # RFC 9989 Health Verdict
     tb = dmarc.get("tag_breakdown") or {}
@@ -971,11 +986,13 @@ def _dmarc_deep_dive(data, S, number=3):
             els.append(wt)
             els.append(Spacer(1, SP_SM))
 
-    # Record Builder: current vs recommended
+    # The two records, labelled the way the site labels them (Doc 64). One
+    # is the next edit at the current policy, the other the end state; three
+    # panels used to propose records with nothing to say which was which.
     rb = tb.get("record_builder") or dmarc.get("record_builder")
     if rb and rb.get("mode") != "ready":
         els.append(Spacer(1, SP_MD))
-        els.append(Paragraph("Record Builder: Current vs. Recommended", S["heading2"]))
+        els.append(Paragraph("Record Builder", S["heading2"]))
 
         current = rb.get("current_record")
         recommended = rb.get("recommended_record")
@@ -985,8 +1002,9 @@ def _dmarc_deep_dive(data, S, number=3):
             els.extend(_record_block(current, S, small=True))
 
         if recommended:
-            els.append(Paragraph("Recommended record:", S["body_small"]))
+            els.append(Paragraph("<b>End state: enforcement</b>", S["body_small"]))
             els.extend(_record_block(recommended, S, small=True))
+            els.append(Paragraph(END_STATE_NOTE, S["body_tiny"]))
 
         changes = rb.get("changes", [])
         if changes:
@@ -1001,6 +1019,20 @@ def _dmarc_deep_dive(data, S, number=3):
                     f"{_glyphs(action_icon)}  <b>{_safe(tag)}</b> ({action}): {_safe(reason)}",
                     S["body_small"]
                 ))
+
+    # The readiness panel's record: the minimal edit that keeps the current
+    # policy and cleans the record. The plan in section 2 carries this one.
+    readiness = dmarc.get("dmarcbis_readiness") or {}
+    if readiness.get("suggested_record"):
+        els.append(Spacer(1, SP_MD))
+        els.append(Paragraph("<b>Next edit: clean up the record, same policy</b>",
+                             S["body_small"]))
+        els.extend(_record_block(readiness["suggested_record"], S, small=True))
+        for change in readiness.get("changes", []):
+            els.append(Paragraph(
+                f"{_glyphs('\u2022')}  <b>{_safe(change.get('tag', ''))}</b> "
+                f"({_safe(change.get('type', ''))}): {_safe(change.get('reason', ''))}",
+                S["body_small"]))
 
     return els
 
@@ -1017,7 +1049,7 @@ def _attack_surface_page(data, S, number=4):
         return []
 
     els = [PageBreak()]
-    els.extend(_section_header(str(number), "Attack Surface Analysis", S))
+    els.extend(_section_header(str(number), "Attack surface and subdomains", S))
 
     # Overall assessment
     overall = attack_surface.get("overall", {})
@@ -1211,72 +1243,21 @@ def _attack_surface_page(data, S, number=4):
 # Pages 6-7: Protocol Details
 # ================================================================
 
-def _protocol_details(data, S, number=5):
-    """Build protocol detail sections for SPF, DKIM, MTA-STS, etc."""
+def _protocol_details(data, S, number=3, appendix=None):
+    """Build the Checks section: every check the run produced, in card order.
+
+    Compact by design: name and pill, verdict, record, details, and the fix
+    when there is something to fix. The explanation paragraph and the SPF
+    and DKIM tables are in the appendix, and each check says where.
+    """
     els = [PageBreak()]
-    els.extend(_section_header(str(number), "Protocol Details", S))
+    els.extend(_section_header(str(number), "Checks", S))
 
-
-    # SPF
-    spf = _get_check(data, "SPF")
-    if spf:
-        els.extend(_protocol_card(spf, S))
-        spf_deep = spf.get("spf_deep")
-        if spf_deep:
-            els.extend(_spf_deep_section(spf_deep, S))
-
-    # DKIM
-    dkim = _get_check(data, "DKIM")
-    if dkim:
-        els.extend(_protocol_card(dkim, S))
-        dkim_deep = dkim.get("dkim_deep")
-        if dkim_deep:
-            els.extend(_dkim_deep_section(dkim_deep, S))
-
-    # MTA-STS
-    mta_sts = _get_check(data, "MTA-STS")
-    if mta_sts:
-        els.extend(_protocol_card(mta_sts, S))
-
-    # TLS-RPT
-    tls_rpt = _get_check(data, "TLS-RPT")
-    if tls_rpt:
-        els.extend(_protocol_card(tls_rpt, S))
-
-    # DANE
-    dane = _get_check(data, "DANE")
-    if dane:
-        els.extend(_protocol_card(dane, S))
-
-    # DNSSEC
-    dnssec = _get_check(data, "DNSSEC")
-    if dnssec:
-        els.extend(_protocol_card(dnssec, S))
-
-    # CAA
-    caa = _get_check(data, "CAA")
-    if caa:
-        els.extend(_protocol_card(caa, S))
-
-    # MX Records
-    mx = _get_check(data, "MX Records")
-    if mx:
-        els.extend(_protocol_card(mx, S))
-
-    # Nameservers
-    ns = _get_check(data, "Nameservers")
-    if ns:
-        els.extend(_protocol_card(ns, S))
-
-    # BIMI
-    bimi = _get_check(data, "BIMI")
-    if bimi:
-        els.extend(_protocol_card(bimi, S))
-
-    # Certificate Transparency
-    ct = _get_check(data, "Certificate Transparency")
-    if ct:
-        els.extend(_protocol_card(ct, S))
+    pointers = appendix or {}
+    for name in PROTOCOL_SECTION_ORDER:
+        check = _get_check(data, name)
+        if check:
+            els.extend(_protocol_card(check, S, pointer=pointers.get(name)))
 
     # Detected vendors
     els.extend(_vendors(data, S))
@@ -1284,8 +1265,12 @@ def _protocol_details(data, S, number=5):
     return els
 
 
-def _protocol_card(check, S):
-    """Render a single protocol check as a card."""
+def _protocol_card(check, S, pointer=None):
+    """Render a single protocol check as a card.
+
+    pointer is the appendix line to end on ("Detail in Appendix A"), set only
+    when the appendix really holds a section for this check.
+    """
     name = check.get("name", "Unknown")
     status = check.get("status", "pass")
     verdict = check.get("verdict", "")
@@ -1302,7 +1287,7 @@ def _protocol_card(check, S):
 
     # Header: name + pill
     hdr = Table([
-        [Paragraph(f"<b>{_safe(name)}</b>", S["heading"]),
+        [Paragraph(f"<b>{_safe(name)}</b>", S["card_title"]),
          Paragraph(f'<font color="{s_clr.hexval()}" size="10"><b> {_safe(s_lbl)} </b></font>', S["body"])],
     ], colWidths=[5.0*inch, 1.5*inch])
     hdr.setStyle(TableStyle([
@@ -1327,13 +1312,8 @@ def _protocol_card(check, S):
         sk = f"d_{dt}" if f"d_{dt}" in S else "d_info"
         els.append(Paragraph(f"{_glyphs(icon)}  {_safe(d.get('text', ''))}", S[sk]))
 
-    # Explanation
-    explanation = check.get("explanation", "")
-    if explanation:
-        exp_text = _strip_html(explanation)
-        if exp_text and exp_text != verdict:
-            els.append(Spacer(1, SP_SM))
-            els.append(Paragraph(_safe(exp_text), S["body_small"]))
+    # The explanation paragraph is in the appendix, under "What each check
+    # means", so this section stays one screen per check.
 
     # Fix block
     if fix and status in ("warn", "fail", "absent"):
@@ -1344,14 +1324,14 @@ def _protocol_card(check, S):
         ft = Table([[fc]], colWidths=[6.5*inch])
         ft.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,-1), FIX_BG),
-            ("TOPPADDING", (0,0), (-1,-1), 8),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+            ("TOPPADDING", (0,0), (-1,-1), 6),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 6),
             ("LEFTPADDING", (0,0), (-1,-1), 10),
             ("RIGHTPADDING", (0,0), (-1,-1), 10),
             ("LINEBEFORE", (0,0), (0,-1), 2.5, FIX_BORDER),
             ("ROUNDEDCORNERS", [0,4,4,0]),
         ]))
-        els.append(Spacer(1, SP_SM))
+        els.append(Spacer(1, SP_XS))
         els.append(ft)
 
     # Fix records (copy-paste DNS records)
@@ -1366,7 +1346,11 @@ def _protocol_card(check, S):
                 rec_str += f"  ; {comment}"
             els.extend(_record_block(rec_str, S, small=True))
 
-    els.extend([Spacer(1, SP_LG), HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=SP_LG)])
+    if pointer:
+        els.append(Spacer(1, SP_SM))
+        els.append(Paragraph(_safe(pointer), S["body_tiny"]))
+
+    els.extend([Spacer(1, SP_SM), HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=SP_MD)])
     return [KeepTogether(els)]
 
 
@@ -1377,13 +1361,13 @@ def _record_block(record, S, small=False):
     rt = Table([[Paragraph(rec, style)]], colWidths=[6.5*inch])
     rt.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), RECORD_BG),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("TOPPADDING", (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
         ("LEFTPADDING", (0,0), (-1,-1), 9),
         ("RIGHTPADDING", (0,0), (-1,-1), 9),
         ("ROUNDEDCORNERS", [4,4,4,4]),
     ]))
-    return [Spacer(1, SP_SM), rt, Spacer(1, SP_SM)]
+    return [Spacer(1, SP_XS), rt, Spacer(1, SP_XS)]
 
 
 def _spf_deep_section(spf_deep, S):
@@ -1558,6 +1542,85 @@ def _vendors(data, S):
 # Page 7: Migration Path
 # ================================================================
 
+def _deep_analysis_title(data):
+    """What this appendix section is called, given what it holds.
+
+    On a scoped run with no SPF or DKIM card it holds only the explanation
+    paragraphs, and calling it "SPF and DKIM in depth" would name two checks
+    the report never ran.
+    """
+    spf = _get_check(data, "SPF") or {}
+    dkim = _get_check(data, "DKIM") or {}
+    if spf.get("spf_deep") or dkim.get("dkim_deep"):
+        return "SPF and DKIM in depth"
+    return "What each check means"
+
+
+def _deep_analysis_page(data, S, number="C"):
+    """Appendix: the SPF and DKIM tables, and what each check means.
+
+    The tables used to sit inside the protocol section, between one check
+    and the next, and every check carried its explanation paragraph there
+    too. Both are reference: they belong behind the plan, not in front of
+    it.
+    """
+    body = []
+
+    spf = _get_check(data, "SPF")
+    if spf and spf.get("spf_deep"):
+        body.append(Paragraph("SPF in depth", S["heading2"]))
+        body.extend(_spf_deep_section(spf["spf_deep"], S))
+
+    dkim = _get_check(data, "DKIM")
+    if dkim and dkim.get("dkim_deep"):
+        body.append(Paragraph("DKIM in depth", S["heading2"]))
+        body.extend(_dkim_deep_section(dkim["dkim_deep"], S))
+
+    explanations = []
+    for name in PROTOCOL_SECTION_ORDER:
+        check = _get_check(data, name)
+        if not check:
+            continue
+        text = _strip_html(check.get("explanation") or "")
+        if not text or text == check.get("verdict"):
+            continue
+        explanations.append(Paragraph(f"<b>{_safe(name)}</b>", S["body"]))
+        explanations.append(Paragraph(_safe(text), S["body_small"]))
+        explanations.append(Spacer(1, SP_SM))
+
+    if not body and not explanations:
+        return []
+
+    title = _deep_analysis_title(data)
+    els = [PageBreak()]
+    els.extend(_section_header(str(number), title, S))
+    els.extend(body)
+    if explanations:
+        if body:
+            els.append(Spacer(1, SP_MD))
+            els.append(Paragraph("What each check means", S["heading2"]))
+        els.extend(explanations)
+    return els
+
+
+def _appendix_divider(S):
+    """The page between the report and the evidence behind it."""
+    els = [PageBreak(), Spacer(1, SP_XL)]
+    els.append(Paragraph("Part 2: Appendix", S["page_title"]))
+    els.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=SP_MD))
+    for line in (
+        "This appendix holds the evidence behind the report: the full DMARC "
+        "validation and tag by tag reading, the attack surface and subdomain "
+        "tables, the SPF and DKIM analyses, the migration path, and what each "
+        "check means.",
+        "Nothing in it changes the plan in Part 1.",
+        "Where Part 1 points at an appendix section, it is here.",
+    ):
+        els.append(Paragraph(line, S["body"]))
+        els.append(Spacer(1, SP_SM))
+    return els
+
+
 def _migration_page(data, S, number=6):
     """Build the migration path section."""
     dmarc = _get_check(data, "DMARC")
@@ -1567,7 +1630,7 @@ def _migration_page(data, S, number=6):
         return []
 
     els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "Migration Path to RFC 9989 Ready", S))
+    els.extend(_section_header(str(number), "Migration path to RFC 9989 Ready", S))
 
     status = migration.get("status", "")
     if status == "ready":
@@ -1644,7 +1707,7 @@ def _about_page(data, S, number=7):
     now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
 
     els = [PageBreak()]
-    els.extend(_section_header(str(number), "About This Report", S))
+    els.extend(_section_header(str(number), "About this report", S))
 
     # Branding
     brand_content = [
@@ -1764,39 +1827,76 @@ def _about_page(data, S, number=7):
 # ================================================================
 
 def _build_sections(audit_result: dict, S):
-    """Build every body section in order and number them consecutively.
+    """Build the report in two parts and number them.
 
-    Returns (toc_items, flowables). The cover's table of contents is built
-    from toc_items, so it lists exactly what the report contains: a builder
-    returns [] when its section does not apply (no DMARC card on a scoped
-    run, no migration path when already Ready) and then gets no number and
-    no TOC line. A fixed seven-item list promised sections a scoped audit
-    never produced and left gaps in the numbering.
+    Returns (toc_items, flowables). Part 1 is the report: summary, plan,
+    checks. Part 2 is the appendix: the evidence, lettered A onward. The
+    cover's table of contents is built from toc_items, so it lists exactly
+    what the report contains: a builder returns [] when its section does not
+    apply (no DMARC card on a scoped run, no migration path when already
+    Ready) and then gets no number, no letter and no TOC line.
+
+    Part 2 is built first, because Part 1's Checks section ends each check
+    with a pointer at the appendix section that holds its detail, and a
+    pointer must not name a section that did not render.
     """
     checks = audit_result.get("checks", []) or []
     _present = {c.get("name") for c in checks if c.get("name")}
     _rendered = [n for n in PROTOCOL_SECTION_ORDER if n in _present]
     _protocols = ", ".join(PROTOCOL_TOC_LABELS.get(n, n) for n in _rendered)
-    builders = [
-        ("Executive Summary", _executive_summary_page),
-        ("Priorities", _roadmap_page),
-        ("DMARC Deep Dive", _dmarc_deep_dive),
-        ("Attack Surface Analysis", _attack_surface_page),
-        (f"Protocol Details ({_protocols})" if _protocols else "Protocol Details",
-         _protocol_details),
-        ("Migration Path", _migration_page),
-        ("About This Report", _about_page),
+
+    # (title, builder, the checks whose detail this section holds)
+    appendix_specs = [
+        ("DMARC in depth", _dmarc_deep_dive, ("DMARC",)),
+        ("Attack surface and subdomains", _attack_surface_page, ()),
+        (_deep_analysis_title(audit_result), _deep_analysis_page, tuple(PROTOCOL_SECTION_ORDER)),
+        ("Migration path", _migration_page, ()),
+        ("About this report", _about_page, ()),
+    ]
+    letters = "ABCDEFGH"
+    appendix_toc = []
+    appendix_els = []
+    pointers = {}
+    used = 0
+    for title, build, covered in appendix_specs:
+        letter = letters[used]
+        els = build(audit_result, S, letter)
+        if not els:
+            continue
+        used += 1
+        appendix_toc.append(f"{letter}. {title}")
+        appendix_els.extend(els)
+        for name in covered:
+            pointers.setdefault(name, []).append(letter)
+
+    pointer_lines = {}
+    for name, letters_for_check in pointers.items():
+        joined = " and Appendix ".join(letters_for_check)
+        pointer_lines[name] = f"Detail in Appendix {joined}."
+
+    part1_specs = [
+        ("Summary", _executive_summary_page),
+        ("What to do", _roadmap_page),
+        (f"Checks ({_protocols})" if _protocols else "Checks",
+         lambda d, st, n: _protocol_details(d, st, n, appendix=pointer_lines)),
     ]
     sections = []
     toc_items = []
     number = 0
-    for title, build in builders:
+    for title, build in part1_specs:
         els = build(audit_result, S, number + 1)
         if not els:
             continue
         number += 1
         toc_items.append(f"{number}. {title}")
         sections.extend(els)
+
+    if appendix_els:
+        toc_items.append("<b>Part 2: Appendix</b>")
+        toc_items.extend(appendix_toc)
+        sections.extend(_appendix_divider(S))
+        sections.extend(appendix_els)
+
     return toc_items, sections
 
 
