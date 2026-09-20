@@ -325,6 +325,10 @@ def _styles():
     s["card_title"] = ParagraphStyle("CT2", fontName=FONTS["sans_bold"], fontSize=13,
                                      textColor=TEXT_PRI, leading=17,
                                      spaceBefore=2, spaceAfter=2)
+    # Doc 67: the "What this is" label above a check's plain-language line.
+    s["part_label"] = ParagraphStyle("PL", fontName=FONTS["sans_bold"], fontSize=9,
+                                     textColor=TEXT_TER, leading=12,
+                                     spaceBefore=4, spaceAfter=1)
     return s
 
 
@@ -1309,6 +1313,15 @@ def _protocol_card(check, S, pointer=None):
 
     if verdict:
         els.append(Paragraph(_safe(verdict), S["verdict"]))
+
+    # Doc 67: what the protocol is, before anything this run found. The string
+    # comes from result_transformer.WHAT_THIS_IS so the page and the PDF say
+    # the same words. A check the dict does not carry gets no label and no
+    # line.
+    what_this_is = check.get("what_this_is")
+    if what_this_is:
+        els.append(Paragraph("What this is", S["part_label"]))
+        els.append(Paragraph(_safe(what_this_is), S["body_small"]))
 
     # Record block
     if record:

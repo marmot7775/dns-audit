@@ -31,6 +31,97 @@ from dkim_formatter import analyze_dkim_key_strength
 
 
 # ============================================================
+# What each check is
+# ============================================================
+# Doc 67: a reader who knows DNS and not email met twelve cards that named a
+# protocol, a status and a finding, and never said what the protocol was.
+# These lines are the answer, and they live here rather than in app.js so the
+# page and the PDF cannot drift. Two sentences each: what the thing is, then
+# what it does for the reader. A check missing from this dict renders no line
+# and no label rather than an empty one.
+
+WHAT_THIS_IS = {
+    "DMARC": (
+        "Tells mail servers that receive your mail what to do with a message "
+        "that claims to be from your domain but fails authentication. Without "
+        "it, every receiver decides on its own, and you get no report of who "
+        "is sending as you."
+    ),
+    "SPF": (
+        "A DNS record listing the servers allowed to send mail for your "
+        "domain. A receiver compares the server that delivered a message "
+        "against that list."
+    ),
+    "DKIM": (
+        "A signature added to every message you send, checked against a key "
+        "you publish in DNS. It proves the message came from your domain and "
+        "was not altered on the way."
+    ),
+    "MX Records": (
+        "The servers that accept mail addressed to your domain. Mail to you "
+        "is delivered to whatever these name, in priority order."
+    ),
+    "Nameservers": (
+        "The servers that answer every DNS question about your domain, "
+        "including the records on this page. If they disagree with each other "
+        "or stop answering, your mail and your website stop resolving."
+    ),
+    "MTA-STS": (
+        "A policy you publish telling sending servers to require TLS when "
+        "they deliver to you, and to give up rather than fall back to "
+        "plaintext. Without it, an attacker on the network can strip the "
+        "encryption and read the mail."
+    ),
+    "TLS-RPT": (
+        "An address you publish so senders can report failed TLS connections "
+        "to your mail servers. It is how you find out that delivery is being "
+        "downgraded or blocked."
+    ),
+    "DANE": (
+        "Publishes your mail server's certificate fingerprint in "
+        "DNSSEC-signed DNS, so a sending server can verify the certificate "
+        "without trusting a certificate authority. It requires DNSSEC on your "
+        "zone and it fails closed, so mail stops if the record and the "
+        "certificate drift apart."
+    ),
+    "DNSSEC": (
+        "Signs your DNS records so a resolver can tell the answer it got is "
+        "the answer you published. It stops an attacker from forging DNS "
+        "answers for your domain, and it is what DANE is built on."
+    ),
+    "CAA": (
+        "A DNS record naming which certificate authorities may issue "
+        "certificates for your domain. It does not affect mail; it limits who "
+        "can get a certificate in your name."
+    ),
+    "BIMI": (
+        "Shows your logo beside your mail in the clients that support it. It "
+        "is branding, not security, and it requires DMARC at quarantine or "
+        "reject first."
+    ),
+    "Certificate Transparency": (
+        "Public logs that every certificate authority writes to when it "
+        "issues a certificate. Reading them shows every certificate that "
+        "exists for your domain, including ones nobody at your company "
+        "ordered."
+    ),
+}
+
+
+def attach_what_this_is(checks: List[Dict]) -> List[Dict]:
+    """Stamp every card with its WHAT_THIS_IS line, in place.
+
+    Called once on the finished list so no individual transform_* function
+    has to remember to do it. A name the dict does not carry is left alone.
+    """
+    for check in checks:
+        text = WHAT_THIS_IS.get(check.get("name"))
+        if text:
+            check["what_this_is"] = text
+    return checks
+
+
+# ============================================================
 # Status mapping helpers
 # ============================================================
 
@@ -7103,12 +7194,10 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
     if issuer_parts:
         details.append({"type": "info", "text": f"Issuers: {', '.join(issuer_parts)}"})
 
-    # CAA mismatches
-    for mm in caa_mismatches:
-        details.append({
-            "type": "warning",
-            "text": f"CAA allows [{', '.join(mm['caa_allows'])}] but certs found from {mm['cert_issuer']}",
-        })
+    # Doc 67: the CAA mismatch used to be written twice, once here and once
+    # as the check's own issue, and the Doc 66 reorder put the two lines next
+    # to each other. The engine's wording says more (audit_engine.py, the
+    # caa_mismatches branch), and it arrives with the other issues below.
 
     # Wildcards
     if wildcards:
