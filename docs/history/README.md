@@ -43,3 +43,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 60](doc-60.md): The DANE article, rewritten
 - [Doc 61](doc-61.md): The Certificate Transparency check sets the audit's wall time
 - [Doc 62](doc-62.md): Explicit SPF qualifiers get a valid record failed
+- [Doc 63](doc-63.md): The results page shows everything at once
