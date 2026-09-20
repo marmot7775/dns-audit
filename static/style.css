@@ -1413,6 +1413,13 @@ a.tag { text-decoration: none; }
     background: rgba(255, 255, 255, 0.02);
 }
 
+/* A collapsed card is a row in a list of twelve, not a cell in a table:
+   4px more above and below keeps the closed list from reading as one. */
+.result-card:not(.expanded) .result-header {
+    padding-top: calc(var(--space-md) + var(--space-xs));
+    padding-bottom: calc(var(--space-md) + var(--space-xs));
+}
+
 /* Check name */
 h3.result-title,
 .result-title {
@@ -5988,6 +5995,11 @@ input[type="search"],
     color: var(--text-tertiary);
     font-size: 0.82em;
     margin-left: auto;
+    padding-left: var(--space-sm);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .cd-chevron {
     display: inline-flex;
@@ -5997,6 +6009,29 @@ input[type="search"],
 }
 .cd-body {
     padding: 0.5em 0.9em 0.9em;
+}
+
+/* Details: what was found sits above the rule, what explains it below.
+   16px clear and a border, so the split is visible without reading. */
+.card-details-wrap {
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border);
+}
+.card-details-wrap .cd-section {
+    margin-top: 0;
+}
+.card-details > .cd-body {
+    padding: var(--space-sm);
+}
+.cd-subsection + .cd-subsection {
+    margin-top: var(--space-sm);
+}
+.cd-subsection > [role="heading"] > .cd-header {
+    background: var(--bg);
+}
+.cd-subsection > [role="heading"] > .cd-header:hover {
+    background: var(--surface);
 }
 .cd-change {
     padding: 0.7em 0;
