@@ -45,6 +45,11 @@ BANNED = [
     # Doc 64: a plan row says what to do. "Address: Removed tags: pct, ri"
     # restates a health label and asks the reader to work out the verb.
     "Address:",
+    # Doc 66: both were computed, not written, so the count-of-one cases in
+    # test_report_agrees_with_itself.py are what catch a regression. These
+    # pin the phrasing out of the source as well.
+    " 1 slots remain.",
+    "Review the Certificate Transparency findings",
 ]
 
 PY_SOURCES = ("result_transformer.py", "audit_engine.py", "anomaly_detector.py",

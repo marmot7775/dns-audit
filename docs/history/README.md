@@ -46,3 +46,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 63](doc-63.md): The results page shows everything at once
 - [Doc 64](doc-64.md): Priorities becomes a plan the reader can follow
 - [Doc 65](doc-65.md): The PDF gets the same shape as the page
+- [Doc 66](doc-66.md): The report still contradicts itself in five places
