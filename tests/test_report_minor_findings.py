@@ -90,16 +90,17 @@ def test_pdf_dkim_table_reads_the_field_the_analysis_emits():
 
 def _toc_protocols(checks):
     # Doc 34 item 8: the contents list is built from the sections actually
-    # emitted and numbered consecutively, so Protocol Details is no longer
-    # always "5.". Match the title, not the number.
+    # emitted and numbered consecutively, so the checks line is no longer
+    # always "5.". Match the title, not the number. Doc 65 renamed it from
+    # "Protocol Details" to "Checks" and put DMARC in it.
     toc_items, _ = pdf_report._build_sections(
         {"domain": "example.com", "checks": checks, "executive_summary": {}},
         pdf_report._styles())
     for text in toc_items:
-        if re.match(r"\d+\. Protocol Details", text):
+        if re.match(r"\d+\. Checks", text):
             inner = re.search(r"\((.*)\)", text)
             return [p.strip() for p in inner.group(1).split(",")] if inner else []
-    raise AssertionError("no protocol details line in the contents")
+    raise AssertionError("no checks line in the contents")
 
 
 def test_contents_page_lists_only_the_sections_the_body_contains():
@@ -108,7 +109,7 @@ def test_contents_page_lists_only_the_sections_the_body_contains():
               {"name": "SPF", "status": "pass"},
               {"name": "DKIM", "status": "pass"}]
     listed = _toc_protocols(checks)
-    assert listed == ["SPF", "DKIM"], listed  # DMARC has its own section
+    assert listed == ["DMARC", "SPF", "DKIM"], listed
     assert "BIMI" not in listed and "DANE" not in listed
 
 
@@ -121,17 +122,25 @@ def test_contents_page_still_lists_everything_on_a_complete_run():
 
 
 def test_section_order_matches_what_the_body_actually_renders():
-    """The contents list and _protocol_details must not drift apart."""
+    """The contents list and the Checks section cannot drift apart.
+
+    They used to be a constant and a hand-written sequence of _get_check
+    calls. Doc 65 made the section loop over the constant, so this holds it
+    to that: the body names no check of its own, and the constant leads with
+    the three the site pins to the top of its card list.
+    """
     source = open(os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "pdf_report.py")).read()
     body = source.split("def _protocol_details(")[1].split("\ndef ")[0]
-    looked_up = re.findall(r'_get_check\(data, "([^"]+)"\)', body)
-    assert looked_up == pdf_report.PROTOCOL_SECTION_ORDER, (
-        f"PROTOCOL_SECTION_ORDER drifted from the body: "
-        f"body renders {looked_up}, constant says "
-        f"{pdf_report.PROTOCOL_SECTION_ORDER}"
-    )
+
+    assert "for name in PROTOCOL_SECTION_ORDER:" in body
+    assert re.findall(r'_get_check\(data, "([^"]+)"\)', body) == []
+    assert pdf_report.PROTOCOL_SECTION_ORDER[:3] == ["DMARC", "SPF", "DKIM"]
+    # And every check the site can render has a place in it.
+    rendered = [c for c in _toc_protocols(
+        [{"name": n, "status": "pass"} for n in pdf_report.PROTOCOL_SECTION_ORDER])]
+    assert len(rendered) == len(pdf_report.PROTOCOL_SECTION_ORDER)
 
 
 # ---------------------------------------------------------------------------

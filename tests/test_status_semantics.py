@@ -373,16 +373,36 @@ process.stdout.write(renderPriorities(input.rm, input.checks, null));
     assert html.count('class="priority-row"') == 3
 
 
+def _flat_text(els):
+    """Every Paragraph's text in a flowable list, nested flowables included."""
+    out = []
+    for el in els:
+        if hasattr(el, "text"):
+            out.append(el.text)
+        for attr in ("_content", "_cellvalues"):
+            inner = getattr(el, attr, None)
+            if not inner:
+                continue
+            for row in inner:
+                out.extend(_flat_text(row if isinstance(row, (list, tuple)) else [row]))
+    return out
+
+
 def test_pdf_priorities_section_lists_each_protocol_once_in_order():
+    # Doc 65: one block per item, not a table row, so the protocols are read
+    # from the blocks. The order is still the roadmap's order.
     checks = _one_fail_one_warn_one_absent()
     data = {"checks": checks, "security_roadmap": build_security_roadmap(checks)}
     els = pdf_report._roadmap_page(data, pdf_report._styles())
-    tables = [e for e in els if isinstance(e, Table) and len(e._cellvalues[0]) > 2
-              and "Protocol" in getattr(e._cellvalues[0][2], "text", "")]
+    texts = _flat_text(els)
+    protocols = [t for t in texts if t in ("DMARC", "SPF", "MTA-STS")]
 
-    assert len(tables) == 1
-    assert [row[2].text for row in tables[0]._cellvalues[1:]] == ["DMARC", "SPF", "MTA-STS"]
-    assert not any("Priority Fixes" in getattr(e, "text", "") for e in els)
+    assert protocols == ["DMARC", "SPF", "MTA-STS"], texts
+    assert not any("Priority Fixes" in t for t in texts)
+    assert not any("Business Impact" in t for t in texts)
+    # Every item carries the three parts.
+    for part in ("<b>Why it matters</b>", "<b>What to change</b>", "<b>How to confirm</b>"):
+        assert sum(1 for t in texts if t == part) == 3, (part, texts)
 
 
 def test_complete_pdf_has_priorities_and_no_priority_fixes(audit):
@@ -390,7 +410,7 @@ def test_complete_pdf_has_priorities_and_no_priority_fixes(audit):
     text = "\n".join(p.extract_text() or "" for p in
                      PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages)
 
-    assert "2. Priorities" in text
+    assert "2. What to do" in text
     assert "Priority Fixes" not in text
     assert "Email Security Roadmap" not in text
     assert "priority_fixes" not in result, "Doc 49 removed the field after its last release"
