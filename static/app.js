@@ -75,6 +75,18 @@ let sessionAuditCount = 0;
 // Ids for the collapsible sections, so each toggle can name what it controls.
 let _cdSectionSeq = 0;
 let _piGuidanceSeq = 0;
+let _planSeq = 0;
+
+// The same sentence under both copies of the end-state record. Two panels
+// propose it and a third proposes the next edit at the current policy; the
+// labels and this line are what tell the reader which is which.
+const END_STATE_NOTE = 'Reach this through the migration steps, moving only when your '
+    + 'aggregate reports show every legitimate sender aligned. There is no date on that.';
+
+// The plan row carries the next edit, not the end state, so it says which it
+// is where the reader meets it.
+const END_STATE_NOTE_PLAN = 'This is the next edit at your current policy. '
+    + 'The DMARC card carries the migration steps and the enforcement end state.';
 
 // -- DOM References --
 const auditForm = document.getElementById('audit-form');
@@ -722,42 +734,11 @@ function renderResults(data) {
     document.title = auditTabTitle(counts, data.domain);
 
     // -- Authentication Resilience --
-    const resSection = document.getElementById('resilience-section');
-    const res = data.resilience;
-    if (res) {
-        resSection.style.display = 'block';
-        const levelColors = { high: 'pass', moderate: 'warn', low: 'fail', none: 'fail',
-            inconclusive: 'info', not_applicable: 'info' };
-        const levelClass = levelColors[res.level] || 'info';
-
-        document.getElementById('resilience-summary').innerHTML = `
-            <span class="${tagClass(levelClass)}">${escapeHtml(sentenceCase(res.level))}</span>
-            <span class="resilience-text">${escapeHtml(res.summary)}</span>
-        `;
-
-        const mechs = res.mechanisms || {};
-        let mechHtml = '';
-        for (const [name, info] of Object.entries(mechs)) {
-            // 'inconclusive' has to be listed: the final fallback is 'pass', so a
-            // mechanism nobody could read used to render green.
-            const sClass = info.status === 'missing' || info.status === 'broken' ? 'fail'
-                : info.status === 'not_detected' || info.status === 'none'
-                    || info.status === 'no_mail' ? 'warn'
-                : info.status === 'inconclusive' ? 'info' : 'pass';
-            mechHtml += `<div class="resilience-mech">
-                <span class="resilience-mech-name">${escapeHtml(name.toUpperCase())}</span>
-                <span class="${tagClass(sClass)}">${escapeHtml(sentenceCase(info.status))}</span>
-                ${info.note ? `<span class="resilience-mech-note">${escapeHtml(info.note)}</span>` : ''}
-            </div>`;
-        }
-        document.getElementById('resilience-mechanisms').innerHTML = mechHtml;
-
-        if (res.risk) {
-            document.getElementById('resilience-risk').innerHTML = `<div class="resilience-risk-text">${escapeHtml(res.risk)}</div>`;
-        }
-    } else {
-        resSection.style.display = 'none';
-    }
+    // No longer a panel of its own at the top of the page: it restated the
+    // SPF, DKIM and DMARC cards a screen below it. The mechanisms table is a
+    // section inside the DMARC card's Details, and the risk sentence is the
+    // "why it matters" of the DMARC plan row when the policy is p=none.
+    // data.resilience is unchanged in the API response.
 
     // -- Priorities: the one prioritized list, from the roadmap --
     const prioritySection = document.getElementById('priority-section');
@@ -766,12 +747,30 @@ function renderResults(data) {
     if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
-        priorityList.innerHTML = renderPriorities(rm);
+        priorityList.innerHTML = renderPriorities(rm, checks, data.resilience);
+        // The row opens; the link into the card is a control inside it.
+        priorityList.querySelectorAll('.priority-head').forEach(head => {
+            const body = document.getElementById(head.getAttribute('aria-controls'));
+            const toggle = () => {
+                const open = !body.classList.toggle('is-hidden');
+                head.setAttribute('aria-expanded', open ? 'true' : 'false');
+            };
+            head.addEventListener('click', toggle);
+            head.addEventListener('keydown', ev => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
+            });
+        });
         priorityList.querySelectorAll('[data-scroll-to]').forEach(el => {
-            const go = () => openCard(el.dataset.scrollTo);
-            el.addEventListener('click', go);
-            el.addEventListener('keydown', ev => {
-                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); }
+            el.addEventListener('click', ev => {
+                ev.stopPropagation();
+                openCard(el.dataset.scrollTo);
+            });
+        });
+        priorityList.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', ev => {
+                ev.stopPropagation();
+                const block = btn.closest('.record-block');
+                _copyToClipboard(block?.querySelector('.record-text')?.textContent || '', btn, 'Copy');
             });
         });
     } else {
@@ -865,6 +864,11 @@ function renderResults(data) {
         // Attach report chain to DMARC check
         if ((check.name || '').toUpperCase().includes('DMARC') && data.report_chain) {
             check._report_chain = data.report_chain;
+        }
+        // Authentication resilience, which used to have a panel of its own
+        // above the cards it restates.
+        if ((check.name || '').toUpperCase().includes('DMARC') && data.resilience) {
+            check._resilience = data.resilience;
         }
         // Attach change detection history to each check card
         if (data.change_detection && data.change_detection.changes) {
@@ -1306,6 +1310,46 @@ function renderCheckBody(check) {
 }
 
 // ============================================================
+// Authentication Resilience (a section of the DMARC card)
+// ============================================================
+
+// The same summary, mechanisms and risk the panel above the cards used to
+// show. The risk sentence is omitted here when the DMARC plan row carries
+// it, which is when the policy is p=none, so it is said once.
+function renderResilience(res, showRisk) {
+    if (!res) return '';
+    const levelColors = { high: 'pass', moderate: 'warn', low: 'fail', none: 'fail',
+        inconclusive: 'info', not_applicable: 'info' };
+    const levelClass = levelColors[res.level] || 'info';
+
+    let mechHtml = '';
+    for (const [name, info] of Object.entries(res.mechanisms || {})) {
+        // 'inconclusive' has to be listed: the final fallback is 'pass', so a
+        // mechanism nobody could read used to render green.
+        const sClass = info.status === 'missing' || info.status === 'broken' ? 'fail'
+            : info.status === 'not_detected' || info.status === 'none'
+                || info.status === 'no_mail' ? 'warn'
+            : info.status === 'inconclusive' ? 'info' : 'pass';
+        mechHtml += `<div class="resilience-mech">
+            <span class="resilience-mech-name">${escapeHtml(name.toUpperCase())}</span>
+            <span class="${tagClass(sClass)}">${escapeHtml(sentenceCase(info.status))}</span>
+            ${info.note ? `<span class="resilience-mech-note">${escapeHtml(info.note)}</span>` : ''}
+        </div>`;
+    }
+
+    return `<div class="resilience-block">
+        <div class="resilience-summary">
+            <span class="${tagClass(levelClass)}">${escapeHtml(sentenceCase(res.level))}</span>
+            <span class="resilience-text">${escapeHtml(res.summary || '')}</span>
+        </div>
+        <div class="resilience-mechanisms">${mechHtml}</div>
+        ${showRisk && res.risk ? `<div class="resilience-risk">
+            <div class="resilience-risk-text">${escapeHtml(res.risk)}</div>
+        </div>` : ''}
+    </div>`;
+}
+
+// ============================================================
 // Details: the reference half of a card
 // ============================================================
 
@@ -1339,14 +1383,20 @@ function _subdomainAuditSummary(sa) {
     const subs = (sa && sa.subdomains) || [];
     if (!subs.length) return '';
     const probed = sa.total_probed || subs.length;
-    const exposed = subs.filter(s => s.status === 'exposed').length;
-    return exposed > 0
-        ? `${exposed} of ${probed} probed subdomains exposed`
-        : `${_count(probed, 'subdomain')} probed, none exposed`;
+    // A name that does not exist cannot be exposed. Every probed row carries
+    // status "exposed" when the domain publishes no np=, so counting the
+    // status alone reported twenty exposed subdomains on a domain that has
+    // none.
+    const exposed = subs.filter(s => s.exists && s.status === 'exposed').length;
+    if (exposed === 1) return `1 of ${probed} probed subdomains exists and is exposed`;
+    if (exposed > 1) return `${exposed} of ${probed} probed subdomains exposed`;
+    return `${_count(probed, 'subdomain')} probed, none exposed`;
 }
 
 function _tagBreakdownSummary(bd) {
-    const tags = (bd && bd.tags) || [];
+    // The breakdown lists every tag DMARC defines, absent ones included, so
+    // counting rows reported fourteen tags for a record with four.
+    const tags = ((bd && bd.tags) || []).filter(t => !t.is_absent);
     if (!tags.length) return '';
     const removed = tags.filter(t => t.dmarcbis === 'deprecated').length;
     return removed > 0
@@ -1494,6 +1544,14 @@ function cardDetailSections(check) {
             title: 'DMARC Report Delivery Chain',
             summary: _reportChainSummary(check._report_chain),
             html: renderReportChain(check._report_chain),
+        });
+    }
+
+    if (check._resilience) {
+        sections.push({
+            title: 'Authentication resilience',
+            summary: sentenceCase(check._resilience.level || ''),
+            html: renderResilience(check._resilience, _dmarcPolicy(check) !== 'none'),
         });
     }
 
@@ -2194,11 +2252,12 @@ function renderDmarcTagBreakdown(bd) {
                 </div>
                 <div class="mw-steps">${stepsHtml}</div>
                 <div class="mw-target">
-                    <div class="mw-target-label">Target RFC 9989-Ready Record</div>
+                    <div class="mw-target-label">End state: enforcement</div>
                     <div class="record-block record-block-inset">
                         <span class="record-text">${escapeHtml(bd.migration.target_record)}</span>
                         <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
                     </div>
+                    <div class="mw-target-note">${END_STATE_NOTE}</div>
                 </div>
             </div>`;
     } else if (bd.migration && bd.migration.status === 'ready') {
@@ -2397,11 +2456,12 @@ function renderRecordBuilder(rb) {
             ${diffHtml}
             ${changesHtml}
             <div class="rcb-result">
-                <div class="rcb-result-label">${isFirst ? 'Recommended starting record' : 'Recommended RFC 9989-Ready record'}</div>
+                <div class="rcb-result-label">${isFirst ? 'Recommended starting record' : 'End state: enforcement'}</div>
                 <div class="rcb-result-record record-block record-block-inset">
                     <span class="record-text">${escapeHtml(rb.recommended_record)}</span>
                     <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
                 </div>
+                ${isFirst ? '' : `<div class="mw-target-note">${END_STATE_NOTE}</div>`}
             </div>
             ${deployHtml}
         </div>`;
@@ -2732,7 +2792,7 @@ function renderDmarcbisReadiness(readiness) {
 
         suggestedHtml = `
             <div class="dbis-suggested">
-                <div class="dbis-suggested-label">Suggested RFC 9989 Record</div>
+                <div class="dbis-suggested-label">Next edit: clean up the record, same policy</div>
                 <div class="record-block record-block-inset-lg">
                     <span class="record-text">${escapeHtml(readiness.suggested_record)}</span>
                 </div>
@@ -2796,7 +2856,7 @@ function renderExecutiveSummary(es, roadmap) {
     // so a button pointing at it would scroll to nothing.
     const hasPriorities = !!(roadmap && roadmap.items && roadmap.items.length > 0);
     let actions = hasPriorities
-        ? `<button class="es-action" data-scroll-to="priority-section">View Priorities</button>` : '';
+        ? `<button class="es-action" data-scroll-to="priority-section">What to do</button>` : '';
     actions += `<button class="es-action" data-scroll-to="check-dmarc">View Attack Surface</button>`;
     if (es.has_record_builder) {
         actions += `<button class="es-action" data-scroll-to="check-dmarc">Copy Recommended Record</button>`;
@@ -2824,6 +2884,7 @@ function renderExecutiveSummary(es, roadmap) {
         <div class="es-risk ${riskBg}">
             <div class="es-risk-label">Your biggest risk right now</div>
             <div class="es-risk-text">${escapeHtml(es.biggest_risk)}</div>
+            ${es.biggest_risk_detail ? `<div class="es-risk-detail">${escapeHtml(es.biggest_risk_detail)}</div>` : ''}
         </div>
 
         ${es.deliverability_summary ? `<div class="es-deliverability">
@@ -2848,17 +2909,130 @@ function priorityTierSummary(rm) {
 
 // One row per roadmap item, in the roadmap's order. The icon is the card's
 // status: fail, warn or absent, and info for a suggestion on a passing card.
-function renderPriorities(rm) {
+// A closed row is the one-line instruction; opening it answers why it
+// matters, what to change, and how to confirm the change worked, so the
+// reader does not have to go into a card and assemble the plan there.
+function renderPriorities(rm, checks, resilience) {
+    const cards = {};
+    (checks || []).forEach(c => { if (c && c.name) cards[c.name] = c; });
+
     return ((rm && rm.items) || []).map(item => {
         const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
         const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-        return `<div class="priority-row" data-scroll-to="${anchor}" role="link" tabindex="0">
-            <span class="status-icon ${st}">${ICON[st]}</span>
-            <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
-            <span class="tag tag-${safeClass(item.priority)}">${escapeHtml(item.priority)}</span>
-            <span class="priority-action">${escapeHtml(item.action)}</span>
+        const card = cards[item.protocol];
+        const bodyId = `plan-body-${++_planSeq}`;
+
+        const why = _planWhy(item, card, resilience);
+        const what = _planWhat(item, card, anchor);
+        const confirm = _planConfirm(card, what.hasPropagation);
+
+        const part = (label, body) => `<div class="plan-part">
+            <div class="plan-part-label">${label}</div>
+            <div class="plan-part-body">${body}</div>
+        </div>`;
+
+        return `<div class="priority-row">
+            <div class="priority-head" role="button" tabindex="0"
+                 aria-expanded="false" aria-controls="${bodyId}">
+                <span class="status-icon ${st}">${ICON[st]}</span>
+                <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
+                <span class="tag tag-${safeClass(item.priority)}">${escapeHtml(item.priority)}</span>
+                <span class="priority-action">${escapeHtml(item.action)}</span>
+                <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+            </div>
+            <div class="priority-body is-hidden" id="${bodyId}">
+                ${why ? part('Why it matters', why) : ''}
+                ${part('What to change', what.html)}
+                ${part('How to confirm', escapeHtml(confirm))}
+                <button class="plan-card-link" data-scroll-to="${anchor}">Open the ${escapeHtml(item.protocol)} card</button>
+            </div>
         </div>`;
     }).join('');
+}
+
+// Tags out of a card's fix text, for comparing it with the row's own text.
+function _planText(html) {
+    return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Why it matters: the item's impact, plus the card's fix text when that says
+// more, so a row built from a card keeps what the card had to say.
+function _planWhy(item, card, resilience) {
+    const impact = item.impact || '';
+    let html = impact ? escapeHtml(impact) : '';
+
+    // The Authentication Resilience panel used to sit above this list and say
+    // this about a monitoring policy. Its risk sentence belongs on the row
+    // about that policy, not in a panel of its own. It covers the same ground
+    // as the card's fix text, so only one of the two is appended.
+    const risk = (resilience && resilience.risk && item.protocol === 'DMARC'
+        && _dmarcPolicy(card) === 'none') ? resilience.risk : '';
+    if (risk) return html ? `${html} ${escapeHtml(risk)}` : escapeHtml(risk);
+
+    const fix = card && typeof card.fix === 'string' ? card.fix : '';
+    const fixText = _planText(fix);
+    if (fixText && fixText !== item.action && fixText !== impact
+            && fixText.length > impact.length && !impact.includes(fixText)) {
+        html = html ? `${html} ${sanitizeHtml(fix)}` : sanitizeHtml(fix);
+    }
+    return html;
+}
+
+function _dmarcPolicy(card) {
+    const m = /(^|;)\s*p\s*=\s*([a-z]+)/i.exec((card && card.record) || '');
+    return m ? m[2].toLowerCase() : '';
+}
+
+function _planRecordBlock(host, type, value, comment) {
+    return `<div class="plan-record">
+        <div class="plan-record-host">${escapeHtml(type || 'TXT')} record at <strong>${escapeHtml(host || '')}</strong></div>
+        <div class="record-block record-block-inset">
+            <span class="record-text">${escapeHtml(value)}</span>
+            <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
+        </div>
+        ${comment ? `<div class="fix-comment">${escapeHtml(comment)}</div>` : ''}
+    </div>`;
+}
+
+// What to change: a record the reader can publish, or the card's own fix
+// text when there is no record to publish. Nothing here is invented: a row
+// with neither says so and sends the reader to the card.
+function _planWhat(item, card, anchor) {
+    const readiness = card && card.dmarcbis_readiness;
+    if (item.protocol === 'DMARC' && readiness && readiness.suggested_record) {
+        const host = `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
+        let html = _planRecordBlock(host, 'TXT', readiness.suggested_record);
+        html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        if (card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
+        return { html, hasPropagation: !!card.ttl_info };
+    }
+
+    if (card && card.fix_records && card.fix_records.length > 0) {
+        let html = card.fix_records.map(fr =>
+            _planRecordBlock(fr.host, fr.type, fr.value || fr.suggested || '', fr.comment)
+        ).join('');
+        if (card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
+        return { html, hasPropagation: !!card.ttl_info };
+    }
+
+    if (card && typeof card.fix === 'string' && card.fix.trim()) {
+        return { html: `<div class="plan-fix">${sanitizeHtml(card.fix)}</div>`, hasPropagation: false };
+    }
+
+    return {
+        html: `<button class="plan-card-link" data-scroll-to="${anchor}">See the ${escapeHtml(item.protocol)} card below</button>`,
+        hasPropagation: false,
+    };
+}
+
+function _planConfirm(card, hasPropagation) {
+    let text = 'Run this audit again after the change has propagated. '
+        + 'This row disappears when the check passes.';
+    if (card && card.ttl_info && !hasPropagation) {
+        text += ` The current ${card.name} record has a TTL of ${card.ttl_info.ttl}s `
+            + `(${card.ttl_info.human}), so allow that long for resolvers to pick up the change.`;
+    }
+    return text;
 }
 
 // ============================================================

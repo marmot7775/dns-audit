@@ -92,12 +92,35 @@ def test_the_reporting_vector_is_still_shown(audit):
 
 
 @pytest.mark.parametrize("policy", ["quarantine", "reject"])
-def test_rua_does_not_take_the_biggest_risk_slot(audit, policy):
-    risk = _run(audit, policy, rua=False)["executive_summary"]["biggest_risk"].lower()
-    assert "aggregate reporting" not in risk, (
+def test_rua_does_not_outrank_a_real_spoofing_finding(audit, policy):
+    """The guard is the ranking, and Doc 64 made it visible.
+
+    The rua row was critical once, so it took the slot from a domain
+    rejecting every failing message. It is a high, and this checks that a
+    finding about the spoofing itself still comes first. On a domain whose
+    only gap is the report address, the rua row is the top row and says so:
+    before Doc 64 it filled the slot too, worded as its impact sentence, so
+    the phrase "aggregate reporting" never appeared and the row underneath
+    was invisible.
+    """
+    zone = _zone(policy, rua=False)
+    zone._records[(DOMAIN, "TXT")] = ["v=spf1 +all -all"]  # a critical SPF finding
+    result = audit(zone, DOMAIN, scope="complete")
+    es = result["executive_summary"]
+    assert "aggregate reporting" not in es["biggest_risk"].lower(), (
         f"p={policy}: a domain enforcing against spoofed mail was told its "
-        f"biggest risk is the missing report address: {risk!r}"
+        f"biggest risk is the missing report address: {es['biggest_risk']!r}"
     )
+    rua_rows = [i for i in result["security_roadmap"]["items"]
+                if "rua" in i["action"].lower()]
+    assert rua_rows and rua_rows[0]["priority"] == "high"
+
+
+@pytest.mark.parametrize("policy", ["quarantine", "reject"])
+def test_the_biggest_risk_names_the_action_and_the_impact(audit, policy):
+    es = _run(audit, policy, rua=False)["executive_summary"]
+    assert es["biggest_risk"] == "Add aggregate reporting (rua=)"
+    assert es["biggest_risk_detail"].startswith("You cannot see who is sending")
 
 
 def test_the_rua_item_is_still_on_the_roadmap(audit):

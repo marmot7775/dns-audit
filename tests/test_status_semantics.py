@@ -344,20 +344,33 @@ def test_within_a_tier_a_warning_row_comes_before_an_absent_one(audit):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_web_priorities_list_has_one_row_per_item_in_order():
-    rm = build_security_roadmap(_one_fail_one_warn_one_absent())
-    program = _js_functions("iconSvg", "ICON", "safeClass", "renderPriorities") + """
+    checks = _one_fail_one_warn_one_absent()
+    rm = build_security_roadmap(checks)
+    # Doc 64: a row is a head plus a body, and the link into the card is a
+    # control inside the body, so the anchor is read from that link.
+    program = _js_functions("iconSvg", "ICON", "safeClass", "renderPriorities",
+                            "_planWhy", "_planWhat", "_planConfirm", "_planText",
+                            "_planRecordBlock", "_dmarcPolicy") + """
 function escapeHtml(t) {
     return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-const rm = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-process.stdout.write(renderPriorities(rm));
+function sanitizeHtml(h) { return h; }
+function renderPropagationWarning() { return ''; }
+const END_STATE_NOTE_PLAN = '';
+const lastAuditData = {domain: 'doc.test'};
+let _planSeq = 0;
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+process.stdout.write(renderPriorities(input.rm, input.checks, null));
 """
-    html = subprocess.run(["node", "-e", program], input=json.dumps(rm), capture_output=True,
-                          text=True, timeout=60, check=True).stdout
-    rows = re.findall(r'class="priority-row" data-scroll-to="check-([a-z0-9-]+)".*?'
-                      r'class="status-icon (\w+)"', html, re.S)
+    html = subprocess.run(["node", "-e", program],
+                          input=json.dumps({"rm": rm, "checks": checks}),
+                          capture_output=True, text=True, timeout=60, check=True).stdout
+    rows = re.findall(r'class="status-icon (\w+)".*?'
+                      r'class="plan-card-link" data-scroll-to="check-([a-z0-9-]+)"',
+                      html, re.S)
 
-    assert rows == [("dmarc", "fail"), ("spf", "warn"), ("mta-sts", "absent")]
+    assert rows == [("fail", "dmarc"), ("warn", "spf"), ("absent", "mta-sts")]
+    assert html.count('class="priority-row"') == 3
 
 
 def test_pdf_priorities_section_lists_each_protocol_once_in_order():
@@ -390,7 +403,8 @@ def test_the_web_page_renders_priorities_not_key_findings_or_the_roadmap():
         js = f.read()
 
     assert "Key Findings" not in html
-    assert ">Priorities<" in html
+    # Doc 64 renamed the section heading; the list is the same list.
+    assert ">What to do<" in html
     assert "renderSecurityRoadmap" not in js
     assert "priority_fixes" not in js
 

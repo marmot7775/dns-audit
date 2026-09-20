@@ -42,6 +42,9 @@ BANNED = [
     "—",
     "only way to know",
     "Comprehensive",
+    # Doc 64: a plan row says what to do. "Address: Removed tags: pct, ri"
+    # restates a health label and asks the reader to work out the verb.
+    "Address:",
 ]
 
 PY_SOURCES = ("result_transformer.py", "audit_engine.py", "anomaly_detector.py",
