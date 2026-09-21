@@ -451,8 +451,14 @@ def test_nothing_overlaps_the_run_audit_button_at_1280(browser, theme):
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_record_text_stays_left_of_the_copy_button_at_390(browser, fixture_result, theme):
-    ctx, page, errors = _page(browser, theme, 390)
+# 390 was the only width checked, and .record-block reserves its right padding
+# at three different widths: the base rule, the 640 block and the 400 one. The
+# base rule's reserve was under the button's footprint by 5px with nothing to
+# catch it, because no case here ever rendered a desktop viewport. One width
+# per reserve now.
+@pytest.mark.parametrize("width", [1280, 390, 320])
+def test_record_text_stays_left_of_the_copy_button(browser, fixture_result, theme, width):
+    ctx, page, errors = _page(browser, theme, width)
     try:
         _render(page, fixture_result)
         pairs = page.evaluate("""() => [...document.querySelectorAll('.record-block')]
