@@ -144,7 +144,19 @@ def test_no_component_sets_a_literal_font_size_outside_the_token_scale():
     assert offenders == [], offenders
 
 
-def test_root_type_size_is_16px():
+def test_root_type_size_inherits_the_readers_own_font_size():
+    """The root is a percentage, never a pixel value.
+
+    This test used to require `html { font-size: 16px }`. That pin is the
+    thing worth preventing, not preserving: every --font-* token is in rem,
+    so a pixel root overrides the default text size the reader set in their
+    browser or OS. Someone who raised theirs to 20px because they cannot
+    comfortably read 16 got 16 anyway, on every page, with nothing on the
+    site to change it. 100% inherits that setting and the whole scale
+    follows it.
+    """
     css = _css()
-    m = re.search(r"html \{[^}]*font-size:\s*(\d+)px", css)
-    assert m and m.group(1) == "16", m.group(0) if m else "no html font-size"
+    root = re.search(r"(?m)^html \{(.*?)^\}", css, re.DOTALL)
+    assert root, "no html rule"
+    sizes = re.findall(r"font-size:\s*([^;]+);", root.group(1))
+    assert sizes == ["100%"], sizes
