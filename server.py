@@ -1167,6 +1167,28 @@ async def audit_pdf(
     _pdf_future = None
     _pdf_payload = None
     try:
+        # Pre-flight DNS check (offloaded -- this does blocking socket I/O),
+        # the same one /api/audit and the SSE stream run before their audits.
+        # Doc 69: this route did not, so a domain that is not in DNS went
+        # straight to the engine, which reads "answers nothing" as "publishes
+        # nothing". Every check came back missing or not configured and the
+        # result was a confident 13-page report, with the site name in the
+        # footer of every page, telling the reader to publish DMARC and SPF
+        # records on a domain that does not exist.
+        #
+        # It runs before the cache read so a refused domain never takes a
+        # cache key, and before _join_or_lead so it neither leads nor joins an
+        # in-flight audit. It is inside the reservation, so the finally below
+        # releases the slot on the refusal path.
+        preflight_err = await anyio.to_thread.run_sync(_preflight_dns_check, domain)
+        if preflight_err:
+            log.info("PDF preflight failed for %s: %s", domain, preflight_err.get("error"))
+            return Response(
+                content=preflight_err["error_message"],
+                status_code=400,
+                media_type="text/plain",
+            )
+
         # Reuse cached audit data if available
         cached = _get_cached(cache_key)
         if cached:
