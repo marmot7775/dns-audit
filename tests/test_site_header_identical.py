@@ -58,6 +58,12 @@ def test_header_carries_the_wordmark(path):
     for label in ("Home", "Articles", "About"):
         assert re.search(rf'class="nav-link(?: nav-link-active)?">{label}</a>', header), label
     assert 'id="theme-toggle"' in header
+    # Both display controls, and outside the nav: they are not navigation, and
+    # the nav scrolls sideways on a narrow screen, which would carry them off.
+    assert 'id="text-size-toggle"' in header
+    nav = re.search(r'<nav class="site-nav".*?</nav>', header, re.DOTALL).group(0)
+    for control in ("theme-toggle", "text-size-toggle"):
+        assert control not in nav, f"{control} belongs outside the nav landmark"
 
 
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))

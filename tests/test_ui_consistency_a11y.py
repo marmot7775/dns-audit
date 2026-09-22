@@ -450,6 +450,59 @@ def test_nothing_overlaps_the_run_audit_button_at_1280(browser, theme):
         ctx.close()
 
 
+@pytest.mark.parametrize("width,target", [(1280, 36), (390, 44)])
+def test_the_text_size_control_cycles_persists_and_scales(browser, width, target):
+    """Three steps, each one applied to the root and remembered.
+
+    The control is a cycle on one button, so the checks follow a reader
+    through it: default, larger, larger still, back to where they started,
+    with the stored value cleared at the end rather than left saying
+    "default". The last step reloads, because the whole point of storing it
+    is that the next page opens at the size they chose.
+    """
+    ctx, page, errors = _page(browser, "dark", width, "/about")
+    try:
+        state = """() => ({
+            attr: document.documentElement.getAttribute('data-text-size'),
+            root: parseFloat(getComputedStyle(document.documentElement).fontSize),
+            stored: localStorage.getItem('text-size'),
+            label: document.getElementById('text-size-toggle').getAttribute('aria-label'),
+            box: (() => { const r = document.getElementById('text-size-toggle')
+                              .getBoundingClientRect();
+                          return [Math.round(r.width), Math.round(r.height)]; })(),
+        })"""
+        start = page.evaluate(state)
+        assert start["attr"] is None and start["stored"] is None, start
+        assert start["box"] == [target, target], start["box"]
+        assert "default" in start["label"], start["label"]
+        base = start["root"]
+
+        page.click("#text-size-toggle")
+        large = page.evaluate(state)
+        assert large["attr"] == "large" and large["stored"] == "large", large
+        assert large["root"] > base, (large["root"], base)
+
+        page.click("#text-size-toggle")
+        largest = page.evaluate(state)
+        assert largest["attr"] == "largest" and largest["stored"] == "largest", largest
+        assert largest["root"] > large["root"], (largest["root"], large["root"])
+
+        page.click("#text-size-toggle")
+        back = page.evaluate(state)
+        assert back["attr"] is None, back
+        assert back["stored"] is None, "the cleared choice is removed, not stored"
+        assert back["root"] == base, (back["root"], base)
+
+        page.click("#text-size-toggle")
+        page.reload()
+        page.wait_for_load_state("load")
+        after = page.evaluate(state)
+        assert after["attr"] == "large" and after["root"] == large["root"], after
+        assert errors == []
+    finally:
+        ctx.close()
+
+
 @pytest.mark.parametrize("theme", ["dark", "light"])
 # 390 was the only width checked, and .record-block reserves its right padding
 # at three different widths: the base rule, the 640 block and the 400 one. The

@@ -160,3 +160,22 @@ def test_root_type_size_inherits_the_readers_own_font_size():
     assert root, "no html rule"
     sizes = re.findall(r"font-size:\s*([^;]+);", root.group(1))
     assert sizes == ["100%"], sizes
+
+
+def test_the_text_size_control_multiplies_the_readers_size_rather_than_replacing_it():
+    """html[data-text-size] steps are percentages, never px or rem.
+
+    A percentage on the root resolves against the reader's own browser font
+    size, so "largest" takes someone on 20px to 25px. A px or rem value would
+    pin every reader to the same number and undo, for anyone who had raised
+    their default, exactly what the 100% above is for: the control is meant to
+    sit on top of their setting, not overwrite it.
+    """
+    css = _css()
+    steps = re.findall(r'(?m)^html\[data-text-size="(\w+)"\] \{(.*?)^\}', css, re.DOTALL)
+    assert {name for name, _ in steps} == {"large", "largest"}, steps
+    for name, body in steps:
+        size = re.search(r"font-size:\s*([^;]+);", body)
+        assert size, name
+        assert size.group(1).endswith("%"), (name, size.group(1))
+        assert float(size.group(1).rstrip("%")) > 100, (name, size.group(1))

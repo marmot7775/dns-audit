@@ -317,6 +317,20 @@ html {
     max-width: 100vw;
 }
 
+/* The header's text size control, set on <html> by theme.js. Percentages, so
+   they multiply whatever the reader's browser is already set to rather than
+   replacing it: someone whose default is 20px gets 22.5 and 25, not 18 and 20.
+   A reader who never touches the control is on the 100% above and sees no
+   difference. The steps are deliberately few and large enough to be worth the
+   click; a finer scale reads as no change at all. */
+html[data-text-size="large"] {
+    font-size: 112.5%;
+}
+
+html[data-text-size="largest"] {
+    font-size: 125%;
+}
+
 body {
     font-family: var(--font-body);
     /* DM Sans ships an opsz axis (9 to 40); this lets the browser pick the
@@ -424,7 +438,19 @@ main {
 .header-right {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 0.35rem;
+}
+
+/* The theme and text size controls, held outside .site-nav. Two reasons: they
+   are not navigation, so they do not belong inside a landmark labelled Main
+   navigation; and the nav scrolls sideways when the links do not fit, which
+   would carry a control off the screen. Pinned here they stay reachable at
+   every width, and only the links scroll. */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 0 0 auto;
 }
 
 .site-nav {
@@ -3257,6 +3283,10 @@ details.st-node>summary:hover {
        Invisible until text got bigger, because the links happened to fit. */
     .header-right {
         min-width: 0;
+        /* Live again, and load bearing: .header-right holds the nav and the
+           control group now, and these few pixels are what lets all three
+           links sit on screen at 390 instead of the last one being clipped. */
+        gap: 0.15rem;
     }
 
     .site-nav {
@@ -7492,8 +7522,10 @@ input[type="search"],
 .about-page p { font-size: var(--font-md); }
 }
 
-/* Dark/light mode toggle button */
-.theme-toggle {
+/* Dark/light mode toggle, and the text size control beside it. One
+   definition: they sit together in the nav and any drift between them shows. */
+.theme-toggle,
+.text-size-toggle {
     background: none;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -7506,17 +7538,26 @@ input[type="search"],
     width: 36px;
     height: 36px;
     transition: color 0.15s, border-color 0.15s;
-    margin-left: 0.35rem;
     flex: 0 0 auto;
 }
-.theme-toggle:hover {
+.theme-toggle:hover,
+.text-size-toggle:hover {
     color: var(--text-primary);
     border-color: var(--border-strong);
 }
 
-.theme-toggle svg {
+.theme-toggle svg,
+.text-size-toggle svg {
     width: 18px;
     height: 18px;
+}
+
+/* The control carries the accent while it is doing something, so a reader who
+   set a larger size can see at a glance that the site is honouring it. */
+html[data-text-size="large"] .text-size-toggle,
+html[data-text-size="largest"] .text-size-toggle {
+    color: var(--primary);
+    border-color: var(--primary-border);
 }
 
 /* Show the icon of the theme a click switches to: sun while dark, moon while light. */
@@ -7533,7 +7574,8 @@ input[type="search"],
 :where(html[data-theme="light"]) .theme-toggle .theme-icon-moon { display: block; }
 
 @media (max-width: 640px) {
-    .theme-toggle {
+    .theme-toggle,
+    .text-size-toggle {
         width: 44px;
         height: 44px;
     }
@@ -7624,7 +7666,12 @@ input[type="search"],
         white-space: nowrap;
         flex-shrink: 0;
         font-size: var(--font-xs);
-        padding: 0.25rem 0.4rem;
+        /* Tight, to buy back the width the text size control costs the nav.
+           min-width and min-height below still hold the 44px touch target, so
+           this trims the space around each label and not the target itself.
+           It is enough at 390, the common phone width; at 375 the nav scrolls
+           the last link, which is what it is built to do. */
+        padding: 0.25rem 0.15rem;
         min-height: 44px;
         display: flex;
         align-items: center;
