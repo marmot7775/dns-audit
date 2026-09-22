@@ -49,3 +49,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 66](doc-66.md): The report still contradicts itself in five places
 - [Doc 67](doc-67.md): Every check says what it is first
 - [Doc 68](doc-68.md): Three defects on the edges of the report
+- [Doc 69](doc-69.md): The PDF endpoint reports on domains that do not exist
