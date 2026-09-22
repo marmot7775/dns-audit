@@ -3257,7 +3257,6 @@ details.st-node>summary:hover {
        Invisible until text got bigger, because the links happened to fit. */
     .header-right {
         min-width: 0;
-        gap: 0.75rem;
     }
 
     .site-nav {
