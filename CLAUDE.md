@@ -55,6 +55,15 @@
   which overrides prefers-color-scheme. The light-mode rules in style.css
   exist twice for that reason: once inside the media query scoped to
   :not([data-theme="dark"]), once scoped to [data-theme="light"].
+- `html` carries `font-size: 100%`, never a pixel value. Every `--font-*`
+  token is in rem, so the root is the multiplier for all text on the site, and
+  a pixel value there throws away the default text size the reader set in
+  their own browser or OS: someone who raised theirs to 20px because they
+  cannot comfortably read 16 gets 16 anyway, on every page, with nothing on
+  the site to change it. The layout tokens (`--space-*`, `--max-width`) stay
+  in px on purpose, so a reader who scales up gets larger text inside the same
+  containers rather than a page that grows sideways.
+  tests/test_palette_contrast.py requires the percentage.
 - All touch targets must be 44px minimum on mobile
 - Text contrast must pass WCAG AA (4.5:1 ratio)
 - No personal data in logs (GDPR-safe)

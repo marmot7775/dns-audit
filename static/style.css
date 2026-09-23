@@ -226,17 +226,36 @@
     /* Typography */
     --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    --font-xs: 0.75rem;
-    --font-sm: 0.8125rem;
-    --font-base: 0.9375rem;
-    --font-md: 1rem;
-    --font-lg: 1.125rem;
-    --font-xl: 1.25rem;
-    --font-2xl: 1.5rem;
-    --font-3xl: 1.75rem;
-    --font-4xl: 2.125rem;
+    /* The scale is lifted at the bottom, not multiplied through. Two thirds
+       of every font-size in this file is --font-xs or --font-sm, so the old
+       12px/13px floor set the reading size of most of the interface: card
+       subtitles, record values, the roadmap rows, the footer. Those two
+       carry the change (12 to 14, 13 to 15) and the steps above them move
+       far less, which keeps headings in proportion to a body that grew and
+       keeps the page roughly the same length. Steps stay 1 to 2px apart at
+       the bottom, as they were before. */
+    --font-xs: 0.875rem;
+    --font-sm: 0.9375rem;
+    --font-base: 1rem;
+    --font-md: 1.0625rem;
+    --font-lg: 1.1875rem;
+    --font-xl: 1.3125rem;
+    --font-2xl: 1.5625rem;
+    --font-3xl: 1.8125rem;
+    --font-4xl: 2.25rem;
 
     /* Layout */
+    /* Width .record-block keeps clear on its right so record text does not
+       run under the absolutely positioned .copy-btn sitting there. It has to
+       exceed the button's whole footprint: its width (label at --font-xs plus
+       padding and border) plus its right offset, which came to 69px when this
+       was last measured, 72px under 400px wide where the button's padding
+       grows. In rem so it tracks the button, which is also sized in rem, when
+       a reader scales the root. Three rules reserved this separately as 4rem
+       and 4.25rem before; both had drifted under the footprint by the time
+       the type scale moved, and the overlap was a pixel deep and invisible in
+       review. One name now, with room to spare. */
+    --copy-btn-reserve: 5rem;
     --max-width: 880px;
     --radius-sm: 4px;
     --radius: 8px;
@@ -282,7 +301,16 @@ h3 {
 
 /* -- Base -- */
 html {
-    font-size: 16px;
+    /* Percent, not a pixel value. Every --font-* token is in rem, so this is
+       the multiplier for all text on the site. A pixel value here pins the
+       root at 16px and throws away the font size the reader set in their own
+       browser or OS: someone who raised their default to 20px because they
+       cannot read 16 got 16 anyway, on every page, with no way to change it.
+       100% inherits that preference instead, so the tokens below scale with
+       it. Layout tokens (--space-*, --max-width) stay in px on purpose, so a
+       reader who scales up gets larger text inside the same containers rather
+       than a page that grows sideways off the screen. */
+    font-size: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
@@ -1338,6 +1366,12 @@ a.tag { text-decoration: none; }
     display: flex;
     align-items: center;
     justify-content: space-between;
+    /* The label and the buttons drop onto separate rows rather than the
+       buttons running off the right edge, which is where they went on a
+       narrow screen once a reader scaled their text up. space-between keeps
+       the gap invisible until the row actually wraps. */
+    flex-wrap: wrap;
+    gap: var(--space-sm);
     margin-bottom: var(--space-md);
     margin-top: var(--space-2xl);
 }
@@ -1560,7 +1594,7 @@ h3.result-title,
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: var(--space-md);
-    padding-right: 4rem;
+    padding-right: var(--copy-btn-reserve);
     margin: 0.75rem 0;
     word-break: break-all;
     position: relative;
@@ -2669,6 +2703,12 @@ details.st-node>summary:hover {
     color: var(--text-secondary);
     line-height: 1.75;
     margin: 0.6rem 0;
+    /* These sentences quote DNS names, and a name like
+       selector._domainkey.example.com has nothing a normal line break can use,
+       so on a narrow screen it ran past the card instead of wrapping. anywhere
+       rather than break-word because only anywhere also lowers the element's
+       minimum width, which is what stops the name widening its container. */
+    overflow-wrap: anywhere;
 }
 
 .explanation strong {
@@ -2846,6 +2886,7 @@ details.st-node>summary:hover {
 .pi-provider-info {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.6rem;
 }
 
@@ -3212,12 +3253,24 @@ details.st-node>summary:hover {
         row-gap: 0.25rem;
     }
 
+    /* The nav below scrolls sideways inside itself when the links do not fit.
+       That only works if it is allowed to become narrower than its contents,
+       and a flex item's automatic minimum size is its content size, so
+       without min-width it silently refused to shrink and pushed the header
+       past the viewport instead. Both links in the chain need it: .site-nav
+       is a flex item of .header-right, which is a flex item of .header-inner.
+       Invisible until text got bigger, because the links happened to fit. */
+    .header-right {
+        min-width: 0;
+    }
+
     .site-nav {
         gap: 0.1rem;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
         flex-wrap: nowrap;
+        min-width: 0;
     }
 
     .site-nav::-webkit-scrollbar {
@@ -3342,7 +3395,7 @@ details.st-node>summary:hover {
     .record-block {
         font-size: var(--font-sm);
         padding: 0.75rem 0.85rem;
-        padding-right: 4.25rem;
+        padding-right: var(--copy-btn-reserve);
     }
 
     .vendors-grid {
@@ -3819,7 +3872,7 @@ input[type="search"],
     .record-block {
         font-size: var(--font-xs);
         padding: 0.65rem 0.75rem;
-        padding-right: 4.25rem;
+        padding-right: var(--copy-btn-reserve);
     }
 
     .copy-btn {
@@ -5989,6 +6042,9 @@ input[type="search"],
 .ttl-note {
     display: inline-flex;
     align-items: baseline;
+    /* The value and its explanation sit side by side while they fit and stack
+       when they do not, instead of the explanation running past the card. */
+    flex-wrap: wrap;
     gap: 0.5em;
     font-size: var(--font-sm);
     padding: 0.35em 0.7em;
@@ -7112,6 +7168,15 @@ input[type="search"],
     vertical-align: top;
 }
 .dbis-table tr:last-child td { border-bottom: none; }
+/* The nowrap above keeps each heading on one line, which is what the table
+   wants wherever it fits. At phone widths it stopped fitting once the body
+   text grew: "RFC 7489 (obsolete)" on its own pushes the table past a 390px
+   viewport, and .dbis-table-wrap turns that into a sideways scroll. Letting
+   the headings wrap spends a second line and keeps the whole table on
+   screen, which is the better trade on a phone. */
+@media (max-width: 640px) {
+    .dbis-table th { white-space: normal; }
+}
 
 /* Steps list (dmarcbis only) */
 .dbis-steps { counter-reset: step; list-style: none; padding: 0; margin: 1.25rem 0; }
@@ -7245,7 +7310,13 @@ input[type="search"],
     color: var(--text-secondary);
     padding: 0.08em 0.4em;
     border-radius: var(--radius-sm);
-    white-space: nowrap;
+    /* normal, not nowrap. nowrap cancels the overflow-wrap below, which left
+       a domain like _dmarc.mail.example.co.uk unbreakable and its full width
+       as the column's minimum, so the whole page grew sideways to fit it once
+       the type scale moved. Paired this way the token still sits on one line
+       wherever it fits and breaks only when the column is narrower than the
+       token, which is what the two properties were put here to do. */
+    white-space: normal;
     overflow-wrap: anywhere;
 }
 .dbis-compare-new .dbis-compare-detail code {
