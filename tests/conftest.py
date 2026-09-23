@@ -274,6 +274,15 @@ def _blocked_http(*args, **kwargs):
     raise requests.exceptions.ConnectionError("network disabled in tests")
 
 
+def _blocked_dns_query(*args, **kwargs):
+    # dns.query sends straight to a named server (the DNSSEC bogus probe asks
+    # 9.9.9.9 and 8.8.4.4 directly), so patching the resolver does not reach
+    # it. A timeout is what those callers see when the server does not answer,
+    # and it is what they already handle.
+    import dns.exception
+    raise dns.exception.Timeout()
+
+
 @contextmanager
 def fake_dns(zone, mta_sts_policy=None, ct_certs=None, bimi_logo=None):
     """Patch every DNS and HTTP entry point the audit reaches.
@@ -327,7 +336,12 @@ def fake_dns(zone, mta_sts_policy=None, ct_certs=None, bimi_logo=None):
          patch("requests.get", _requests_get), \
          patch("requests.post", _blocked_http), \
          patch("requests.Session.request", _blocked_http), \
-         patch("socket.getaddrinfo", _blocked_http):
+         patch("socket.getaddrinfo", _blocked_http), \
+         patch("dns.query.udp", _blocked_dns_query), \
+         patch("dns.query.tcp", _blocked_dns_query), \
+         patch("dns.query.udp_with_fallback", _blocked_dns_query), \
+         patch("dns.query.https", _blocked_dns_query), \
+         patch("dns.query.tls", _blocked_dns_query):
         yield zone
 
 
