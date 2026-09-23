@@ -101,7 +101,7 @@ def _fallback_card(details, status="warn", verdict="58 active certs from 8 issue
             "details": details, "fix": None, "fix_records": None}
 
 
-def test_a_card_with_no_fix_text_takes_its_first_bad_detail_and_its_verdict():
+def test_a_card_with_no_fix_text_takes_its_first_bad_detail_and_a_second_as_its_reason():
     card = _fallback_card([
         {"type": "good", "text": "58 active certs from 8 issuers"},
         {"type": "info", "text": "10 wildcard certificates found"},
@@ -114,7 +114,9 @@ def test_a_card_with_no_fix_text_takes_its_first_bad_detail_and_its_verdict():
 
     assert item["action"] == ("16 active certificates will expire soon. "
                               "Ensure auto-renewal is working.")
-    assert item["impact"] == "58 active certs from 8 issuers"
+    # The verdict says what was found, not why it matters, so it is not the
+    # reason; the second finding is.
+    assert item["impact"] == "Expiring in 30 days: support.enterprise.test"
     assert "Review the" not in item["action"]
 
 
@@ -162,7 +164,8 @@ def test_the_ct_row_says_where_certificates_are_renewed(audit):
     )
     assert item["action"] == ("1 active certificate will expire soon. "
                               "Ensure auto-renewal is working.")
-    assert item["impact"] == "1 active cert from 1 issuer"
+    # The verdict is not a reason; the second finding is.
+    assert item["impact"].startswith("Expiring in ")
 
 
 def test_the_ct_card_puts_its_own_findings_above_the_individual_certificates(audit):

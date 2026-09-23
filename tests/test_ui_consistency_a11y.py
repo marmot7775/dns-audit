@@ -286,7 +286,7 @@ def test_nameservers_row_carries_the_cards_own_fix_text():
 def test_a_recommendation_on_a_passing_card_gets_the_info_status():
     from result_transformer import build_security_roadmap
     dmarc = {"name": "DMARC", "status": "pass", "configured": True,
-             "record": "v=DMARC1; p=reject; np=reject",
+             "record": "v=DMARC1; p=reject; np=reject; pct=100",
              "tag_breakdown": {"health": {"status": "compatible",
                                           "reasons": ["removed tags: pct"]}}}
     rm = build_security_roadmap([dmarc])

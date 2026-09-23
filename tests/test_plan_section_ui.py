@@ -77,32 +77,40 @@ def test_one_row_per_roadmap_item_and_each_row_opens(browser, fixture_result, th
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_the_dmarc_row_carries_the_next_edit_record(browser, fixture_result, theme):
+def test_the_dmarc_row_carries_its_own_record(browser, fixture_result, theme):
     ctx, page, errors = _page(browser, theme, 1280)
     try:
         _render(page, fixture_result)
-        m = page.evaluate("""() => {
-            const row = [...document.querySelectorAll('.priority-row')].find(
-                r => r.querySelector('.priority-protocol').textContent.trim() === 'DMARC');
-            row.querySelector('.priority-head').click();
-            const body = row.querySelector('.priority-body');
-            return {
-                host: body.querySelector('.plan-record-host').textContent.replace(/\\s+/g, ' ').trim(),
-                record: body.querySelector('.record-text').textContent.trim(),
-                copy: !!body.querySelector('.copy-btn'),
-                why: body.querySelector('.plan-part-body').textContent.trim(),
-                confirm: [...body.querySelectorAll('.plan-part-body')].pop().textContent.trim(),
-            };
-        }""")
-        readiness = next(c for c in fixture_result["checks"]
-                         if c["name"] == "DMARC")["dmarcbis_readiness"]
-        assert m["host"] == f"TXT record at _dmarc.{DOMAIN}"
-        assert m["record"] == readiness["suggested_record"]
-        assert m["copy"]
-        # The resilience risk sentence moved onto this row.
-        assert "p=none is the right starting point" in m["why"]
-        assert m["confirm"].startswith("Run this audit again after the change has propagated.")
-        assert "This row disappears when the check passes." in m["confirm"]
+        rows = page.evaluate("""() => [...document.querySelectorAll('.priority-row')]
+            .filter(r => r.querySelector('.priority-protocol').textContent.trim() === 'DMARC')
+            .map(row => {
+                row.querySelector('.priority-head').click();
+                const body = row.querySelector('.priority-body');
+                const host = body.querySelector('.plan-record-host');
+                const rec = body.querySelector('.record-text');
+                return {
+                    action: row.querySelector('.priority-action').textContent.trim(),
+                    host: host ? host.textContent.replace(/\\s+/g, ' ').trim() : null,
+                    record: rec ? rec.textContent.trim() : null,
+                    copy: !!body.querySelector('.copy-btn'),
+                    why: body.querySelector('.plan-part-body').textContent.trim(),
+                    confirm: [...body.querySelectorAll('.plan-part-body')].pop().textContent.trim(),
+                };
+            })""")
+        items = {i["action"]: i for i in fixture_result["security_roadmap"]["items"]
+                 if i["protocol"] == "DMARC"}
+        # The first DMARC row is the p=none one: the resilience risk sentence
+        # moved onto it.
+        assert "p=none is the right starting point" in rows[0]["why"]
+        assert rows[0]["confirm"].startswith("Run this audit again after the change has propagated.")
+        assert "This row disappears when the check passes." in rows[0]["confirm"]
+        # A row with its own record shows that record, not the readiness one.
+        with_record = [r for r in rows if items[r["action"]].get("record")]
+        assert with_record
+        for r in with_record:
+            assert r["host"] == f"TXT record at _dmarc.{DOMAIN}"
+            assert r["record"] == items[r["action"]]["record"]
+            assert r["copy"]
         assert errors == []
     finally:
         ctx.close()
