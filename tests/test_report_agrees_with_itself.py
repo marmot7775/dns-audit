@@ -76,10 +76,11 @@ def test_the_summary_says_with_warnings_and_the_spec_comparison_counts_them():
 
 
 @pytest.mark.parametrize("value", ["abc", "150"])
-def test_a_malformed_pct_still_fails_and_does_not_also_get_the_removal_warning(value):
+def test_a_malformed_pct_warns_and_does_not_also_get_the_removal_warning(value):
     strict = audit_engine._validate_dmarc_strict(f"v=DMARC1; p=reject; pct={value}; {RUA}")
 
-    assert "PCT_INVALID" in _codes(strict, "fail")
+    # Doc 44: receivers ignore a malformed optional value, so it warns.
+    assert "PCT_INVALID" in _codes(strict, "warn")
     assert "PCT_REMOVED" not in _codes(strict)
 
 
@@ -100,7 +101,7 @@ def _fallback_card(details, status="warn", verdict="58 active certs from 8 issue
             "details": details, "fix": None, "fix_records": None}
 
 
-def test_a_card_with_no_fix_text_takes_its_first_bad_detail_and_its_verdict():
+def test_a_card_with_no_fix_text_takes_its_first_bad_detail_and_a_second_as_its_reason():
     card = _fallback_card([
         {"type": "good", "text": "58 active certs from 8 issuers"},
         {"type": "info", "text": "10 wildcard certificates found"},
@@ -113,7 +114,9 @@ def test_a_card_with_no_fix_text_takes_its_first_bad_detail_and_its_verdict():
 
     assert item["action"] == ("16 active certificates will expire soon. "
                               "Ensure auto-renewal is working.")
-    assert item["impact"] == "58 active certs from 8 issuers"
+    # The verdict says what was found, not why it matters, so it is not the
+    # reason; the second finding is.
+    assert item["impact"] == "Expiring in 30 days: support.enterprise.test"
     assert "Review the" not in item["action"]
 
 
@@ -161,7 +164,8 @@ def test_the_ct_row_says_where_certificates_are_renewed(audit):
     )
     assert item["action"] == ("1 active certificate will expire soon. "
                               "Ensure auto-renewal is working.")
-    assert item["impact"] == "1 active cert from 1 issuer"
+    # The verdict is not a reason; the second finding is.
+    assert item["impact"].startswith("Expiring in ")
 
 
 def test_the_ct_card_puts_its_own_findings_above_the_individual_certificates(audit):

@@ -163,11 +163,17 @@ def test_an_empty_roadmap_keeps_its_own_sentence_and_no_detail():
      "Receivers on RFC 9989 ignore them, and pct never gave"),
     (["Removed tags: ri"], "Remove the tag RFC 9989 retired: ri",
      "Receivers on RFC 9989 ignore it."),
-    (["Test mode weakens reject"], "Test mode weakens reject", ""),
+    (["Test mode weakens reject"], "Remove t=y so p=reject applies in full",
+     "With t=y, RFC 9989 receivers apply quarantine"),
 ])
 def test_a_readiness_row_reads_as_an_instruction(reasons, action, impact_start):
+    # The removed-tags row reads the record, so the record carries the tags
+    # the reason names, as a real one would.
+    removed = [t.strip() for r in reasons if r.startswith("Removed tags:")
+               for t in r.split(":", 1)[1].split(",")]
+    extra = "".join(f"; {t}=1" for t in removed)
     card = {"name": "DMARC", "status": "warn", "configured": True,
-            "record": "v=DMARC1; p=reject; sp=reject; rua=mailto:d@plan.test",
+            "record": f"v=DMARC1; p=reject; sp=reject; rua=mailto:d@plan.test{extra}",
             "tag_breakdown": {"health": {"status": "compatible", "reasons": reasons}}}
     rows = [i for i in build_security_roadmap([card])["items"] if i["priority"] == "medium"]
 

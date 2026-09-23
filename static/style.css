@@ -3242,10 +3242,15 @@ details.st-node>summary:hover {
         padding: 0 max(var(--space-md), env(safe-area-inset-right)) 0 max(var(--space-md), env(safe-area-inset-left));
     }
 
+    /* At 320 wide the wordmark and the nav with its 44px targets do not
+       fit on one line; the nav takes a second line rather than pushing the
+       theme toggle off the right edge. */
     .site-header .header-inner {
         height: auto;
         padding-top: 0.65rem;
         padding-bottom: 0.65rem;
+        flex-wrap: wrap;
+        row-gap: 0.25rem;
     }
 
     /* The nav below scrolls sideways inside itself when the links do not fit.
@@ -7192,7 +7197,9 @@ input[type="search"],
 }
 .dbis-compare-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    /* minmax(0, ...) so a long code token cannot widen the column past the
+       viewport: plain 1fr has a min-content floor, 357px at 320 wide. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
 }
 .dbis-compare-col {

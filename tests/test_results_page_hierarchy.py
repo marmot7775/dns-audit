@@ -185,9 +185,11 @@ def test_an_opened_card_shows_findings_and_one_closed_details_section(
                     .map(e => e.className),
                 detailsHeaders: card.querySelectorAll(
                     '.card-details > [role="heading"] > .cd-header').length,
+                // innerText: the count carries one span per spec mode and
+                // only the active one is shown.
                 detailsCount: card.querySelector(
                     '.card-details > [role="heading"] > .cd-header .cd-header-count')
-                    .textContent.trim(),
+                    .innerText.trim(),
                 titles: sub.map(h => h.querySelector('.cd-header-title').textContent.trim()),
                 summaries: sub.map(h => {
                     const c = h.querySelector('.cd-header-count');
