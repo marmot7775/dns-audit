@@ -5499,7 +5499,6 @@ input[type="search"],
     gap: 0.5rem;
 }
 
-.dbis-score { font-size: var(--font-xs); color: var(--text-muted); }
 
 .dbis-check-item {
     display: flex;
