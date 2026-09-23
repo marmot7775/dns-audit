@@ -701,8 +701,8 @@ def _plan_confirm_line(card):
 def _plan_what_to_change(data, item, card, S):
     """The record to publish, or the card's fix text, or a pointer.
 
-    The same choice the web row makes: for DMARC the readiness panel's next
-    edit, otherwise the card's fix_records. Nothing here invents a record.
+    The same choice the web row makes: the row's own record, otherwise the
+    card's fix_records. Nothing here invents a record.
     """
     protocol = item.get("protocol", "")
 
@@ -711,14 +711,18 @@ def _plan_what_to_change(data, item, card, S):
     if note:
         return [Paragraph(_safe(note), S["body"])]
 
-    readiness = (card or {}).get("dmarcbis_readiness") or {}
-    if protocol == "DMARC" and readiness.get("suggested_record"):
+    # The row's own record, as on the web: the readiness panel's one
+    # suggested record used to go on every DMARC row.
+    if protocol == "DMARC" and item.get("record"):
         host = f"_dmarc.{_strip_html(data.get('domain', ''))}"
         els = [Paragraph(f"TXT record at <b>{_safe(host)}</b>", S["body_small"])]
-        els.extend(_record_block(readiness["suggested_record"], S, small=True))
+        els.extend(_record_block(item["record"], S, small=True))
+        # No appendix letter: the migration path's letter depends on which
+        # sections rendered, and a fixed "Appendix A" pointed at the wrong one.
         els.append(Paragraph(
-            "This is the next edit at your current policy. Appendix A carries "
-            "the migration steps and the enforcement end state.", S["body_tiny"]))
+            "This is the next edit at your current policy. The migration path "
+            "in the appendix carries the steps and the enforcement end state.",
+            S["body_tiny"]))
         return els
 
     fix_records = (card or {}).get("fix_records") or []
@@ -852,6 +856,10 @@ def _dmarc_deep_dive(data, S, number=3):
         "verdict, record and findings are there; what follows is the "
         "validation, the tag by tag reading, and the records this audit "
         "would publish.", S["body_small"]))
+    # A card with no readable record (lookup failed, nothing published)
+    # has nothing below the intro, and an empty section got a letter and a
+    # "Detail in Appendix A" pointer.
+    _header_len = len(els)
 
     status = dmarc.get("status", "pass")
 
@@ -1011,7 +1019,12 @@ def _dmarc_deep_dive(data, S, number=3):
             els.append(Paragraph("Current record:", S["body_small"]))
             els.extend(_record_block(current, S, small=True))
 
-        if recommended:
+        if recommended and rb.get("mode") == "first_record":
+            # No record yet: this is a p=none starting point, which the web
+            # labels the same way. It is not the enforcement end state.
+            els.append(Paragraph("<b>Recommended starting record</b>", S["body_small"]))
+            els.extend(_record_block(recommended, S, small=True))
+        elif recommended:
             els.append(Paragraph("<b>End state: enforcement</b>", S["body_small"]))
             els.extend(_record_block(recommended, S, small=True))
             els.append(Paragraph(END_STATE_NOTE, S["body_tiny"]))
@@ -1047,6 +1060,8 @@ def _dmarc_deep_dive(data, S, number=3):
                 f"({_safe(change.get('type', ''))}): {_safe(change.get('reason', ''))}",
                 S["body_small"]))
 
+    if len(els) == _header_len:
+        return []
     return els
 
 
@@ -1573,8 +1588,9 @@ def _deep_analysis_title(data):
     """
     spf = _get_check(data, "SPF") or {}
     dkim = _get_check(data, "DKIM") or {}
-    if spf.get("spf_deep") or dkim.get("dkim_deep"):
-        return "SPF and DKIM in depth"
+    named = [n for n, has in (("SPF", spf.get("spf_deep")), ("DKIM", dkim.get("dkim_deep"))) if has]
+    if named:
+        return " and ".join(named) + " in depth"
     return "What each check means"
 
 
@@ -1625,16 +1641,20 @@ def _deep_analysis_page(data, S, number="C"):
     return els
 
 
-def _appendix_divider(S):
-    """The page between the report and the evidence behind it."""
+def _appendix_divider(S, titles=()):
+    """The page between the report and the evidence behind it.
+
+    It names the sections that rendered. A fixed list promised DMARC, SPF
+    and DKIM detail on a transport-only run that held none of it.
+    """
     els = [PageBreak(), Spacer(1, SP_XL)]
     els.append(Paragraph("Part 2: Appendix", S["page_title"]))
     els.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=SP_MD))
+    names = [t[0].lower() + t[1:] if not t.startswith(("DMARC", "SPF", "DKIM")) else t
+             for t in titles]
+    listed = (", ".join(names[:-1]) + " and " + names[-1]) if len(names) > 1 else "".join(names)
     for line in (
-        "This appendix holds the evidence behind the report: the full DMARC "
-        "validation and tag by tag reading, the attack surface and subdomain "
-        "tables, the SPF and DKIM analyses, the migration path, and what each "
-        "check means.",
+        f"This appendix holds the evidence behind the report: {_safe(listed)}.",
         "Nothing in it changes the plan in Part 1.",
         "Where Part 1 points at an appendix section, it is here.",
     ):
@@ -1877,6 +1897,7 @@ def _build_sections(audit_result: dict, S):
     ]
     letters = "ABCDEFGH"
     appendix_toc = []
+    appendix_titles = []
     appendix_els = []
     pointers = {}
     used = 0
@@ -1887,6 +1908,7 @@ def _build_sections(audit_result: dict, S):
             continue
         used += 1
         appendix_toc.append(f"{letter}. {title}")
+        appendix_titles.append(title)
         appendix_els.extend(els)
         for name in covered:
             pointers.setdefault(name, []).append(letter)
@@ -1916,7 +1938,7 @@ def _build_sections(audit_result: dict, S):
     if appendix_els:
         toc_items.append("<b>Part 2: Appendix</b>")
         toc_items.extend(appendix_toc)
-        sections.extend(_appendix_divider(S))
+        sections.extend(_appendix_divider(S, appendix_titles))
         sections.extend(appendix_els)
 
     return toc_items, sections
