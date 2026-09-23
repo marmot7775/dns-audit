@@ -91,10 +91,10 @@ def test_score_never_implies_more_misses_than_warn_or_fail_rows(audit, dmarc):
 
 
 def test_readiness_header_carries_the_label_and_no_count(browser, audit):  # noqa: F811
-    # paypal.com's shape: every graded row passes, but the health verdict
-    # (failure reporting without fo=1) labels it In progress. A count beside
-    # that label would say 2/2.
-    data = _result(audit, NO_PCT)
+    # Every graded row passes, but the health verdict (t=y lowers reject to
+    # quarantine) labels it In progress. A count beside that label would
+    # say 2/2.
+    data = _result(audit, f"v=DMARC1; p=reject; t=y; {RUA}")
     assert data["executive_summary"]["dmarcbis_readiness"]["label"] == "In progress"
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
