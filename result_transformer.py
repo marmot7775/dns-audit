@@ -780,6 +780,17 @@ def _roadmap_fix_text(card: Dict) -> str:
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", "", fix))).strip()
 
 
+# Health reasons that lower enforcement, restated as something to do.
+_ATTENTION_ROWS = {
+    "Test mode weakens reject": (
+        "Remove t=y so p=reject applies in full",
+        "With t=y, RFC 9989 receivers apply quarantine instead of reject."),
+    "Test mode weakens np=reject": (
+        "Remove t=y so np=reject applies in full",
+        "With t=y, RFC 9989 receivers apply np one level lower."),
+}
+
+
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                            has_mx: bool = True) -> Dict:
     """Synthesize all check results into a prioritized action plan.
@@ -942,10 +953,12 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 items.append({"priority": "medium", "protocol": "DMARC",
                               "action": f"Remove the {_noun} RFC 9989 retired: {', '.join(_tags)}",
                               "impact": _impact})
-            else:
+            elif reason in _ATTENTION_ROWS:
+                action, impact = _ATTENTION_ROWS[reason]
                 items.append({"priority": "medium", "protocol": "DMARC",
-                              "action": reason,
-                              "impact": ""})
+                              "action": action, "impact": impact})
+            # The weaker sp and np reasons get their rows below, from the
+            # record, with the policy values in them.
 
     # ── Low ─────────────────────────────────────────────────
     bimi = check_map.get("BIMI", {})
@@ -996,7 +1009,15 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
             items.append({"priority": "high", "protocol": "DMARC",
                           "action": f"Bring the subdomain policy up to p={_p_val}",
                           "impact": _sp_impact})
-        elif _p_val in ("reject", "quarantine") and "np" not in _dmarc_tags:
+        _np_val = _dmarc_tags.get("np", "").lower()
+        if (_p_val in ("reject", "quarantine") and _np_val in _pol_rank
+                and _pol_rank[_np_val] < _pol_rank[_p_val]):
+            items.append({"priority": "high", "protocol": "DMARC",
+                          "action": f"Set np={_p_val} to match the domain's policy",
+                          "impact": (
+                              f"np={_np_val} gives subdomains that do not exist, the kind "
+                              f"invented for phishing, a weaker policy than p={_p_val}.")})
+        if not _sp_is_weaker and _p_val in ("reject", "quarantine") and "np" not in _dmarc_tags:
             items.append({"priority": "low", "protocol": "DMARC",
                           "action": "Consider adding an explicit np= tag",
                           "impact": "Purely optional. Subdomains already inherit your enforcing policy without it."})
@@ -1872,6 +1893,29 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     # record found" contradicts what the operator can see in their zone, and
     # the has-record branch narrates a policy that is not in force.
     if raw.get("malformed_record"):
+        # Receivers discard the broken record and walk up the tree, so a
+        # parent's policy still applies. Build the inherited card, then say
+        # the published record is broken; "no DMARC protection" would be false.
+        if raw.get("is_subdomain") and raw.get("inherited_policy"):
+            card = transform_dmarc({**raw, "malformed_record": None}, tree_walk, is_no_mail)
+            _src = raw.get("inherited_from", "the organizational domain")
+            card.update({
+                "status": "fail",
+                "pill_label": "Malformed",
+                "verdict": (f"Record ignored by receivers; inherited "
+                            f"{raw['inherited_policy']} from {_src} applies"),
+                "record": raw["malformed_record"],
+                "explanation": (
+                    "A TXT record is published, but its version tag does not match "
+                    "what the specification requires, so receivers discard it and "
+                    f"apply the policy inherited from {_src} instead. "
+                    + (card.get("explanation") or "")
+                ),
+                "fix": (f"Republish the TXT record at <strong>_dmarc.{_e(raw.get('domain', ''))}</strong> "
+                        f"starting with exactly <strong>v=DMARC1;</strong>, or delete it "
+                        f"if the inherited policy is the one you want."),
+            })
+            return card
         return _malformed_version_tag_card(
             "DMARC", raw, raw["malformed_record"],
             "Receivers ignore it and treat the domain as having no DMARC "
@@ -2042,10 +2086,13 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         elif status == "pass" and syntax:
             status = "warn"
         # sp weaker than p is one of Doc 38's warn rules: the root enforces
-        # and its subdomains get less.
+        # and its subdomains get less. np weaker than p is the same gap for
+        # subdomains that do not exist, and the readiness tile already
+        # reads it as one.
         _rank = {"none": 0, "quarantine": 1, "reject": 2}
-        if (status == "pass" and raw.get("sp") in _rank and policy in _rank
-                and _rank[raw["sp"]] < _rank[policy]):
+        if status == "pass" and policy in _rank and any(
+                raw.get(t) in _rank and _rank[raw[t]] < _rank[policy]
+                for t in ("sp", "np")):
             status = "warn"
 
     # RFC 9989 §4.10.1 policy recovery: invalid p/sp/np with valid
@@ -2401,11 +2448,12 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                     w["hidden"] = True
         health = _calculate_dmarcbis_health(_parsed, _pol, config_warnings)
         _domain = raw.get("domain", "")
-        migration = _build_migration_path(_parsed, _pol, health["status"], domain=_domain)
+        migration = _build_migration_path(_parsed, _pol, health["status"], domain=_domain,
+                                          no_mail=is_no_mail)
         why_dmarcbis = _build_why_dmarcbis(_parsed, _pol, health["status"], domain=_domain)
         record_builder = _build_record_builder(
             _parsed, _pol, health["status"], breakdown_record,
-            config_warnings, domain=_domain,
+            config_warnings, domain=_domain, no_mail=is_no_mail,
         )
         tag_breakdown = {
             "health": health,
@@ -3398,39 +3446,64 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
             )
         warnings.append({"level": "critical", "title": "No aggregate reporting", "text": msg, "tags": ["rua"]})
 
-    # 2. sp=none + p=reject
-    if sp == "none" and policy == "reject":
-        warnings.append({
-            "level": "critical",
-            "title": "Subdomain policy gap",
-            "text": (
-                "Subdomain policy gap. Your root domain rejects spoofed mail but subdomains allow "
-                f"it through, so mail claiming to be from mail.{_dom} receives no policy at all, "
-                "so each receiver applies only its own filtering."
-            ),
-            "tags": ["sp", "p"],
-        })
+    # 2 and 3. sp or np weaker than an enforcing p. none is a gap (critical);
+    # quarantine under reject is weaker enforcement (advisory). These used
+    # to fire only at p=reject; sp=none, so p=quarantine; sp=none and
+    # p=reject; sp=quarantine read "fully RFC 9989-compliant".
+    _rank = {"none": 0, "quarantine": 1, "reject": 2}
+    _root_action = {"reject": "rejects", "quarantine": "quarantines"}.get(policy)
+    if _root_action and sp in _rank and _rank[sp] < _rank[policy]:
+        if sp == "none":
+            warnings.append({
+                "level": "critical",
+                "title": "Subdomain policy gap",
+                "text": (
+                    f"Subdomain policy gap. Your root domain {_root_action} spoofed mail but "
+                    f"subdomains allow it through, so mail claiming to be from mail.{_dom} "
+                    "receives no policy at all, so each receiver applies only its own filtering."
+                ),
+                "tags": ["sp", "p"],
+            })
+        else:
+            warnings.append({
+                "level": "advisory",
+                "title": "Weaker subdomain policy",
+                "text": (
+                    f"sp={sp} gives subdomains a weaker policy than p={policy}, so spoofed "
+                    f"mail from mail.{_dom} is {sp}d rather than {policy}ed."
+                ),
+                "tags": ["sp", "p"],
+            })
+    if _root_action and np_val in _rank and _rank[np_val] < _rank[policy]:
+        if np_val == "none":
+            warnings.append({
+                "level": "critical",
+                "title": "Non-existent subdomain gap",
+                "text": (
+                    "Non-existent subdomain gap. Invented subdomains like "
+                    f"secure-login.{_dom} have no enforcement while your root domain {_root_action}."
+                ),
+                "tags": ["np", "p"],
+            })
+        else:
+            warnings.append({
+                "level": "advisory",
+                "title": "Weaker non-existent subdomain policy",
+                "text": (
+                    f"np={np_val} gives invented subdomains like secure-login.{_dom} a weaker "
+                    f"policy than p={policy}."
+                ),
+                "tags": ["np", "p"],
+            })
 
-    # 3. np=none + p=reject
-    if np_val == "none" and policy == "reject":
-        warnings.append({
-            "level": "critical",
-            "title": "Non-existent subdomain gap",
-            "text": (
-                "Non-existent subdomain gap. Invented subdomains like "
-                f"secure-login.{_dom} have no enforcement while your root domain rejects."
-            ),
-            "tags": ["np", "p"],
-        })
-
-    # 4. np missing + sp=none + p=reject
-    if not np_present and sp == "none" and policy == "reject":
+    # 4. np missing + sp=none + enforcing p
+    if not np_present and sp == "none" and _root_action:
         warnings.append({
             "level": "critical",
             "title": "Double policy gap",
             "text": (
                 "Double policy gap. Both existing and non-existent subdomains fall back to sp=none. "
-                "Your p=reject only protects the root domain."
+                f"Your p={policy} only protects the root domain."
             ),
             "tags": ["np", "sp", "p"],
         })
@@ -3691,21 +3764,28 @@ def _calculate_dmarcbis_health(tags: Dict[str, str], policy: str, config_warning
     # ── Needs Attention (amber) ─────────────────────────────
     # Enforcing but has dangerous combinations that weaken protection
     # These are the advisory warnings that actually weaken protection:
+    # Only findings that lower enforcement belong here. "Underutilized
+    # failure reporting" used to: it held paypal.com (p=reject, no removed
+    # tags) at "In progress", for failure reports RFC 9991 governs and most
+    # receivers never send. It stays a config warning on the card.
     _attention_titles = {
         "Test mode weakens reject", "Test mode weakens np=reject",
-        "Test mode on p=none",
-        "Underutilized failure reporting",
+        "Weaker subdomain policy", "Weaker non-existent subdomain policy",
     }
     attention_triggers = [w["title"] for w in advisory if w["title"] in _attention_titles]
 
     if attention_triggers and policy in ("reject", "quarantine"):
-        issues = ", ".join(attention_triggers[:3])
+        issues = ", ".join(t.lower() for t in attention_triggers[:3])
+        reasons = list(attention_triggers)
+        # The removed tags are still in the record and still worth a plan row.
+        if deprecated_present:
+            reasons.append(f"Removed tags: {', '.join(deprecated_present)}")
         return {
             "status": "attention",
             "label": "Needs Attention",
             "color": "amber",
-            "summary": f"This record has an enforcing policy but {issues} weaken its protection.",
-            "reasons": attention_triggers,
+            "summary": f"This record has an enforcing policy, but it is weakened by: {issues}.",
+            "reasons": reasons,
         }
 
     # ── RFC 9989 Ready (green) ──────────────────────────────
@@ -3857,7 +3937,7 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
     return {"sections": sections}
 
 
-def _dmarc_end_state(tags: Dict[str, str], domain: str = "") -> tuple:
+def _dmarc_end_state(tags: Dict[str, str], domain: str = "", no_mail: bool = False) -> tuple:
     """The one enforcement end state for a DMARC record, and the edits to it.
 
     Returns (record, changes). Three panels used to propose a record for the
@@ -3914,7 +3994,9 @@ def _dmarc_end_state(tags: Dict[str, str], domain: str = "") -> tuple:
 
     # 4. Reporting. Without rua nothing in the end state can be verified,
     #    and the migration path's first step adds it, so the target has it.
-    if not rec.get("rua"):
+    #    A domain that sends no mail has nothing to report on; its card
+    #    calls rua optional, so the end state does not add one.
+    if not rec.get("rua") and not no_mail:
         rec["rua"] = f"mailto:dmarc@{domain}" if domain else "mailto:dmarc@example.com"
         changes.append({
             "tag": "rua", "action": "added", "value": rec["rua"],
@@ -3962,7 +4044,8 @@ def _dmarc_end_state(tags: Dict[str, str], domain: str = "") -> tuple:
     return "; ".join(parts), changes
 
 
-def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str, domain: str = "") -> Optional[Dict]:
+def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str, domain: str = "",
+                          no_mail: bool = False) -> Optional[Dict]:
     """Generate a personalized step-by-step migration path to RFC 9989 Ready.
 
     Returns None if already RFC 9989 Ready.
@@ -4006,7 +4089,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         return "; ".join(f"{k}={_working[k]}" for k in keys)
 
     # Step: Add reporting if missing
-    if not rua:
+    if not rua and not no_mail:
         step_num += 1
         steps.append({
             "step": step_num,
@@ -4150,7 +4233,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
     # from the same function, so the two panels cannot propose different
     # records for one domain. fo=1 is only meaningful alongside ruf= (RFC
     # 9989 section 4.7), which _dmarc_end_state enforces.
-    target, _ = _dmarc_end_state(tags, domain)
+    target, _ = _dmarc_end_state(tags, domain, no_mail)
 
     return {
         "status": "migration",
@@ -4175,6 +4258,7 @@ def _build_record_builder(
     record: Optional[str],
     config_warnings: List[Dict],
     domain: str = "",
+    no_mail: bool = False,
 ) -> Dict:
     """Build the Record Builder payload.
 
@@ -4224,7 +4308,7 @@ def _build_record_builder(
             k, _, v = part.partition("=")
             rec_tags[k.strip().lower()] = v.strip()
 
-    recommended, changes = _dmarc_end_state(rec_tags, domain)
+    recommended, changes = _dmarc_end_state(rec_tags, domain, no_mail)
 
     return {
         "mode": "fix",
@@ -4277,6 +4361,17 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     # be a claim about the domain that this audit did not establish.
     if raw.get("status") == "unavailable":
         return _lookup_unavailable_card("SPF", raw, "SPF record")
+
+    # A v=spf1 record the version match rejects (no space after v=spf1).
+    if raw.get("malformed_record"):
+        return _malformed_version_tag_card(
+            "SPF", raw, raw["malformed_record"],
+            "Receivers treat the domain as having no SPF record, so no sending "
+            "server is authorized and SPF gives DMARC no alignment path.",
+            "Republish the TXT record at <strong>" + _e(raw.get("domain", "")) + "</strong> "
+            "starting with <strong>v=spf1</strong> followed by a space, with a space "
+            "between each mechanism.",
+        )
 
     # More than one v=spf1 record at the name. RFC 7208 section 4.5 makes that a
     # PermError for the whole evaluation. The record field is empty on this path
