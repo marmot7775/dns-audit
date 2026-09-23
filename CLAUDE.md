@@ -55,7 +55,27 @@
   which overrides prefers-color-scheme. The light-mode rules in style.css
   exist twice for that reason: once inside the media query scoped to
   :not([data-theme="dark"]), once scoped to [data-theme="light"].
-- All touch targets must be 44px minimum on mobile
+- `html` carries `font-size: 100%`, never a pixel value. Every `--font-*`
+  token is in rem, so the root is the multiplier for all text on the site,
+  and a pixel value there throws away the default text size the reader set in
+  their own browser or OS. The layout tokens (`--space-*`, `--max-width`) stay
+  in px on purpose, so a reader who scales up gets larger text inside the same
+  containers rather than a page that grows sideways.
+  The second header control in static/theme.js is the text size cycle. It
+  saves `default`, `large` or `largest` under the localStorage key `text-size`
+  and sets data-text-size on <html>; the `html[data-text-size]` rules are
+  percentages for the same reason, so they multiply the reader's setting
+  instead of replacing it. Clearing back to default removes the attribute and
+  the stored value rather than storing "default".
+  tests/test_palette_contrast.py holds both: the root must be a percentage,
+  and each step must be a percentage above 100.
+- All touch targets must be 44px minimum on mobile. The nav links sit at that
+  floor below 640px (min-width and min-height, with the padding trimmed to
+  fit), because the header carries the wordmark, three links and two controls
+  and does not fit a 375px screen otherwise. The controls live in
+  .header-controls, outside <nav>: they are not navigation, and .site-nav
+  scrolls sideways when its links do not fit, which would carry a control off
+  the screen.
 - Text contrast must pass WCAG AA (4.5:1 ratio)
 - No personal data in logs (GDPR-safe)
 - When editing static/privacy.html body content, update the "Last updated" date in the same commit.
