@@ -812,13 +812,13 @@ def _emit_size_modifier_info(result: Dict[str, Any], tag_name: str, addr: str) -
     modifier = addr[7:].split("!", 1)[1]
     result["issues"].append({
         "severity": "info",
-        "issue": "rua/ruf size modifier (!N) is obsolete in RFC 9989",
+        "issue": "RFC 9989 removed the rua/ruf size modifier (!N)",
         "plain_english": (
             f"Your DMARC record uses the legacy size modifier "
             f"(e.g., {addr} has !{modifier}). RFC 9989 §C.4 removed "
             "this syntax. Receivers implementing RFC 9989 will ignore "
             "the size limit; receivers following RFC 7489 still honor it. "
-            "Remove the modifier to be forward-compatible."
+            "Remove the modifier so the record reads the same under both specs."
         ),
         "fix": (
             f"Edit the {tag_name}= URI to remove the !N suffix "
@@ -1893,10 +1893,10 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
                     all_valid = False
 
                 if size_modifier:
-                    _add("uri_validation", "URI_SIZE_MODIFIER_OBSOLETE", "warn",
+                    _add("uri_validation", "URI_SIZE_MODIFIER_REMOVED", "warn",
                          f"{tag_name}={uri_stripped} contains a size modifier (!{size_modifier}). "
                          "RFC 9989 §C.4 removes the ability to specify a maximum report size; "
-                         "§4.8 marks the syntax as obsolete. Reporters following RFC 9989 will "
+                         "§4.8 keeps the syntax only so older records still parse. Reporters following RFC 9989 will "
                          "ignore the size suffix. RFC 7489 receivers may still honor it. "
                          "Remove the modifier.")
 
