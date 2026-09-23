@@ -127,6 +127,19 @@ def test_no_banned_phrase_in_generated_text(phrase):
     assert not hits, "\n".join(hits)
 
 
+# Doc 70: the results page does not call RFC 7489, or a record that works
+# under it, obsolete. Most receivers still evaluate DMARC that way. The prose
+# pages may quote the RFC's own "obsoletes", so this list is results-only.
+RESULTS_BANNED = ["obsolete", "Obsolete"]
+
+
+@pytest.mark.parametrize("phrase", RESULTS_BANNED)
+def test_results_page_never_says_obsolete(phrase):
+    hits = [f"{where}: {value[:90]!r}" for where, value in _generated_strings()
+            if phrase in value]
+    assert not hits, "\n".join(hits)
+
+
 # Doc 56: the About and Privacy pages lost their launch-post register, and
 # these pin it out along with the Doc 47 list.
 # The DMARC, DNSSEC and DANE articles lost the same register, and their
