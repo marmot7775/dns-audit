@@ -146,14 +146,17 @@ def test_every_plan_item_carries_the_three_parts(complete):
             assert item["impact"][:60] in text, item["impact"]
 
 
-def test_the_dmarc_plan_item_carries_the_next_edit_record(complete):
+def test_the_dmarc_plan_item_carries_its_own_record(complete):
+    # Each DMARC row carries the record that does what it says; the
+    # readiness panel's one record used to go on every row.
     text = _flat(_pages(complete))
-    dmarc = next(c for c in complete["checks"] if c["name"] == "DMARC")
-    suggested = dmarc["dmarcbis_readiness"]["suggested_record"]
+    rows = [i for i in complete["security_roadmap"]["items"]
+            if i["protocol"] == "DMARC" and i.get("record")]
 
-    assert suggested.startswith("v=DMARC1; p=none")
+    assert rows
     assert f"TXT record at _dmarc.{DOMAIN}" in text
-    assert suggested in text, suggested
+    for row in rows:
+        assert row["record"] in text, row
 
 
 def test_the_plan_lost_the_business_impact_column_and_the_address_label(complete):
@@ -186,15 +189,18 @@ def test_the_dmarc_check_comes_before_the_divider_and_its_validation_after(compl
     assert "p=none (monitoring only, no enforcement)" in " ".join(part1.split())
 
 
-def test_part_one_stays_within_ten_pages(complete):
+def test_part_one_stays_within_eleven_pages(complete):
     # Doc 65 set this at eight. Doc 67 gave every check a two-sentence line
     # saying what its protocol is, in the Checks section, which is two pages
-    # of report the reader now gets before the appendix starts. The budget
+    # of report the reader now gets before the appendix starts. The plan then
+    # gained a row this fixture never had: p=none with pct=50 had no row to
+    # remove pct, because the removed-tags row came only from a Compatible
+    # verdict. That row and its record are the eleventh page. The budget
     # moved by exactly what was added and no further.
     pages = _pages(complete)
     divider = _divider_index(pages)
 
-    assert divider <= 10, f"Part 1 runs to {divider} pages"
+    assert divider <= 11, f"Part 1 runs to {divider} pages"
 
 
 def test_each_check_points_at_the_appendix_that_holds_its_detail(complete):

@@ -1176,25 +1176,31 @@ async def audit_pdf(
         # footer of every page, telling the reader to publish DMARC and SPF
         # records on a domain that does not exist.
         #
-        # It runs before the cache read so a refused domain never takes a
-        # cache key, and before _join_or_lead so it neither leads nor joins an
-        # in-flight audit. It is inside the reservation, so the finally below
+        # It runs after the cache read, as on /api/audit and the stream: a
+        # cached result already passed it, and refusing that result because
+        # a fresh SOA query hiccupped turned a good audit into an error. Only
+        # successful audits are cached, so a refused domain never takes a key.
+        # It runs before _join_or_lead so it neither leads nor joins an
+        # in-flight audit, and inside the reservation, so the finally below
         # releases the slot on the refusal path.
-        preflight_err = await anyio.to_thread.run_sync(_preflight_dns_check, domain)
-        if preflight_err:
-            log.info("PDF preflight failed for %s: %s", domain, preflight_err.get("error"))
-            return Response(
-                content=preflight_err["error_message"],
-                status_code=400,
-                media_type="text/plain",
-            )
-
-        # Reuse cached audit data if available
         cached = _get_cached(cache_key)
         if cached:
             data = cached
             log.info("PDF using cached data: %s", domain)
         else:
+            preflight_err = await anyio.to_thread.run_sync(_preflight_dns_check, domain)
+            if preflight_err:
+                log.info("PDF preflight failed for %s: %s", domain, preflight_err.get("error"))
+                # A domain that does not exist is the request's problem; a
+                # timeout or a broken nameserver is not, and says try again.
+                transient = preflight_err.get("error") in ("timeout", "dns_broken")
+                return Response(
+                    content=preflight_err["error_message"],
+                    status_code=503 if transient else 400,
+                    media_type="text/plain",
+                    headers={"Retry-After": "60"} if transient else None,
+                )
+
             # Join an identical audit already in flight rather than running a
             # second one. Unlike /api/audit a follower here keeps its slot: it
             # still has a PDF to render, which is the CPU-bound half. The

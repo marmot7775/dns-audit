@@ -95,6 +95,9 @@ BRANCHES = [
     (dns.resolver.NoNameservers(), "dns_broken", "SERVFAIL or REFUSED"),
     (dns.exception.Timeout(), "timeout", "timed out"),
 ]
+# A domain that does not exist is a bad request; a DNS failure is the
+# service's to retry, so it is 503.
+STATUS = {"domain_not_found": 400, "dns_broken": 503, "timeout": 503}
 
 
 @pytest.mark.parametrize("exc,error_key,phrase", BRANCHES,
@@ -105,7 +108,7 @@ def test_the_pdf_route_refuses_and_renders_nothing(monkeypatch, no_pdf, no_audit
 
     r = client.get(f"/api/audit/{NX}/pdf")
 
-    assert r.status_code == 400, r.text
+    assert r.status_code == STATUS[error_key], r.text
     assert r.headers["content-type"].startswith("text/plain")
     assert phrase in r.text
     assert no_pdf == [] and no_audit == []
@@ -157,16 +160,31 @@ def test_a_refused_domain_never_joins_or_leads_an_in_flight_audit(monkeypatch, n
     assert server_module._inflight == {}, server_module._inflight
 
 
-@pytest.mark.parametrize("exc", [b[0] for b in BRANCHES], ids=[b[1] for b in BRANCHES])
-def test_the_concurrency_slot_is_released_on_the_refusal_path(monkeypatch, no_pdf, no_audit, exc):
+@pytest.mark.parametrize("exc,error_key", [b[:2] for b in BRANCHES], ids=[b[1] for b in BRANCHES])
+def test_the_concurrency_slot_is_released_on_the_refusal_path(monkeypatch, no_pdf, no_audit,
+                                                              exc, error_key):
     """The guard is inside the reservation, so its finally has to run."""
     _resolver_raises(monkeypatch, exc)
 
     for _ in range(server_module._MAX_CONCURRENT_AUDITS + 2):
         server_module._rate_limits.clear()
-        assert client.get(f"/api/audit/{NX}/pdf").status_code == 400
+        assert client.get(f"/api/audit/{NX}/pdf").status_code == STATUS[error_key]
 
     assert server_module._active_audits == 0
+
+
+@pytest.mark.parametrize("exc", [b[0] for b in BRANCHES[1:]], ids=[b[1] for b in BRANCHES[1:]])
+def test_a_cached_result_is_served_when_the_preflight_would_fail(monkeypatch, no_audit, exc):
+    """A good cached audit is not refused because a fresh SOA query failed."""
+    _resolver_raises(monkeypatch, exc)
+    monkeypatch.setattr(server_module, "generate_pdf", lambda data: b"%PDF-cached")
+    server_module._set_cached(f"{NX}::complete", {"domain": NX, "checks": []})
+
+    r = client.get(f"/api/audit/{NX}/pdf")
+
+    assert r.status_code == 200, r.text
+    assert r.content == b"%PDF-cached"
+    assert no_audit == []
 
 
 # ---------------------------------------------------------------
@@ -253,7 +271,7 @@ def test_every_audit_route_is_one_of_the_three_known_ones():
     assert sorted(routes) == ["/api/audit", "/api/audit/stream", "/api/audit/{domain}/pdf"], routes
 
 
-def test_the_pdf_guard_runs_before_the_cache_read_and_the_inflight_registry():
+def test_the_pdf_guard_runs_on_a_cache_miss_before_the_inflight_registry():
     src = _server_source()
     body = src[src.index("async def audit_pdf("):]
     body = body[:body.index("\n@app.")] if "\n@app." in body else body
@@ -264,5 +282,6 @@ def test_the_pdf_guard_runs_before_the_cache_read_and_the_inflight_registry():
     reservation = body.index("_active_audits += 1")
 
     assert reservation < guard, "the guard must sit inside the concurrency reservation"
-    assert guard < cache_read, "the guard must run before the cache is read"
+    # A cached result already passed the guard, as on /api/audit and the stream.
+    assert cache_read < guard, "the guard runs only when the cache misses"
     assert guard < join, "the guard must run before the in-flight registry is joined"
