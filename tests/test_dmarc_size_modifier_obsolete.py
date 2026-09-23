@@ -12,7 +12,7 @@ Verbatim spec text the warning is grounded in:
                   ; obs-dmarc-report-size if it is found in a DMARC
                   ; Policy Record.
 
-The strict validator emits URI_SIZE_MODIFIER_OBSOLETE (warn) per
+The strict validator emits URI_SIZE_MODIFIER_REMOVED (warn) per
 modifier-bearing URI; _raw_check_dmarc emits an info-level issue
 with source="spec_required" and spec_reference="RFC 9989 §C.4 / §4.8".
 
@@ -58,7 +58,7 @@ class TestStrictValidatorEmitsObsoleteWarn(unittest.TestCase):
 
     def test_rua_with_size_modifier_emits_warn(self):
         checks = _strict_checks("v=DMARC1; p=none; rua=mailto:r@example.com!10m")
-        size = [c for c in checks if c["code"] == "URI_SIZE_MODIFIER_OBSOLETE"]
+        size = [c for c in checks if c["code"] == "URI_SIZE_MODIFIER_REMOVED"]
         self.assertEqual(len(size), 1)
         self.assertEqual(size[0]["status"], "warn")
         self.assertIn("!10m", size[0]["message"])
@@ -71,7 +71,7 @@ class TestStrictValidatorEmitsObsoleteWarn(unittest.TestCase):
 
     def test_ruf_with_size_modifier_emits_warn(self):
         checks = _strict_checks("v=DMARC1; p=none; ruf=mailto:r@example.com!1g")
-        size = [c for c in checks if c["code"] == "URI_SIZE_MODIFIER_OBSOLETE"]
+        size = [c for c in checks if c["code"] == "URI_SIZE_MODIFIER_REMOVED"]
         self.assertEqual(len(size), 1)
         self.assertEqual(size[0]["status"], "warn")
         self.assertIn("!1g", size[0]["message"])
@@ -79,7 +79,7 @@ class TestStrictValidatorEmitsObsoleteWarn(unittest.TestCase):
 
     def test_no_modifier_no_finding(self):
         checks = _strict_checks("v=DMARC1; p=none; rua=mailto:r@example.com")
-        self.assertFalse(any(c["code"] == "URI_SIZE_MODIFIER_OBSOLETE" for c in checks))
+        self.assertFalse(any(c["code"] == "URI_SIZE_MODIFIER_REMOVED" for c in checks))
 
     def test_multiple_uris_warns_once_per_modifier_bearing_uri(self):
         record = (
@@ -87,7 +87,7 @@ class TestStrictValidatorEmitsObsoleteWarn(unittest.TestCase):
             "rua=mailto:a@x.com!10m, mailto:b@y.com, mailto:c@z.com!500k"
         )
         checks = _strict_checks(record)
-        size = [c for c in checks if c["code"] == "URI_SIZE_MODIFIER_OBSOLETE"]
+        size = [c for c in checks if c["code"] == "URI_SIZE_MODIFIER_REMOVED"]
         self.assertEqual(len(size), 2)
         messages = " ".join(c["message"] for c in size)
         self.assertIn("a@x.com", messages)
