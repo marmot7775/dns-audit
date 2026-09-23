@@ -587,6 +587,10 @@ function showError(message) {
 // Render results
 // ============================================================
 
+function _resultScope(data) {
+    return (data && data.scope) || currentScope || 'complete';
+}
+
 function renderResults(data) {
     lastAuditData = data;
     // The spec toggle renders with RFC 9989 active on every audit, so the
@@ -609,7 +613,10 @@ function renderResults(data) {
     const topBar = document.querySelector('.top-progress-bar');
     if (topBar) topBar.classList.add('complete');
 
-    const scopeAtRender = currentScope;
+    // The scope the data was audited for, not whichever scope button is
+    // selected now: clicking another scope mid-audit made the tiles, the
+    // share text, the URL and the PDF link describe different runs.
+    const scopeAtRender = _resultScope(data);
     setTimeout(() => {
         hideLoading();
         resultsSection.style.display = 'block';
@@ -699,7 +706,7 @@ function renderResults(data) {
 
     // -- Filter checks by scope --
     let checks = data.checks || [];
-    const scopeFilter = SCOPE_CHECKS[currentScope];
+    const scopeFilter = SCOPE_CHECKS[_resultScope(data)];
     if (scopeFilter) {
         checks = checks.filter(c => {
             const name = (c.name || '').toUpperCase();
@@ -1376,10 +1383,10 @@ function _count(n, word) {
     return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
-function _strictValidationSummary(sv) {
+function _strictValidationSummary(sv, spec = 'RFC 9989') {
     if (!sv || !sv.total_count) return '';
     if (sv.fail_count > 0) return `${sv.fail_count} of ${sv.total_count} checks fail`;
-    return `Passes RFC 9989, ${sv.pass_count} of ${sv.total_count}`;
+    return `Passes ${spec}, ${sv.pass_count} of ${sv.total_count}`;
 }
 
 function _attackSurfaceSummary(as) {
@@ -1475,9 +1482,16 @@ function cardDetailSections(check) {
         if (check.legacy_validation) {
             body += `<div class="spec-legacy is-hidden">${renderStrictValidation(check.legacy_validation, 'RFC 7489')}</div>`;
         }
+        // One summary per spec, toggled with the rest of the spec content,
+        // so RFC 7489 mode does not show the RFC 9989 fail count.
+        const bisSum = _strictValidationSummary(check.strict_validation);
+        const legSum = _strictValidationSummary(check.legacy_validation, 'RFC 7489');
         sections.push({
             title: 'Strict Record Validation',
-            summary: _strictValidationSummary(check.strict_validation),
+            summaryHtml: (check.strict_validation && check.legacy_validation && bisSum !== legSum)
+                ? `<span class="spec-dmarcbis">${escapeHtml(bisSum)}</span>`
+                  + `<span class="spec-legacy is-hidden">${escapeHtml(legSum)}</span>`
+                : escapeHtml(bisSum || legSum),
             html: body,
         });
     }
@@ -1485,6 +1499,7 @@ function cardDetailSections(check) {
     if (check.attack_surface) {
         sections.push({
             title: 'Email Spoofing Attack Surface',
+            anchor: 'dmarc-attack-surface',
             summary: _attackSurfaceSummary(check.attack_surface),
             html: renderAttackSurface(check.attack_surface),
         });
@@ -1527,6 +1542,7 @@ function cardDetailSections(check) {
         sections.push({
             title: check.record_builder.mode === 'first_record'
                 ? 'Your First DMARC Record' : 'Record Builder',
+            anchor: 'dmarc-record-builder',
             summary: '',
             spec: 'spec-dmarcbis',
             html: `<div class="spec-dmarcbis">${renderRecordBuilder(check.record_builder)}</div>`,
@@ -1623,6 +1639,17 @@ function cardDetailSections(check) {
 
 // Built the way Change History already is (cd-section, cd-header, cd-body),
 // so the card's existing click handler and the is-hidden class carry over.
+// The Details count, per spec mode when RFC 9989-only sections are hidden
+// in RFC 7489 mode, so the header does not promise sections it hides.
+function _detailsCountHtml(shown) {
+    const legacyN = shown.filter(s => s.spec !== 'spec-dmarcbis').length;
+    if (legacyN === shown.length) {
+        return `<span class="cd-header-count">${_count(shown.length, 'section')}</span>`;
+    }
+    return `<span class="cd-header-count"><span class="spec-dmarcbis">${_count(shown.length, 'section')}</span>`
+        + `<span class="spec-legacy is-hidden">${_count(legacyN, 'section')}</span></span>`;
+}
+
 function renderCardDetails(sections) {
     const shown = sections.filter(s => s && s.html);
     if (shown.length === 0) return '';
@@ -1630,12 +1657,13 @@ function renderCardDetails(sections) {
     let inner = '';
     for (const s of shown) {
         const bodyId = `cd-body-${++_cdSectionSeq}`;
-        inner += `<div class="cd-section cd-subsection${s.spec ? ' ' + s.spec : ''}">
+        inner += `<div class="cd-section cd-subsection${s.spec ? ' ' + s.spec : ''}"${s.anchor ? ` id="${s.anchor}"` : ''}>
             <div role="heading" aria-level="5">
             <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${bodyId}">
                 ${s.icon ? `<span class="cd-header-icon">${s.icon}</span>` : ''}
                 <span class="cd-header-title">${escapeHtml(s.title)}</span>
-                ${s.summary ? `<span class="cd-header-count">${escapeHtml(s.summary)}</span>` : ''}
+                ${s.summaryHtml ? `<span class="cd-header-count">${s.summaryHtml}</span>`
+                    : s.summary ? `<span class="cd-header-count">${escapeHtml(s.summary)}</span>` : ''}
                 <span class="cd-chevron">${ICON.chevron}</span>
             </div>
             </div>
@@ -1649,7 +1677,7 @@ function renderCardDetails(sections) {
             <div role="heading" aria-level="4">
             <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${outerId}">
                 <span class="cd-header-title">Details</span>
-                <span class="cd-header-count">${_count(shown.length, 'section')}</span>
+                ${_detailsCountHtml(shown)}
                 <span class="cd-chevron">${ICON.chevron}</span>
             </div>
             </div>
@@ -2872,9 +2900,15 @@ function renderExecutiveSummary(es, roadmap) {
     const hasPriorities = !!(roadmap && roadmap.items && roadmap.items.length > 0);
     let actions = hasPriorities
         ? `<button class="es-action" data-scroll-to="priority-section">What to do</button>` : '';
-    actions += `<button class="es-action" data-scroll-to="check-dmarc">View Attack Surface</button>`;
-    if (es.has_record_builder) {
-        actions += `<button class="es-action" data-scroll-to="check-dmarc">Copy Recommended Record</button>`;
+    // Both point at the panel they name, which sits inside the DMARC card's
+    // collapsed Details; openCard opens every section around it. A run with
+    // no DMARC card (transport, dns_infra) gets neither button.
+    const dmarcCard = (lastAuditData && lastAuditData.checks || []).find(c => c.name === 'DMARC');
+    if (dmarcCard && dmarcCard.attack_surface) {
+        actions += `<button class="es-action" data-scroll-to="dmarc-attack-surface">View Attack Surface</button>`;
+    }
+    if (es.has_record_builder && dmarcCard && dmarcCard.record_builder) {
+        actions += `<button class="es-action" data-scroll-to="dmarc-record-builder">Copy Recommended Record</button>`;
     }
 
     return `<div class="es-block" id="executive-summary">
@@ -3520,7 +3554,7 @@ document.getElementById('pdf-btn').addEventListener('click', () => {
     pdfBtn.classList.add('btn-busy');
     pdfBtn.disabled = true;
     const domain = encodeURIComponent(lastAuditData.domain);
-    const scope = currentScope || 'complete';
+    const scope = _resultScope(lastAuditData);
     const selectorVal = document.getElementById('selector-input')?.value?.trim() || '';
     const selectorParam = selectorVal ? `&selector=${encodeURIComponent(selectorVal)}` : '';
     window.open(`/api/audit/${domain}/pdf?scope=${scope}${selectorParam}`, '_blank');
@@ -3557,6 +3591,20 @@ function openCard(id) {
         card.classList.add('expanded');
         const header = card.querySelector('.result-header');
         if (header) header.setAttribute('aria-expanded', 'true');
+        // A panel inside Details is behind one or two collapsed sections,
+        // and behind the spec toggle if it is RFC 9989-only content.
+        if (target.closest('.spec-dmarcbis.is-hidden')) {
+            const seg = card.querySelector('.st-seg[data-mode="dmarcbis"]');
+            if (seg) seg.click();
+        }
+        for (let sec = target.closest('.cd-section'); sec; sec = sec.parentElement.closest('.cd-section')) {
+            const hdr = sec.querySelector(':scope > [role="heading"] > .cd-header');
+            const body = sec.querySelector(':scope > .cd-body');
+            if (body && body.classList.contains('is-hidden')) {
+                body.classList.remove('is-hidden');
+                if (hdr) hdr.setAttribute('aria-expanded', 'true');
+            }
+        }
         syncToggleAllLabel();
     }
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3682,7 +3730,8 @@ function _getShareUrl() {
     if (!d) return window.location.href;
     const url = new URL(window.location.origin);
     url.searchParams.set('d', d.domain);
-    if (currentScope && currentScope !== 'complete') url.searchParams.set('scope', currentScope);
+    const scope = _resultScope(d);
+    if (scope !== 'complete') url.searchParams.set('scope', scope);
     return url.toString();
 }
 
@@ -4272,6 +4321,8 @@ function _resetAndFocusInput() {
 document.addEventListener('keydown', (e) => {
     // Don't trigger when typing in inputs
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    // Ctrl+R, Cmd+R and Alt+R belong to the browser (reload), not to us.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'r' || e.key === 'R') {
         // resultsSection.style.display is '' before the first audit, which is
         // not 'none', so R on a scope button cleared a typed domain.
