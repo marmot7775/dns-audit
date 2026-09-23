@@ -2705,6 +2705,9 @@ let _execSummary = null;
 function renderDmarcbisReadiness(readiness) {
     if (!readiness || readiness.status === 'no_record') return '';
 
+    // Doc 70: no pass count beside it. The label is the DMARC health verdict
+    // and the checklist is a different list, so a count could read 2/2 next
+    // to "In progress"; the label and the row icons carry it.
     // One label and one colour per result: the executive summary's RFC 9989
     // tile. This block used to keep its own table, which put a red "Needs
     // Update" beside an amber "In Progress" tile for the same record.
@@ -2822,7 +2825,6 @@ function renderDmarcbisReadiness(readiness) {
                 </div>
                 <div class="dbis-header-right">
                     ${statusLabel ? `<span class="${tagClass(statusClass)}">${escapeHtml(statusLabel)}</span>` : ''}
-                    <span class="dbis-score">${readiness.pass_count}/${readiness.total_count}</span>
                 </div>
             </div>
             <div class="dbis-checklist">${checklistHtml}</div>

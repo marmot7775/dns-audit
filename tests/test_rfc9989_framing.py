@@ -7,6 +7,7 @@ RFC 7489 obsolete without saying most receivers still run it.
 """
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -87,6 +88,23 @@ def test_score_never_implies_more_misses_than_warn_or_fail_rows(audit, dmarc):
     assert readiness["pass_count"] == statuses.count("pass")
     assert readiness["total_count"] - readiness["pass_count"] == \
         statuses.count("warn") + statuses.count("fail")
+
+
+def test_readiness_header_carries_the_label_and_no_count(browser, audit):  # noqa: F811
+    # paypal.com's shape: every graded row passes, but the health verdict
+    # (failure reporting without fo=1) labels it In progress. A count beside
+    # that label would say 2/2.
+    data = _result(audit, NO_PCT)
+    assert data["executive_summary"]["dmarcbis_readiness"]["label"] == "In progress"
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        _render(page, data)
+        header = page.eval_on_selector("#check-dmarc .dbis-header", "e => e.textContent")
+        assert "In progress" in header
+        assert not re.search(r"\d+\s*/\s*\d+", header), header
+        assert not errors, errors
+    finally:
+        ctx.close()
 
 
 # ---------------------------------------------------------------
