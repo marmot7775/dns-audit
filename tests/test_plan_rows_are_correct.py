@@ -163,7 +163,8 @@ def test_an_empty_roadmap_keeps_its_own_sentence_and_no_detail():
      "Receivers on RFC 9989 ignore them, and pct never gave"),
     (["Removed tags: ri"], "Remove the tag RFC 9989 retired: ri",
      "Receivers on RFC 9989 ignore it."),
-    (["Test mode weakens reject"], "Test mode weakens reject", ""),
+    (["Test mode weakens reject"], "Remove t=y so p=reject applies in full",
+     "With t=y, RFC 9989 receivers apply quarantine"),
 ])
 def test_a_readiness_row_reads_as_an_instruction(reasons, action, impact_start):
     card = {"name": "DMARC", "status": "warn", "configured": True,

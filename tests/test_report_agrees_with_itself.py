@@ -76,10 +76,11 @@ def test_the_summary_says_with_warnings_and_the_spec_comparison_counts_them():
 
 
 @pytest.mark.parametrize("value", ["abc", "150"])
-def test_a_malformed_pct_still_fails_and_does_not_also_get_the_removal_warning(value):
+def test_a_malformed_pct_warns_and_does_not_also_get_the_removal_warning(value):
     strict = audit_engine._validate_dmarc_strict(f"v=DMARC1; p=reject; pct={value}; {RUA}")
 
-    assert "PCT_INVALID" in _codes(strict, "fail")
+    # Doc 44: receivers ignore a malformed optional value, so it warns.
+    assert "PCT_INVALID" in _codes(strict, "warn")
     assert "PCT_REMOVED" not in _codes(strict)
 
 

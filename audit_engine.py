@@ -693,13 +693,11 @@ def _enrich_dmarc_inheritance(
     if raw_dmarc.get("record"):
         return  # Has its own record, no inheritance needed
 
-    # A malformed record at this exact name is not "nothing published": RFC
-    # 7489 section 6.6.3 inheritance applies when the TXT record set is
-    # empty, not when it exists and fails the version gate. Falling through
-    # to the org domain here would tell the operator their broken record
-    # inherited a policy from a parent it never consulted.
-    if raw_dmarc.get("malformed_record"):
-        return
+    # A malformed record at this name does not stop inheritance. RFC 7489
+    # section 6.6.3 and RFC 9989 section 4.10 discard records that fail the
+    # version gate first, and an empty set after that sends the receiver up
+    # the tree. The card still reports the broken record; this only records
+    # which policy receivers apply instead.
 
     # A walk that could not read one of its levels cannot say which policy
     # applies: the unread level is exactly where a different one would live.
@@ -1807,11 +1805,16 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
 
     # ── Layer 3: Value validation (semantics) ──────────────
 
-    # Check 9: Policy values
+    # Check 9: Policy values. Graded the way the card grades them (Doc 44):
+    # an invalid p, sp or np with a valid rua is RFC 9989 section 4.10.1
+    # recovery to p=none, a warning. Without a valid rua the same section
+    # has receivers apply no DMARC processing, which is a failure.
+    _rua_ok = _is_rua_syntactically_valid(tag_dict.get("rua", ""))
     for tag_name in ("p", "sp", "np"):
         val = tag_dict.get(tag_name)
         if val is not None and val.lower() not in VALID_POLICIES:
-            _add("tag_values", f"{tag_name.upper()}_INVALID", "fail",
+            fatal = not _rua_ok
+            _add("tag_values", f"{tag_name.upper()}_INVALID", "fail" if fatal else "warn",
                  f"Invalid policy '{val}' for {tag_name}=. Must be none, quarantine, or reject.")
         elif val is not None:
             _add("tag_values", f"{tag_name.upper()}_VALID", "pass",
@@ -1821,7 +1824,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     for tag_name in ("adkim", "aspf"):
         val = tag_dict.get(tag_name)
         if val is not None and val.lower() not in ("r", "s"):
-            _add("tag_values", "ALIGNMENT_INVALID", "fail",
+            _add("tag_values", "ALIGNMENT_INVALID", "warn",
                  f"{tag_name}={val} is not valid. Must be r (relaxed) or s (strict).")
         elif val is not None:
             _add("tag_values", f"{tag_name.upper()}_VALID", "pass",
@@ -1836,12 +1839,12 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     pct_val = tag_dict.get("pct")
     if pct_val is not None:
         if not re.match(r'^-?\d+$', pct_val):
-            _add("tag_values", "PCT_INVALID", "fail",
+            _add("tag_values", "PCT_INVALID", "warn",
                  f"pct={pct_val} is not a valid integer.")
         else:
             pct_int = int(pct_val)
             if pct_int < 0 or pct_int > 100:
-                _add("tag_values", "PCT_INVALID", "fail",
+                _add("tag_values", "PCT_INVALID", "warn",
                      f"pct={pct_val} is out of range. Must be 0-100.")
             elif pct_val != str(pct_int):  # leading zeros
                 _add("tag_values", "PCT_LEADING_ZEROS", "warn",
@@ -1871,7 +1874,8 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
         for uri in uris:
             uri_stripped = uri.strip()
 
-            if not uri_stripped.startswith("mailto:"):
+            # URI schemes are case-insensitive (RFC 3986 section 3.1).
+            if not uri_stripped.lower().startswith("mailto:"):
                 _add("uri_validation", "URI_NO_MAILTO", "fail",
                      f"{tag_name}={uri_stripped} is not a valid URI. Must start with mailto:. "
                      f"Correct format: mailto:{uri_stripped}. This is the most common DMARC error "
@@ -1912,7 +1916,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
         fo_parts = re.split(r'[:]', fo_val)
         invalid_fo = [p for p in fo_parts if p not in valid_fo_parts]
         if invalid_fo or not fo_val:
-            _add("tag_values", "FO_INVALID", "fail",
+            _add("tag_values", "FO_INVALID", "warn",
                  f"fo={fo_val} contains invalid values. Must be 0, 1, d, s or colon-separated combinations.")
         else:
             _add("tag_values", "FO_VALID", "pass", f"fo={fo_val} is valid.")
@@ -1920,14 +1924,14 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     # Check 15: RFC 9989-specific tag values
     psd_val = tag_dict.get("psd")
     if psd_val is not None and psd_val.lower() not in ("y", "n", "u"):
-        _add("tag_values", "PSD_INVALID", "fail",
+        _add("tag_values", "PSD_INVALID", "warn",
              f"psd={psd_val} is not valid. Must be y, n, or u.")
     elif psd_val is not None:
         _add("tag_values", "PSD_VALID", "pass", f"psd={psd_val} is valid.")
 
     t_val = tag_dict.get("t")
     if t_val is not None and t_val.lower() not in ("y", "n"):
-        _add("tag_values", "T_INVALID", "fail",
+        _add("tag_values", "T_INVALID", "warn",
              f"t={t_val} is not valid. Must be y or n.")
     elif t_val is not None:
         _add("tag_values", "T_VALID", "pass", f"t={t_val} is valid.")
@@ -2409,6 +2413,28 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         return result
 
     spf_records = [r for r in all_txt if is_spf_record(r)]
+
+    # A record that starts with v=spf1 but fails the version match, most
+    # often "v=spf1ip4:..." with the space lost to TXT string splitting.
+    # RFC 7208 section 4.5 discards it, so receivers see no SPF, but "No SPF
+    # record found" sends the operator to publish a record they already have.
+    # "v=spf10" is a different version string, not a lost space; it stays
+    # "no SPF record".
+    near_miss = [r for r in all_txt
+                 if re.match(r"(?i)v=spf1[^\s\d]", r.strip()) and not is_spf_record(r)]
+    if not spf_records and near_miss:
+        result["status"] = "error"
+        result["malformed_record"] = near_miss[0]
+        _add_issue(
+            "error",
+            "SPF record published but not recognized",
+            "The record starts with v=spf1 but is not followed by a space, so "
+            "receivers do not recognize it as SPF and discard it.",
+            "Republish the record with a space after v=spf1 and between each "
+            "mechanism. Check your DNS provider's handling of long TXT strings.",
+            business_risk_key="SPF_NO_RECORD",
+        )
+        return result
 
     if not spf_records:
         result["status"] = "error"
@@ -5719,9 +5745,10 @@ def _build_resilience_analysis(
             "However, SPF breaks when mail is forwarded because the forwarding server's IP "
             "is not in the original domain's SPF record."
         )
-    elif not has_mx:
+    elif not has_mx and (raw_results.get("mx") or {}).get("status") != "unavailable":
         # The SPF card grades no SPF on a domain with no MX as amber "No
-        # mail", not red "Missing", and this row has to say the same.
+        # mail", not red "Missing", and this row has to say the same. An MX
+        # lookup that timed out is not "no MX": it falls through to missing.
         spf_status = "no_mail"
         spf_note = (
             "No SPF record and no MX records. This domain does not appear to send or "

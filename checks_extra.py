@@ -608,8 +608,13 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
                         "Reduce the policy file below 64 KB. A policy needs only the version, mode, mx and max_age lines.",
                     ))
                 else:
-                    policy_text = bytes(body).decode(
-                        getattr(resp, "encoding", None) or "utf-8", errors="replace")
+                    # An unknown charset in the header (charset=binary) raises
+                    # LookupError; RFC 8461 policies are ASCII, so fall back.
+                    try:
+                        policy_text = bytes(body).decode(
+                            getattr(resp, "encoding", None) or "utf-8", errors="replace")
+                    except (LookupError, TypeError):
+                        policy_text = bytes(body).decode("utf-8", errors="replace")
                     policy_data, policy_issues = _validate_mta_sts_policy(policy_text, domain)
                     result["policy"] = policy_data
                     result["policy_mode"] = policy_data.get("mode")
