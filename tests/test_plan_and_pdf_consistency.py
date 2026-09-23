@@ -43,6 +43,14 @@ def test_a_policy_row_record_sets_the_tag_it_names(audit, dmarc, action, tag, wa
         {k: v for k, v in before.items() if k != tag}
 
 
+def test_explicit_np_row_keeps_what_np_inherits_from_sp(audit):
+    # github.com's shape: sp=reject covers non-existent subdomains today, so
+    # an explicit np must not be the weaker p=quarantine.
+    row = _rows(_run(audit, f"v=DMARC1; p=quarantine; sp=reject; pct=100; {RUA}"))[
+        "Consider adding an explicit np= tag"]
+    assert _parse_record_tags(row["record"])["np"] == "reject", row["record"]
+
+
 def test_removed_tags_row_record_drops_only_those_tags(audit):
     row = _rows(_run(audit, f"v=DMARC1; p=reject; pct=100; ri=3600; {RUA}"))[
         "Remove the tags RFC 9989 retired: pct, ri"]

@@ -1067,9 +1067,13 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                               f"np={_np_val} gives subdomains that do not exist, the kind "
                               f"invented for phishing, a weaker policy than p={_p_val}.")})
         if not _sp_is_weaker and _p_val in ("reject", "quarantine") and "np" not in _dmarc_tags:
+            # np falls back to sp before p (RFC 9989 section 4.7), so the
+            # explicit value is the one it inherits today. p alone offered
+            # np=quarantine to github.com, whose sp=reject covers them now.
+            _np_inherited = _sp_val if _sp_val in _pol_rank else _p_val
             items.append({"priority": "low", "protocol": "DMARC",
                           "action": "Consider adding an explicit np= tag",
-                          "record": _edit_dmarc_record(dmarc["record"], {"np": _p_val}),
+                          "record": _edit_dmarc_record(dmarc["record"], {"np": _np_inherited}),
                           "impact": "Purely optional. Subdomains already inherit your enforcing policy without it."})
 
     # Items were appended in check order, which put a HIGH DMARC item above
