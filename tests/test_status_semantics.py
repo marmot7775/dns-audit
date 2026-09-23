@@ -349,7 +349,7 @@ def test_web_priorities_list_has_one_row_per_item_in_order():
     # Doc 64: a row is a head plus a body, and the link into the card is a
     # control inside the body, so the anchor is read from that link.
     program = _js_functions("iconSvg", "ICON", "safeClass", "renderPriorities",
-                            "_planWhy", "_planWhat", "_planConfirm", "_planText",
+                            "_planWhy", "_planWhat", "_planConfirm",
                             "_planRecordBlock", "_dmarcPolicy") + """
 function escapeHtml(t) {
     return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

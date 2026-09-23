@@ -2965,13 +2965,8 @@ function renderPriorities(rm, checks, resilience) {
     }).join('');
 }
 
-// Tags out of a card's fix text, for comparing it with the row's own text.
-function _planText(html) {
-    return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// Why it matters: the item's impact, plus the card's fix text when that says
-// more, so a row built from a card keeps what the card had to say.
+// Why it matters: the item's impact, and for a monitoring DMARC policy the
+// resilience risk sentence.
 function _planWhy(item, card, resilience) {
     const impact = item.impact || '';
     let html = impact ? escapeHtml(impact) : '';
@@ -2984,12 +2979,9 @@ function _planWhy(item, card, resilience) {
         && _dmarcPolicy(card) === 'none') ? resilience.risk : '';
     if (risk) return html ? `${html} ${escapeHtml(risk)}` : escapeHtml(risk);
 
-    const fix = card && typeof card.fix === 'string' ? card.fix : '';
-    const fixText = _planText(fix);
-    if (fixText && fixText !== item.action && fixText !== impact
-            && fixText.length > impact.length && !impact.includes(fixText)) {
-        html = html ? `${html} ${sanitizeHtml(fix)}` : sanitizeHtml(fix);
-    }
+    // The card's fix text is not appended here. It is what to change, and
+    // "What to change" prints it when the row has no record, so appending
+    // it printed the same text twice, or put one row's fix under another.
     return html;
 }
 
@@ -3021,10 +3013,12 @@ function _planWhat(item, card, anchor) {
                  hasPropagation: false };
     }
 
-    const readiness = card && card.dmarcbis_readiness;
-    if (item.protocol === 'DMARC' && readiness && readiness.suggested_record) {
+    // A DMARC row carries its own record, the one that does what the row
+    // says. The readiness panel's suggested record went on every DMARC row,
+    // so a row about sp offered a record that kept sp=none.
+    if (item.protocol === 'DMARC' && item.record) {
         const host = `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
-        let html = _planRecordBlock(host, 'TXT', readiness.suggested_record);
+        let html = _planRecordBlock(host, 'TXT', item.record);
         html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
         if (card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
         return { html, hasPropagation: !!card.ttl_info };

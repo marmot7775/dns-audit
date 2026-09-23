@@ -780,6 +780,35 @@ def _roadmap_fix_text(card: Dict) -> str:
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", "", fix))).strip()
 
 
+def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]] = None,
+                       remove=()) -> Optional[str]:
+    """The record with only the named tags changed, in its own tag order.
+
+    A tag being set that is not in the record goes after p= and sp=, where
+    np sits in the canonical order.
+    """
+    if not record:
+        return None
+    set_tags = dict(set_tags or {})
+    drop = {t.lower() for t in remove}
+    parts = []
+    for part in record.split(";"):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        k, _, v = part.partition("=")
+        k = k.strip().lower()
+        if k in drop:
+            continue
+        if k in set_tags:
+            v = set_tags.pop(k)
+        parts.append((k, v.strip()))
+    for k, v in set_tags.items():
+        after = max((i for i, (t, _) in enumerate(parts) if t in ("v", "p", "sp")), default=0)
+        parts.insert(after + 1, (k, v))
+    return "; ".join(f"{k}={v}" for k, v in parts)
+
+
 # Health reasons that lower enforcement, restated as something to do.
 _ATTENTION_ROWS = {
     "Test mode weakens reject": (
@@ -940,8 +969,24 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # RFC 9989 readiness gaps. The reason strings are written for the health
     # panel, so they are restated here as something to do: a row that reads
     # "Address: Removed tags: pct, ri" is a label, not an instruction.
+    # Each DMARC row carries the record that does what the row says. The
+    # plan used to show the readiness panel's one suggested record on every
+    # DMARC row, so "Bring the subdomain policy up" offered a record that
+    # kept sp=none.
+    _cur = dmarc.get("record") if _assessed(dmarc) else None
+    # The removed-tags row comes from the record, not the health reasons: a
+    # p=none record's verdict is "monitoring" and names no reasons, so its
+    # pct got no row at all.
+    _removed = [t for t in ("pct", "rf", "ri") if t in _parse_record_tags(_cur or "")]
+    if _removed:
+        _reasons = [f"Removed tags: {', '.join(_removed)}"]
+    else:
+        _reasons = []
     if health.get("status") in ("compatible", "attention"):
-        for reason in health.get("reasons", []):
+        _reasons += [r for r in health.get("reasons", [])
+                     if not r.lower().startswith("removed tags:")]
+    if _reasons:
+        for reason in _reasons:
             if reason.lower().startswith("removed tags:"):
                 _tags = [t.strip() for t in reason.split(":", 1)[1].split(",") if t.strip()]
                 _noun = "tag" if len(_tags) == 1 else "tags"
@@ -952,11 +997,13 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                     _impact = (_impact[:-1] + ", and pct never gave predictable control.")
                 items.append({"priority": "medium", "protocol": "DMARC",
                               "action": f"Remove the {_noun} RFC 9989 retired: {', '.join(_tags)}",
-                              "impact": _impact})
+                              "impact": _impact,
+                              "record": _edit_dmarc_record(_cur, remove=_tags)})
             elif reason in _ATTENTION_ROWS:
                 action, impact = _ATTENTION_ROWS[reason]
                 items.append({"priority": "medium", "protocol": "DMARC",
-                              "action": action, "impact": impact})
+                              "action": action, "impact": impact,
+                              "record": _edit_dmarc_record(_cur, remove=["t"])})
             # The weaker sp and np reasons get their rows below, from the
             # record, with the policy values in them.
 
@@ -1008,18 +1055,21 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 )
             items.append({"priority": "high", "protocol": "DMARC",
                           "action": f"Bring the subdomain policy up to p={_p_val}",
-                          "impact": _sp_impact})
+                          "impact": _sp_impact,
+                          "record": _edit_dmarc_record(dmarc["record"], {"sp": _p_val})})
         _np_val = _dmarc_tags.get("np", "").lower()
         if (_p_val in ("reject", "quarantine") and _np_val in _pol_rank
                 and _pol_rank[_np_val] < _pol_rank[_p_val]):
             items.append({"priority": "high", "protocol": "DMARC",
                           "action": f"Set np={_p_val} to match the domain's policy",
+                          "record": _edit_dmarc_record(dmarc["record"], {"np": _p_val}),
                           "impact": (
                               f"np={_np_val} gives subdomains that do not exist, the kind "
                               f"invented for phishing, a weaker policy than p={_p_val}.")})
         if not _sp_is_weaker and _p_val in ("reject", "quarantine") and "np" not in _dmarc_tags:
             items.append({"priority": "low", "protocol": "DMARC",
                           "action": "Consider adding an explicit np= tag",
+                          "record": _edit_dmarc_record(dmarc["record"], {"np": _p_val}),
                           "impact": "Purely optional. Subdomains already inherit your enforcing policy without it."})
 
     # Items were appended in check order, which put a HIGH DMARC item above
@@ -1028,7 +1078,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # with their own counts; ties keep check order.
     # Every card that fails or warns gets a row, so no finding is left on the
     # page with nowhere to act on it. The rules above word the common cases;
-    # the rest take the card's own fix text, with its verdict as the impact.
+    # the rest take the card's own fix text, with no invented impact.
     covered = {i["protocol"] for i in items}
     for card in checks:
         name = card.get("name", "")
@@ -1048,17 +1098,19 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # No fix text. "Review the X findings" with nothing under "Why it
         # matters" is a row that asks the reader to go and work it out, and
         # the card it points at has plenty to say. Take the card's own
-        # words: its first bad detail as the action, its verdict as the
+        # words: its first bad detail as the action, a second one as the
         # reason the row is here. A card with neither a fix nor a bad
         # detail has nothing for the reader to do, so it gets no row at all
         # rather than a row that says nothing.
-        bad = next((d.get("text", "") for d in card.get("details", [])
-                    if d.get("type") in ("error", "warning") and d.get("text")), "")
+        bad = [d.get("text", "") for d in card.get("details", [])
+               if d.get("type") in ("error", "warning") and d.get("text")]
         if not bad:
             continue
+        # The verdict states what was found ("SPF record configured"), not
+        # why it matters, so it is not the impact. A second finding is.
         items.append({"priority": "high" if card["status"] == "fail" else "low",
-                      "protocol": name, "action": bad,
-                      "impact": card.get("verdict") or ""})
+                      "protocol": name, "action": bad[0],
+                      "impact": bad[1] if len(bad) > 1 else ""})
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
