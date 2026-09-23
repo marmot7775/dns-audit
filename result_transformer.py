@@ -1834,13 +1834,17 @@ def _build_dmarcbis_card_data(readiness: Optional[Dict], record: Optional[str]) 
 
     suggested_record = "; ".join(parts) if changes else None
 
+    # The score grades only what can fail. An info row is advice the row's
+    # own note calls optional (np, psd), so counting it as a miss scored a
+    # record whose one real issue is a removed tag 1/4 beside "Compatible".
     pass_count = sum(1 for c in checklist if c["status"] == "pass")
+    graded_count = sum(1 for c in checklist if c["status"] in ("pass", "warn", "fail"))
 
     return {
         "status": status,
         "checklist": checklist,
         "pass_count": pass_count,
-        "total_count": len(checklist),
+        "total_count": graded_count,
         "suggested_record": suggested_record,
         "changes": changes,
         "recommendations": readiness.get("recommendations", []),
@@ -3186,9 +3190,11 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
             # and what to use instead.
             return e
         else:
-            return _entry(tag, "100", True, True, "Percentage",
-                          "RFC 7489 defaulted to 100. RFC 9989 removes the pct tag.",
-                          "deprecated")
+            # Absent like rf and ri: no value, no badge. RFC 9989 has no pct
+            # default because it has no pct tag, so "100 (default)" beside a
+            # removed badge showed a value the record does not contain.
+            return _entry(tag, None, False, True, "Percentage",
+                          "Not in this record. RFC 9989 removed the tag.", "")
 
     # ── rf= (deprecated) ───────────────────────────────────
     if tag == "rf":
@@ -3752,7 +3758,7 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
         "title": "What is RFC 9989 (DMARCbis)?",
         "content": (
             "RFC 9989 is the DMARC standard. Published in May 2026 on the IETF Standards Track, it "
-            "obsoletes RFC 7489 and RFC 9091, the documents that defined DMARC until then. It is "
+            "replaces RFC 7489 and RFC 9091, the documents that defined DMARC until then. It is "
             "still widely called DMARCbis, the name it carried through the working group. It "
             "addresses real-world problems "
             "discovered over a decade of DMARC deployment: inconsistent parsing across receivers, "

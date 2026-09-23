@@ -1834,8 +1834,8 @@ function renderSpecToggle(comparison) {
         ).join('');
         futureHtml = `
             <div class="st-future spec-dmarcbis">
-                <div class="st-future-title">This record passes under the obsolete RFC 7489 but has issues under RFC 9989</div>
-                <div class="st-future-subtitle">${comparison.dmarcbis_only_count} problem${comparison.dmarcbis_only_count !== 1 ? 's' : ''} found that only appear${comparison.dmarcbis_only_count !== 1 ? '' : 's'} under strict RFC 9989 validation. RFC 9989 replaced RFC 7489 in May 2026, so these are problems with the record today, not problems it will have later.</div>
+                <div class="st-future-title">This record passes RFC 7489 validation and has findings under RFC 9989</div>
+                <div class="st-future-subtitle">${comparison.dmarcbis_only_count} finding${comparison.dmarcbis_only_count !== 1 ? 's' : ''} appear${comparison.dmarcbis_only_count !== 1 ? '' : 's'} only under RFC 9989 validation. ${comparison.dmarcbis_only_count !== 1 ? 'These are edits' : 'This is an edit'} worth making so the record reads cleanly under both specs.</div>
                 ${itemsHtml}
             </div>`;
     }
@@ -1843,19 +1843,20 @@ function renderSpecToggle(comparison) {
     // Delta banner (switches with toggle)
     let deltaDmarcbis = '';
     if (comparison.dmarcbis_only_count > 0) {
-        deltaDmarcbis = `<div class="st-delta spec-dmarcbis">RFC 9989 strict validation found ${comparison.dmarcbis_only_count} additional issue${comparison.dmarcbis_only_count !== 1 ? 's' : ''} that legacy validation missed.</div>`;
+        deltaDmarcbis = `<div class="st-delta spec-dmarcbis">RFC 9989 validation raises ${comparison.dmarcbis_only_count} finding${comparison.dmarcbis_only_count !== 1 ? 's' : ''} that RFC 7489 validation does not.</div>`;
     }
     let deltaLegacy = '';
     if (comparison.dmarcbis_only_count > 0) {
-        deltaLegacy = `<div class="st-delta spec-legacy is-hidden">The obsolete RFC 7489 was more lenient. ${comparison.dmarcbis_only_count} issue${comparison.dmarcbis_only_count !== 1 ? 's' : ''} flagged by RFC 9989 ${comparison.dmarcbis_only_count !== 1 ? 'were' : 'was'} accepted under it.</div>`;
+        deltaLegacy = `<div class="st-delta spec-legacy is-hidden">${comparison.dmarcbis_only_count} RFC 9989 finding${comparison.dmarcbis_only_count !== 1 ? 's do' : ' does'} not apply under RFC 7489.</div>`;
     }
 
     return `
         <div class="st-toggle-bar">
+            <p class="st-toggle-note">RFC 9989 replaced RFC 7489 in May 2026, but most receivers still evaluate DMARC the RFC 7489 way, so a record that passes there keeps working. The RFC 9989 view shows what to clean up.</p>
             <div class="st-toggle-label">Validation Mode</div>
             <div class="st-seg-group" role="radiogroup" aria-label="Validation mode">
-                <button class="st-seg st-seg-legacy" data-mode="legacy" role="radio" aria-checked="false">RFC 7489 (Obsolete)</button>
-                <button class="st-seg st-seg-dmarcbis st-seg-active" data-mode="dmarcbis" role="radio" aria-checked="true">RFC 9989 (Current)</button>
+                <button class="st-seg st-seg-legacy" data-mode="legacy" role="radio" aria-checked="false">RFC 7489</button>
+                <button class="st-seg st-seg-dmarcbis st-seg-active" data-mode="dmarcbis" role="radio" aria-checked="true">RFC 9989</button>
             </div>
         </div>
         ${deltaDmarcbis}
@@ -2704,6 +2705,9 @@ let _execSummary = null;
 function renderDmarcbisReadiness(readiness) {
     if (!readiness || readiness.status === 'no_record') return '';
 
+    // Doc 70: no pass count beside it. The label is the DMARC health verdict
+    // and the checklist is a different list, so a count could read 2/2 next
+    // to "In progress"; the label and the row icons carry it.
     // One label and one colour per result: the executive summary's RFC 9989
     // tile. This block used to keep its own table, which put a red "Needs
     // Update" beside an amber "In Progress" tile for the same record.
@@ -2821,7 +2825,6 @@ function renderDmarcbisReadiness(readiness) {
                 </div>
                 <div class="dbis-header-right">
                     ${statusLabel ? `<span class="${tagClass(statusClass)}">${escapeHtml(statusLabel)}</span>` : ''}
-                    <span class="dbis-score">${readiness.pass_count}/${readiness.total_count}</span>
                 </div>
             </div>
             <div class="dbis-checklist">${checklistHtml}</div>
