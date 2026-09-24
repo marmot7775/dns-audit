@@ -83,6 +83,9 @@ def test_deliverability_does_not_claim_the_configuration_looks_solid(audit, dead
     assert "properly set up" not in deliv, (
         f"the audit named records it never read as properly set up: {deliv!r}"
     )
+    assert "set up correctly" not in deliv, (
+        f"the audit named records it never read as set up correctly: {deliv!r}"
+    )
     assert "not be assessed" in deliv or "did not complete" in deliv, (
         f"the deliverability sentence does not say what went unread: {deliv!r}"
     )
@@ -155,7 +158,7 @@ def test_resilience_does_not_hand_out_a_plan_for_an_unread_record(audit, dead_ap
         f"a resilience level was derived from records never read: {res['level']!r}"
     )
     risk = res["risk"].lower()
-    assert "publishing a dmarc record is the single most impactful step" not in risk, (
+    assert "publishing a dmarc record is the first step" not in risk, (
         f"the operator was told to publish a record that may already exist: {risk!r}"
     )
     assert "publish an spf record" not in risk, (
@@ -177,9 +180,10 @@ def test_no_part_of_the_summary_claims_the_domain_is_healthy(audit, dead_apex):
         res["summary"], res["risk"],
     ] + [m["note"] for m in res["mechanisms"].values()]).lower()
 
-    for claim in ("looks solid", "properly set up", "authentication configured",
+    for claim in ("looks solid", "properly set up", "set up correctly",
+                  "authentication configured",
                   "no spf record found", "no dmarc record found",
-                  "well-protected"):
+                  "well-protected", "blocked at every level checked"):
         assert claim not in prose, (
             f"the summary layer claims {claim!r} about a domain whose apex and "
             f"_dmarc lookups both failed"

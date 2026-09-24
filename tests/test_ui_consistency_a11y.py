@@ -260,9 +260,9 @@ def _clean_result():
 
 
 def test_every_fail_or_warn_card_has_a_priorities_row():
-    # SPF ~all is a warn card that no specific roadmap rule covers; one
+    # SPF ?all is a warn card that no specific roadmap rule covers; one
     # nameserver is a red Nameservers card.
-    result = _run(_zone(spf="v=spf1 mx ~all", ns=("ns1",)))
+    result = _run(_zone(spf="v=spf1 mx ?all", ns=("ns1",)))
     rows = {i["protocol"] for i in result["security_roadmap"]["items"]}
     flagged = {c["name"] for c in result["checks"] if c["status"] in ("fail", "warn")}
     assert {"SPF", "Nameservers"} <= flagged
@@ -310,7 +310,7 @@ def test_the_five_strings_doc_47_left_are_replaced():
     for gone in ("better inbox placement", "is delivered as if", "silently stripped"):
         assert gone not in rt, gone
     assert "Anyone can send email that" not in ae
-    assert ("Google and Yahoo require a DMARC record from bulk senders; \"\n"
+    assert ("Google, Yahoo, and Microsoft (Outlook.com) require a DMARC record from bulk senders; \"\n"
             "            \"an enforcing policy also lets receivers act on mail that fails.") in rt
     assert rt.count("receives no policy at all") == 5
     assert "falls back to plaintext and nothing tells you." in rt
@@ -510,7 +510,7 @@ def test_results_render_without_layout_defects(browser, fixture_result, theme, w
         assert m["describedBy"]
         assert m["h1"] == [DOMAIN], m["h1"]
         assert {"Strict Record Validation", "DMARC Record Breakdown",
-                "DMARC Policy Discovery (Tree Walk)", "DMARC Evaluation"} <= set(m["h4"]), m["h4"]
+                "DMARC Policy Discovery (DNS tree walk)", "DMARC Evaluation"} <= set(m["h4"]), m["h4"]
         # Doc 63: every card renders collapsed, whatever its status.
         assert m["cardsExpanded"] == 0 and m["headersOpen"] == 0
         assert m["expandedNoControls"] == 0

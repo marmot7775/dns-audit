@@ -21,8 +21,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=0cfd13e">
-    <script src="/static/theme.js?v=0cfd13e"></script>
+    <link rel="stylesheet" href="/static/style.css?v=a409155">
+    <script src="/static/theme.js?v=a409155"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -56,7 +56,7 @@
     </header>
     <main class="about-page" id="main-content">
         <h1>About</h1>
-        <p>Most DNS tools show you your records and stop there. Whether the records are right, whether a tag combination is dangerous, whether the RFC you are reading is still the current one: that part is left to you. I wanted a tool that did the analysis, showed its work, cited the RFC it checked against, and gave me the exact record to paste. I could not find one, so I built it.</p>
+        <p>Most DNS tools show you your records and leave the hard part to you: whether they are right, whether a tag combination is dangerous, and whether the RFC you are reading is still current. I wanted a tool that did the analysis, showed its work, cited the RFC it checked against, and gave me the exact record to paste. I could not find one, so I built it.</p>
         <p>Enter a domain and it reads the public DNS records behind your email and the policy files they point to, then tells you what is missing or misconfigured and how to fix it. DMARC is checked two ways: against RFC 9989, the standard published in May 2026 alongside RFC 9990 for aggregate reporting and RFC 9991 for failure reporting, and against the RFC 7489 behavior most receivers still run while tree walk support rolls out. You see both results and what changes between them. SPF, DKIM, MX, DNSSEC, MTA-STS, TLS-RPT, DANE, CAA, BIMI, Certificate Transparency, and nameserver configuration are covered as well.</p>
         <p>It's free. There are no accounts, no cookies, and no tracking. The code is open source under the MIT License; you can <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener">read it, run it yourself, or fork it</a>.</p>
         <section class="dbis-section">

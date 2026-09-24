@@ -447,33 +447,44 @@ def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, A
             parts = mx_rec.split(None, 1)
             if len(parts) == 2:
                 actual_mx_hosts.append(parts[1].rstrip(".").lower())
-        unmatched_patterns = []
-        for pattern in policy["mx_patterns"]:
-            pattern_lower = pattern.lower().rstrip(".")
-            matched = False
-            for mx_host in actual_mx_hosts:
-                if pattern_lower.startswith("*."):
-                    suffix = pattern_lower[1:]  # e.g. ".example.com"
-                    if (
-                        mx_host.endswith(suffix) and "." not in mx_host[:-len(suffix)]
-                        and len(mx_host) > len(suffix.lstrip("."))
-                    ):
-                        matched = True
-                        break
-                else:
-                    if mx_host == pattern_lower:
-                        matched = True
-                        break
-            if not matched:
-                unmatched_patterns.append(pattern)
-        if unmatched_patterns and actual_mx_hosts:
-            patterns_str = ", ".join(f"'{p}'" for p in unmatched_patterns)
+        def _covers(pattern, mx_host):
+            # RFC 8461 section 4.1: a leading "*." matches exactly one label.
+            pattern = pattern.lower().rstrip(".")
+            if pattern.startswith("*."):
+                suffix = pattern[1:]  # e.g. ".example.com"
+                return (mx_host.endswith(suffix)
+                        and "." not in mx_host[:-len(suffix)]
+                        and len(mx_host) > len(suffix.lstrip(".")))
+            return mx_host == pattern
+
+        patterns = policy["mx_patterns"]
+        uncovered = [h for h in actual_mx_hosts
+                     if not any(_covers(p, h) for p in patterns)]
+        unused = [p for p in patterns
+                  if not any(_covers(p, h) for h in actual_mx_hosts)]
+        if uncovered:
+            hosts_str = ", ".join(uncovered)
+            n = len(uncovered)
             issues.append(_make_issue(
                 "warning",
-                f"MTA-STS mx pattern{'s' if len(unmatched_patterns) > 1 else ''} {patterns_str} {'do' if len(unmatched_patterns) > 1 else 'does'}n't match actual MX records",
-                f"Actual MX records are: {', '.join(actual_mx_hosts)}.",
-                "Potential mail delivery failure.",
-                "Update the mx lines to match your actual MX hostnames.",
+                f"MX host{'s' if n > 1 else ''} {hosts_str} {'are' if n > 1 else 'is'} "
+                f"not covered by the MTA-STS policy",
+                f"No mx line in the policy matches {hosts_str}. Senders that enforce "
+                f"the policy will not deliver to {'those hosts' if n > 1 else 'that host'}.",
+                "Mail can be deferred or bounced when the covered MX hosts are unavailable.",
+                f"Add an mx line for {hosts_str}, or a wildcard line that covers "
+                f"{'them' if n > 1 else 'it'}.",
+            ))
+        if unused and actual_mx_hosts:
+            lines_str = ", ".join(f"'{p}'" for p in unused)
+            n = len(unused)
+            issues.append(_make_issue(
+                "info",
+                f"MTA-STS mx line{'s' if n > 1 else ''} {lines_str} "
+                f"match{'' if n > 1 else 'es'} no current MX host",
+                f"The policy line{'s' if n > 1 else ''} {lines_str} "
+                f"match{'' if n > 1 else 'es'} no current MX host. This does no harm; "
+                f"remove {'them' if n > 1 else 'it'} if no longer needed.",
             ))
 
     return policy, issues
@@ -552,8 +563,10 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
     if len(sts_records) > 1:
         result["issues"].append(_make_issue(
             "error", f"Multiple MTA-STS TXT records found ({len(sts_records)})",
-            "There should be exactly one MTA-STS TXT record.", "",
-            "Remove duplicate records.",
+            f"{len(sts_records)} MTA-STS TXT records are published at _mta-sts.{domain}. "
+            "RFC 8461 section 3.1 allows exactly one; with more, senders treat the "
+            "domain as having no MTA-STS policy.", "",
+            "Delete all but one MTA-STS TXT record.",
         ))
 
     sts_record = sts_records[0]
@@ -637,7 +650,7 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
                 ))
         except requests.exceptions.SSLError:
             result["issues"].append(_make_issue(
-                "error", "SSL/TLS error fetching MTA-STS policy",
+                "error", "TLS error fetching MTA-STS policy",
                 f"HTTPS connection to mta-sts.{domain} failed.",
                 "MTA-STS will not function.",
                 f"Install a valid TLS certificate for mta-sts.{domain}.",
@@ -812,7 +825,11 @@ def check_tls_rpt(domain: str) -> Dict[str, Any]:
     if len(rpt_records) > 1:
         result["issues"].append(_make_issue("error",
             f"Multiple TLS-RPT records ({len(rpt_records)})",
-            "Should be exactly one.", "", "Remove duplicates."))
+            f"{len(rpt_records)} TLS-RPT records are published at _smtp._tls.{domain}. "
+            "RFC 8460 section 3 allows exactly one; with more, senders treat the "
+            "domain as having no TLS-RPT and send no reports.",
+            "", "Delete all but one TLS-RPT record, keeping every rua address you "
+            "want in that one record."))
 
     record = rpt_records[0]
     result["record"] = record
@@ -995,7 +1012,8 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
     if len(bimi_records) > 1:
         result["issues"].append(_make_issue("error",
             f"Multiple BIMI records ({len(bimi_records)})",
-            "Should be one per selector.", "", "Remove duplicates."))
+            f"{len(bimi_records)} BIMI records are published at this selector. "
+            "There should be exactly one.", "", "Delete all but one BIMI record."))
 
     record = bimi_records[0]
     result["record"] = record
@@ -1154,7 +1172,7 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
                                         "Gmail requires SVG Tiny PS profile. Without the correct baseProfile, "
                                         "the logo may not display in email clients.",
                                         "Logo may be rejected by Gmail and other strict BIMI implementations.",
-                                        "Set baseProfile=\"tiny-ps\" on the root <svg> element.",
+                                        "Set baseProfile=\"tiny-ps\" on the root &lt;svg&gt; element.",
                                     ))
 
                                 # Check viewBox
@@ -1163,7 +1181,7 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
                                         "warning", "SVG missing viewBox attribute",
                                         "The viewBox attribute is needed for proper scaling.",
                                         "Logo may not render correctly at different sizes.",
-                                        "Add a viewBox attribute to the root <svg> element.",
+                                        "Add a viewBox attribute to the root &lt;svg&gt; element.",
                                     ))
 
                                 # Gmail/Google Workspace compatibility: fixed pixel dimensions
@@ -1181,11 +1199,13 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
                                     result["issues"].append(_make_issue(
                                         "warning",
                                         "SVG uses relative or missing dimensions (Gmail compatibility)",
-                                        f"SVG has width='{raw_w or 'missing'}' height='{raw_h or 'missing'}'. "
-                                        "Google and Gmail require fixed pixel values (e.g., width='96' height='96'). "
-                                        "Logo may not display even though the SVG is technically valid.",
+                                        (f"The root svg element has width='{raw_w}' height='{raw_h}'. "
+                                         if raw_w and raw_h else
+                                         "The root svg element has no fixed width and height. ")
+                                        + "Gmail expects fixed pixel values (for example width='96' height='96'), "
+                                        "so the logo may not display even though the SVG is valid.",
                                         "Logo may silently fail to display in Gmail.",
-                                        "Set fixed pixel dimensions on the root <svg> element, e.g., width=\"96\" height=\"96\".",
+                                        "Set fixed pixel dimensions on the root &lt;svg&gt; element, for example width=\"96\" height=\"96\".",
                                     ))
 
                                 # Gmail/Google Workspace compatibility: minimum 96x96 pixels

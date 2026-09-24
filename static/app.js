@@ -654,7 +654,8 @@ function renderResults(data) {
     // milliseconds, so the client-side clock read 0.0s for it.
     const auditDuration = (typeof data.elapsed_seconds === 'number'
         ? data.elapsed_seconds : (performance.now() - auditStartTime) / 1000).toFixed(1);
-    const now = new Date();
+    const auditedAt = data.audited_at ? new Date(data.audited_at) : null;
+    const now = (auditedAt && !isNaN(auditedAt)) ? auditedAt : new Date();
     const tsText = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
         + ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
     document.getElementById('result-timestamp').textContent = `${tsText}  \u00b7  ${auditDuration}s`;
@@ -1175,7 +1176,7 @@ function highlightSpf(text) {
         .replace(/\?all\b/g, '<span class="rec-warn">?all</span>')
         // Safe: -all, ~all
         .replace(/-all\b/g, '<span class="rec-safe">-all</span>')
-        .replace(/~all\b/g, '<span class="rec-neutral">~all</span>')
+        .replace(/~all\b/g, '<span class="rec-safe">~all</span>')
         // Mechanisms
         .replace(/\b(include:)([^\s]+)/g, '<span class="rec-keyword">$1</span><span class="rec-value">$2</span>')
         .replace(/\b(redirect=)([^\s]+)/g, '<span class="rec-keyword">$1</span><span class="rec-value">$2</span>')
@@ -1532,7 +1533,7 @@ function cardDetailSections(check) {
 
     if (check._tree_walk) {
         sections.push({
-            title: 'DMARC Policy Discovery (Tree Walk)',
+            title: 'DMARC Policy Discovery (DNS tree walk)',
             summary: _treeWalkSummary(check._tree_walk),
             html: renderTreeWalk(check._tree_walk),
         });
@@ -2288,8 +2289,8 @@ function renderDmarcTagBreakdown(bd) {
         migrationHtml = `
             <div class="mw-block">
                 <div class="mw-header">
-                    <h4 class="mw-title">Migration Path to RFC 9989 Ready</h4>
-                    <span class="mw-progress">${bd.migration.total_steps} steps</span>
+                    <h4 class="mw-title">Migration path to RFC 9989</h4>
+                    <span class="mw-progress">${bd.migration.total_steps} step${bd.migration.total_steps === 1 ? '' : 's'}</span>
                 </div>
                 <div class="mw-steps">${stepsHtml}</div>
                 <div class="mw-target">
@@ -2566,7 +2567,7 @@ function renderTreeWalkSimple(tw) {
     return `
         <div class="tree-walk tree-walk-simple tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</h4>
+                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
                 <a class="tag tag-hit" href="https://www.rfc-editor.org/rfc/rfc9989.html"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -2596,7 +2597,7 @@ function renderTreeWalkFull(tw) {
     let html = `
         <div class="tree-walk tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</h4>
+                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
                 <a class="tag tag-hit" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
             </div>`;
 
@@ -3297,22 +3298,26 @@ function renderDmarcEvaluation(ev) {
         : ev.spf_result === 'none' ? ''
             : 'tag-fail';
     const dkimPillClass = (ev.dkim_result === 'pass' || ev.dkim_result === 'configured') ? 'tag-pass'
-        : ev.dkim_result === 'none' ? ''
+        : (ev.dkim_result === 'none' || ev.dkim_result === 'not confirmed') ? ''
             : 'tag-fail';
-    const dmarcPillClass = (ev.dmarc_result === 'pass' || ev.dmarc_result === 'configured') ? 'tag-pass' : 'tag-fail';
+    const dmarcPillClass = (ev.dmarc_result === 'pass' || ev.dmarc_result === 'configured') ? 'tag-pass'
+        : ev.dmarc_result === 'not confirmed' ? '' : 'tag-fail';
     const policyPillClass = ev.policy === 'reject' ? 'tag-pass'
         : ev.policy === 'quarantine' ? 'tag-warn'
             : '';
 
     const spfAlignIcon = ev.spf_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
     const spfAlignClass = ev.spf_aligned ? 'de-aligned' : 'de-not-aligned';
-    const dkimAlignIcon = ev.dkim_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
+    const dkimAlignIcon = ev.dkim_aligned ? `${ICON.pass} alignment possible`
+        : ev.dkim_result === 'not confirmed' ? 'not confirmed by probing'
+            : `${ICON.fail} not configured`;
     const dkimAlignClass = ev.dkim_aligned ? 'de-aligned' : 'de-not-aligned';
 
     const dispLabel = ev.disposition === 'none' ? 'no action requested'
         : ev.disposition === 'quarantine' ? 'quarantined'
             : ev.disposition === 'reject' ? 'rejected'
-                : escapeHtml(ev.disposition);
+                : ev.disposition === 'unknown' ? 'depends on DKIM'
+                    : escapeHtml(ev.disposition);
 
     const mailingListNote = ev.policy === 'reject'
         ? `<div class="de-mailing-list-note">RFC 9989 notes that p=reject can cause delivery failures for messages sent through mailing lists or forwarding services. Consider this if your domain participates in mailing lists.</div>`

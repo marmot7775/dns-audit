@@ -7287,12 +7287,8 @@ input[type="search"],
 }
 
 /* CTA and closing */
-.dbis-cta { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: var(--dmarcbis); color: var(--dmarcbis-contrast); font-size: var(--font-md); font-weight: 600; border-radius: var(--radius); text-decoration: none; border: none; border-bottom: none; transition: opacity 0.15s var(--ease), transform 0.1s var(--ease); }
-.dbis-cta:hover { opacity: 0.88; border-bottom: none; }
-.dbis-cta:active { transform: scale(0.98); }
 .dbis-closing { margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid var(--border); text-align: center; }
 .dbis-closing p { font-size: var(--font-md); color: var(--text-secondary); line-height: 1.75; margin-bottom: 0.5rem; }
-.dbis-closing .dbis-cta { margin-top: 1rem; }
 
 /* About page */
 .about-page { max-width: 68ch; margin: 0 auto; padding: 3rem 1.25rem 4rem; }

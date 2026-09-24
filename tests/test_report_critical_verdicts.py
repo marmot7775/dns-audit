@@ -226,7 +226,7 @@ def test_multiple_spf_records_reach_every_layer_not_just_the_card():
 # Finding 5: an empty roadmap is not always an all-clear
 # ---------------------------------------------------------------------------
 
-_ALL_CLEAR = "meets all current best practices"
+_ALL_CLEAR = "No action items across the protocols checked."
 
 
 def _clean(name):
