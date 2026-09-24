@@ -26,8 +26,9 @@
   can read it (Doc 44). warn, amber: published and working but weak (p=none
   with or without rua, pct below 100, sp weaker than p, DMARC without rua, a
   DMARC tag receivers ignore under RFC 9989 section 4.8 such as an unknown
-  tag or a malformed optional value, SPF ~all, a 1024-bit DKIM key, MTA-STS
-  mode testing). The DMARC attack surface block goes red only when the card
+  tag or a malformed optional value, a 1024-bit DKIM key, MTA-STS mode
+  testing). SPF ~all and -all both pass: DMARC is the policy layer, so the
+  softfail/hardfail choice is the operator's. The DMARC attack surface block goes red only when the card
   fails. pass, green: published and correct. absent, grey: an optional
   protocol (MTA-STS, TLS-RPT, DNSSEC, CAA, DANE, BIMI) is not published; its
   pill says "Not configured", it has its own counter, and it is never counted

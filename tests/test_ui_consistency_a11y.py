@@ -260,9 +260,9 @@ def _clean_result():
 
 
 def test_every_fail_or_warn_card_has_a_priorities_row():
-    # SPF ~all is a warn card that no specific roadmap rule covers; one
+    # SPF ?all is a warn card that no specific roadmap rule covers; one
     # nameserver is a red Nameservers card.
-    result = _run(_zone(spf="v=spf1 mx ~all", ns=("ns1",)))
+    result = _run(_zone(spf="v=spf1 mx ?all", ns=("ns1",)))
     rows = {i["protocol"] for i in result["security_roadmap"]["items"]}
     flagged = {c["name"] for c in result["checks"] if c["status"] in ("fail", "warn")}
     assert {"SPF", "Nameservers"} <= flagged

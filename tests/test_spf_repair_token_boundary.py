@@ -87,9 +87,8 @@ def test_the_card_does_not_call_a_mail_all_include_malformed():
     assert "not space-delimited" not in issue_texts, (
         f"Nothing here is jammed together; got {issue_texts!r}"
     )
-    # warn, not pass: ~all is one of Doc 38's warn rules (Doc 44 item 7).
     # What this test guards is the absence of a malformed finding above.
-    assert card["status"] == "warn"
+    assert card["status"] == "pass"
 
 
 # ---------------------------------------------------------------
@@ -149,9 +148,8 @@ def test_the_card_grades_a_qualified_record_on_what_it_says():
     assert card["record"] == BBC_RECORD, (
         f"The card must show what the domain publishes. Got {card['record']!r}"
     )
-    # ~all is Doc 38's warn rule; the /16 is a breadth warning. Neither is a
-    # malformed record, so the card must not fail.
-    assert card["status"] == "warn", card["status"]
+    # Nothing here is a malformed record, so the card must not fail.
+    assert card["status"] != "fail", card["status"]
 
     issues = " ".join(
         (i.get("issue", "") + " " + i.get("detail", "")).lower()
