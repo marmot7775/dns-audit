@@ -5211,11 +5211,13 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     if raw_results.get("dmarc"):
         try:
             from spf_execution_engine import build_dmarc_evaluation
+            _dkim_card = next((c for c in checks if c.get("name") == "DKIM"), {})
             dmarc_eval = build_dmarc_evaluation(
                 raw_results.get("dmarc", {}),
                 raw_results.get("spf", {}),
                 raw_results.get("dkim", {}),
                 tree_walk_result,
+                dkim_confirmed=_dkim_card.get("status") != "unavailable",
             )
         except Exception:
             log.debug("DMARC evaluation failed", exc_info=True)
@@ -5617,6 +5619,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "report_chain": report_auth,
         "spf_tree": spf_tree_viz,
         "scope": scope or "complete",
+        # When the lookups ran. A cached result is served later, so the web
+        # page and the PDF print this rather than their own clock.
+        "audited_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "defensive_dns": is_defensive,
         "defensive_signals": defensive_signals,
         "resilience": resilience_result,

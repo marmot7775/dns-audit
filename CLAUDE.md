@@ -28,8 +28,8 @@
   DMARC tag receivers ignore under RFC 9989 section 4.8 such as an unknown
   tag or a malformed optional value, a 1024-bit DKIM key, MTA-STS mode
   testing). SPF ~all and -all both pass: DMARC is the policy layer, so the
-  softfail/hardfail choice is the operator's. The DMARC attack surface block goes red only when the card
-  fails. pass, green: published and correct. absent, grey: an optional
+  softfail/hardfail choice is the operator's. The DMARC attack surface block
+  goes red only when the card fails. pass, green: published and correct. absent, grey: an optional
   protocol (MTA-STS, TLS-RPT, DNSSEC, CAA, DANE, BIMI) is not published; its
   pill says "Not configured", it has its own counter, and it is never counted
   as a warning. unavailable, grey with its own icon and "Not checked": the

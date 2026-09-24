@@ -246,8 +246,11 @@ def test_the_spf_card_at_one_lookup_is_singular_too(audit):
 # 5. A no-mail domain is not told about inbox placement
 # ---------------------------------------------------------------
 
-NO_MAIL_LINE = ("This domain publishes a null MX, so it sends no mail. Its "
-                "authentication records are configured to say so.")
+# A null MX says the domain receives no mail; it says nothing about sending.
+# The line names the declaration, not the null MX.
+NO_MAIL_LINE = ("This domain declares that it handles no mail, so there is no "
+                "inbox placement to report on. Its authentication records are "
+                "configured to say so.")
 
 
 def test_a_null_mx_domain_gets_the_no_mail_deliverability_line(audit):

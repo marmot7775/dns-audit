@@ -658,8 +658,9 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # report on. Everything below is about mail this domain does not
         # send, including the caveats.
         deliverability_summary = (
-            "This domain publishes a null MX, so it sends no mail. Its "
-            "authentication records are configured to say so."
+            "This domain declares that it handles no mail, so there is no "
+            "inbox placement to report on. Its authentication records are "
+            "configured to say so."
         )
     elif deliverability_issues:
         top_issue = deliverability_issues[0]
@@ -955,11 +956,15 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "action": "Configure MTA-STS for TLS enforcement",
                       "impact": "Without MTA-STS, a sending server that cannot reach your mail server over TLS falls back to plaintext and nothing tells you."})
 
-    if has_mx and _assessed(tls_rpt) and (tls_rpt.get("status") == "fail"
-                               or tls_rpt.get("pill_label") == "Not configured"):
+    if has_mx and _assessed(tls_rpt) and tls_rpt.get("pill_label") == "Not configured":
         items.append({"priority": "medium", "protocol": "TLS-RPT",
                       "action": "Configure TLS-RPT for failure visibility",
                       "impact": "You get no report when a sending server fails to reach your mail server over TLS."})
+    elif has_mx and _assessed(tls_rpt) and tls_rpt.get("status") == "fail":
+        # Published but broken: the row says what to fix, not "configure".
+        items.append({"priority": "medium", "protocol": "TLS-RPT",
+                      "action": _roadmap_fix_text(tls_rpt) or "Fix the TLS-RPT record",
+                      "impact": "While the record is broken, sending servers send no TLS failure reports."})
 
     if has_mx and _assessed(dane) and dane.get("pill_label") == "Not configured":
         items.append({"priority": "medium", "protocol": "DANE",
@@ -1209,12 +1214,12 @@ def format_ttl(ttl: Optional[int]) -> Optional[Dict]:
         label = "Very short TTL"
         detail = "Resolvers pick up a change to this record within 5 minutes."
     elif ttl <= 3600:
-        minutes = ttl // 60
+        minutes = -(-ttl // 60)
         category = "short"
         label = "Short TTL"
         detail = f"Changes propagate within {minutes} minute{'s' if minutes != 1 else ''}."
     elif ttl <= 86400:
-        hours = ttl // 3600
+        hours = -(-ttl // 3600)
         category = "standard"
         label = "Standard TTL"
         detail = f"Changes propagate within {hours} hour{'s' if hours != 1 else ''}."
@@ -1238,18 +1243,18 @@ def format_ttl(ttl: Optional[int]) -> Optional[Dict]:
 
 
 def _humanize_seconds(seconds: int) -> str:
-    """Convert seconds to a human-readable duration."""
+    """Convert seconds to a human-readable duration, rounded up. The text
+    around it tells the reader to wait that long, so it must not undershoot."""
     if seconds < 60:
         return f"{seconds}s"
-    if seconds < 3600:
-        m = seconds // 60
-        return f"{m}m"
     if seconds < 86400:
-        h = seconds // 3600
-        m = (seconds % 3600) // 60
+        total_m = -(-seconds // 60)
+        h, m = divmod(total_m, 60)
+        if not h:
+            return f"{m}m"
         return f"{h}h{m}m" if m else f"{h}h"
-    d = seconds // 86400
-    h = (seconds % 86400) // 3600
+    total_h = -(-seconds // 3600)
+    d, h = divmod(total_h, 24)
     return f"{d}d{h}h" if h else f"{d}d"
 
 
@@ -4030,7 +4035,9 @@ def _dmarc_end_state(tags: Dict[str, str], domain: str = "", no_mail: bool = Fal
         changes.append({
             "tag": "sp", "action": "changed" if cur_sp else "added",
             "old": cur_sp if cur_sp else "(not set)", "value": target_p,
-            "reason": "Makes the subdomain policy explicit; it already inherits the root policy.",
+            "reason": (f"Raises the subdomain policy to match p=; sp={cur_sp} applies a weaker "
+                       "policy to every subdomain." if cur_sp else
+                       "Makes the subdomain policy explicit; it already inherits the root policy."),
         })
 
     # 3. Non-existent subdomain policy.
@@ -4220,14 +4227,18 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "tags_changed": ["t"],
         })
 
-    # Step: Fix sp=none gap if present. At any starting policy: the path ends
-    # at p=reject, and sp=none would leave subdomains out of it.
-    if sp == "none":
+    # Step: Fix a weaker sp if present. At any starting policy: the path ends
+    # at p=reject, and sp=none or sp=quarantine would leave subdomains below
+    # it (and np, when absent, inherits sp).
+    if sp in ("none", "quarantine"):
         step_num += 1
         steps.append({
             "step": step_num,
-            "action": "Align subdomain policy: change sp=none to sp=reject",
-            "why": "Close the subdomain policy gap. With sp=none, mail from any subdomain receives no policy at all, so each receiver applies only its own filtering.",
+            "action": f"Align subdomain policy: change sp={sp} to sp=reject",
+            "why": ("Close the subdomain policy gap. With sp=none, mail from any subdomain receives no policy at all, so each receiver applies only its own filtering."
+                    if sp == "none" else
+                    "With sp=quarantine, mail from a subdomain that fails DMARC goes to spam instead of being rejected, and np inherits the same weaker policy."),
+            "record_after": _record(sp="reject"),
             "tags_changed": ["sp"],
         })
 
@@ -4264,14 +4275,15 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             "step": step_num,
             "action": f"Make subdomain policy explicit: {', '.join(dmarcbis_needed)}",
             "why": (
-                "Neither changes what receivers do here, since both already inherit p=reject. "
+                "Neither changes what receivers do here, since both already inherit reject. "
                 "They make the record say what it means, so a later change to p= cannot "
                 "loosen subdomains by accident."
                 if len(dmarcbis_needed) > 1 else
-                "It does not change what receivers do here, since it already inherits p=reject. "
+                "It does not change what receivers do here, since it already inherits reject. "
                 "It makes the record say what it means, so a later change to p= cannot "
                 "loosen subdomains by accident."
             ),
+            "record_after": _record(**{t.split("=")[0]: "reject" for t in dmarcbis_needed}),
             "tags_changed": [t.split("=")[0] for t in dmarcbis_needed],
         })
 
@@ -4917,6 +4929,15 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
                                                  f"Unknown all mechanism: {all_mechanism}")
         if all_mechanism.lower() == "+all":
             all_severity = "critical"
+    elif any(m["type"] == "redirect" for m in mechanisms):
+        # RFC 7208 section 6.1: with no all mechanism, redirect= hands the
+        # whole evaluation, including the result for unlisted servers, to
+        # the target's record.
+        target = next(m["value"] for m in mechanisms if m["type"] == "redirect")
+        all_explanation = (f"No all mechanism here. The redirect= to {target} hands "
+                           "evaluation to that record, and its all mechanism decides "
+                           "the result for unlisted servers.")
+        all_severity = "info"
     else:
         all_explanation = ("No all mechanism found. Implicit default is ?all (neutral). "
                           "SPF makes no assertion about unauthorized senders.")
@@ -6220,6 +6241,9 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
 
     destinations = raw.get("report_destinations", [])
     verdict = f"Reports to {len(destinations)} destination{'s' if len(destinations) != 1 else ''}"
+    if raw.get("records_found", 0) > 1:
+        verdict = (f"{raw['records_found']} TLS-RPT records published "
+                   "(RFC 8460 requires exactly one)")
 
     explanation = (
         "TLS-RPT (<a href=\"https://datatracker.ietf.org/doc/html/rfc8460\" target=\"_blank\" rel=\"noopener\">RFC 8460</a>) is configured. Sending mail servers that support the protocol "

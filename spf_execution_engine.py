@@ -233,7 +233,8 @@ def build_spf_execution_trace(spf_recursive_result: Dict, spf_record: Optional[s
 # ============================================================
 
 def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
-                           raw_dkim: Dict, tree_walk: Optional[Dict]) -> Optional[Dict]:
+                           raw_dkim: Dict, tree_walk: Optional[Dict],
+                           dkim_confirmed: bool = True) -> Optional[Dict]:
     """
     Build a DMARC evaluation summary showing how receivers would process
     legitimate mail from this domain's authorized servers.
@@ -246,6 +247,9 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         raw_spf: Raw SPF check result
         raw_dkim: Raw DKIM check result
         tree_walk: Tree walk result (for inherited policies)
+        dkim_confirmed: False when the DKIM card could not settle whether the
+            domain signs (selectors cannot be enumerated). Finding no key then
+            is "not confirmed", not "none".
 
     Returns:
         Evaluation dict, or None if insufficient data
@@ -281,7 +285,12 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
     from result_transformer import _split_dkim_selectors
     found_selectors, _revoked = _split_dkim_selectors(
         (raw_dkim.get("found_selectors") or []) if raw_dkim else [])
-    dkim_result = "configured" if found_selectors else "none"
+    if found_selectors:
+        dkim_result = "configured"
+    elif not dkim_confirmed:
+        dkim_result = "not confirmed"
+    else:
+        dkim_result = "none"
 
     # --- DMARC record and alignment modes ---
     dmarc_record = raw_dmarc.get("record")
@@ -302,7 +311,13 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
     # --- DMARC result ---
     # DMARC can pass if EITHER (SPF configured + aligned) OR (DKIM configured + aligned)
     dmarc_pass = spf_aligned or dkim_aligned
-    dmarc_result = "configured" if dmarc_pass else "fail"
+    dkim_unknown = dkim_result == "not confirmed"
+    if dmarc_pass:
+        dmarc_result = "configured"
+    elif dkim_unknown:
+        dmarc_result = "not confirmed"
+    else:
+        dmarc_result = "fail"
 
     # --- Policy ---
     policy = raw_dmarc.get("policy") or ""
@@ -313,6 +328,8 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
     # Disposition: what happens to the message
     if dmarc_pass:
         disposition = "none"  # passes, delivered normally
+    elif dkim_unknown:
+        disposition = "unknown"
     else:
         disposition = policy  # apply the domain's policy
 
@@ -334,6 +351,12 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
             f"with {modes_str} alignment, providing "
             f"{'redundant paths' if len(configured_methods) > 1 else 'a path'} to DMARC pass. "
             f"Based on DNS records only, not live mail testing."
+        )
+    elif dkim_unknown:
+        explanation = (
+            "SPF is not configured in a way that can satisfy DMARC alignment, and "
+            "whether the domain signs with DKIM could not be confirmed from DNS. "
+            "Based on DNS records only, not live mail testing."
         )
     else:
         explanation = (
