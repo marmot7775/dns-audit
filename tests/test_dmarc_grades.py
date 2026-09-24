@@ -94,7 +94,7 @@ def test_a_tag_receivers_ignore_grades_warn_and_p_still_applies(audit, extra):
     # The cover's Issues figure and the summary no longer inherit a fail.
     assert pdf_report._tally(result["checks"])[2] == 0
     verdict = result["executive_summary"]["verdict"]
-    assert "well-protected" in verdict or "blocks spoofed email" in verdict, verdict
+    assert "blocked at every level checked" in verdict or "blocks spoofed email" in verdict, verdict
 
 
 def test_absent_p_with_a_valid_rua_is_read_as_p_none(audit):

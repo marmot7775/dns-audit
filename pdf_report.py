@@ -1160,7 +1160,7 @@ def _attack_surface_page(data, S, number=4):
         steps = tw.get("steps", [])
         if steps and len(steps) > 1:
             els.append(Spacer(1, SP_MD))
-            els.append(Paragraph("DMARC DNS Tree Walk (Subdomain Audit)", S["heading2"]))
+            els.append(Paragraph("DMARC DNS tree walk (subdomain audit)", S["heading2"]))
             header = [
                 Paragraph("<b>Domain</b>", S["body_small"]),
                 Paragraph("<b>Record Found</b>", S["body_small"]),
@@ -1458,7 +1458,7 @@ def _spf_deep_section(spf_deep, S):
         a_clr = {"critical": FAIL_CLR, "warning": WARN_CLR, "info": PASS_CLR}.get(all_sev, TEXT_SEC)
         els.append(Paragraph(
             f'All mechanism: <font color="{a_clr.hexval()}"><b>{_safe(all_mech)}</b></font>'
-            f' - {_safe(all_exp)}', S["body_small"]
+            f'. {_safe(all_exp)}', S["body_small"]
         ))
 
     # Misconfigs
@@ -1826,8 +1826,8 @@ def _about_page(data, S, number=7):
     els.append(Paragraph("Methodology", S["subheading"]))
     els.append(Paragraph(
         "This report was generated using live DNS queries against published DNS records. "
-        "All checks use RFC-compliant evaluation logic. DMARC policy discovery implements "
-        "the DNS Tree Walk algorithm per RFC 9989, Section 4.10. "
+        "DMARC policy discovery implements "
+        "the DNS tree walk per RFC 9989 section 4.10. "
         "SPF evaluation tracks lookup counts against the RFC 7208 10-lookup limit including "
         "void lookup detection. DANE validation checks TLSA records per RFC 7672 with DNSSEC "
         "dependency verification.", S["body_small"]
@@ -1966,7 +1966,7 @@ def generate_pdf(audit_result: dict) -> bytes:
         # The canvas opens every page on this face. ReportLab's default is
         # Helvetica, which left an unused Helvetica resource on every page.
         initialFontName=FONTS["sans"],
-        title=f"DNS Security Audit - {_strip_html(domain)}",
+        title=f"DNS Security Audit: {_strip_html(domain)}",
         author="dns-audit.com",
         subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Complete Audit')} "
                  f"report for {_strip_html(domain)}"),
@@ -2138,7 +2138,7 @@ if __name__ == "__main__":
                       "cost": 1, "provider": "Google Workspace"},
                  ],
                  "all_mechanism": "-all",
-                 "all_explanation": "Hardfail: unauthorized servers are rejected",
+                 "all_explanation": "Servers not listed are not authorized.",
                  "all_severity": "info",
                  "lookup_count": 3,
                  "misconfigs": [],

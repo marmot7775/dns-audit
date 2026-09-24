@@ -62,8 +62,8 @@ class TestStrictValidatorEmitsObsoleteWarn(unittest.TestCase):
         self.assertEqual(len(size), 1)
         self.assertEqual(size[0]["status"], "warn")
         self.assertIn("!10m", size[0]["message"])
-        self.assertIn("§C.4", size[0]["message"])
-        self.assertIn("§4.8", size[0]["message"])
+        self.assertIn("section C.4", size[0]["message"])
+        self.assertIn("section 4.8", size[0]["message"])
         # Email part is still validated as a proper email — no URI_BAD_EMAIL.
         self.assertFalse(any(c["code"] == "URI_BAD_EMAIL" for c in checks))
         # Strict still considers the URI valid overall (warn does not flip all_valid).
@@ -110,7 +110,7 @@ class TestRawCheckEmitsSpecRequiredInfo(unittest.TestCase):
         self.assertEqual(len(infos), 1)
         info = infos[0]
         self.assertEqual(info["source"], "spec_required")
-        self.assertEqual(info["spec_reference"], "RFC 9989 §C.4 / §4.8")
+        self.assertEqual(info["spec_reference"], "RFC 9989 section C.4 / section 4.8")
         self.assertIn("!10m", info["plain_english"])
         self.assertIn("rua=", info["fix"])
 
@@ -137,7 +137,7 @@ class TestRawCheckEmitsSpecRequiredInfo(unittest.TestCase):
         self.assertEqual(len(infos), 1)
         info = infos[0]
         self.assertEqual(info["source"], "spec_required")
-        self.assertEqual(info["spec_reference"], "RFC 9989 §C.4 / §4.8")
+        self.assertEqual(info["spec_reference"], "RFC 9989 section C.4 / section 4.8")
         self.assertIn("ruf=", info["fix"])
 
     def test_modifier_does_not_escalate_status(self):

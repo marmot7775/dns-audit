@@ -219,7 +219,7 @@ def test_scoped_empty_roadmap_pdf_does_not_print_a_hardcoded_all_clear(audit):
     )
     text = _pdf_text(result)
 
-    assert "meets all current best practices" not in text, (
+    assert "No action items across the protocols checked" not in text, (
         "the PDF printed a hardcoded all-clear under a scoped run whose own "
         "roadmap summary says something else"
     )
@@ -240,7 +240,7 @@ def test_real_all_clear_still_reaches_the_pdf():
     ]
     roadmap = build_security_roadmap(checks)
     assert roadmap["items"] == []
-    assert "meets all current best practices" in roadmap["summary"].lower()
+    assert "no action items across the protocols checked" in roadmap["summary"].lower()
 
     es = build_executive_summary(checks, roadmap)
     audit_result = {
@@ -248,4 +248,4 @@ def test_real_all_clear_still_reaches_the_pdf():
         "executive_summary": es, "security_roadmap": roadmap,
     }
     text = _pdf_text(audit_result)
-    assert "meets all current best practices" in text.lower()
+    assert "no action items across the protocols checked" in text.lower()
