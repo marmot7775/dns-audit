@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>What RFC 9989 changes for your DMARC record | dns-audit.com</title>
-    <meta name="description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the five small edits your record needs.">
+    <meta name="description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record.">
     <meta name="keywords" content="RFC 9989, DMARCbis, DMARC, email authentication, RFC 7489, RFC 9990, RFC 9991, DNS tree walk, np tag, psd tag, t tag, public suffix list, deliverability">
     <meta name="author" content="Neil Anuskiewicz">
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="DNS Security Auditor" />
     <meta property="og:url" content="https://dns-audit.com/articles/dmarcbis" />
     <meta property="og:title" content="What RFC 9989 changes for your DMARC record | dns-audit.com" />
-    <meta property="og:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the five small edits your record needs." />
+    <meta property="og:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record." />
     <meta property="og:image" content="https://dns-audit.com/static/og-image.png" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="What RFC 9989 changes for your DMARC record | dns-audit.com" />
-    <meta name="twitter:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the five small edits your record needs." />
+    <meta name="twitter:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record." />
     <link rel="canonical" href="https://dns-audit.com/articles/dmarcbis">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -29,7 +29,7 @@
         "@context": "https://schema.org",
         "@type": "TechArticle",
         "headline": "What RFC 9989 changes for your DMARC record",
-        "description": "DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the five small edits your record needs.",
+        "description": "DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record.",
         "url": "https://dns-audit.com/articles/dmarcbis",
         "author": { "@type": "Person", "name": "Neil Anuskiewicz" },
         "datePublished": "2026-05-20",
@@ -68,7 +68,7 @@
             <section class="dbis-section">
                 <h2>DMARC was never a standard until now</h2>
                 <p>RFC 7489, the document everyone deployed, was Informational. It was published in 2015 on the Independent Submission stream, so it never went through IETF working group consensus, and vendors had room to interpret it, which some of them used. Operators deployed it anyway. They compared notes in forums and in groups like the Messaging, Malware and Mobile Anti-Abuse Working Group, built tooling, and worked out from aggregate reports what each alignment failure meant. By the time Gmail and Yahoo required DMARC from bulk senders in 2024, the practice was mature; the mandate made it compulsory.</p>
-                <p>The revision went by the working group name DMARCbis for years. In May 2026 the IETF published it as three Standards Track documents: RFC 9989 for the protocol, RFC 9990 for aggregate reporting, and RFC 9991 for failure reporting. Together they obsolete RFC 7489. RFC 9989 also retires RFC 9091, the experimental public suffix domain spec, and keeps its <code>psd</code> tag. Now that it is published, the standard is RFC 9989, and that is the name to use.</p>
+                <p>The revision went by the working group name DMARCbis for years. In May 2026 the IETF published it as three Standards Track documents: RFC 9989 for the protocol, RFC 9990 for aggregate reporting, and RFC 9991 for failure reporting. Together they obsolete RFC 7489. RFC 9989 also retires RFC 9091, the experimental public suffix domain spec, and keeps its <code>np</code> tag. Now that it is published, the standard is RFC 9989, and that is the name to use.</p>
                 <figure class="dbis-table-fig" aria-labelledby="dbis-changes-caption">
                     <div class="dbis-table-wrap">
                         <table class="dbis-table">
@@ -123,7 +123,7 @@
             </section>
             <section class="dbis-section">
                 <h2>The tree walk replaces the list</h2>
-                <p>Under RFC 9989 the receiver asks DNS directly. It queries <code>_dmarc</code> at the From domain first. If a record is there, that is the policy and no walk happens. If not, it moves up one label at a time, querying <code>_dmarc</code> at each parent, capped at eight queries so a domain with fifty labels cannot tie a receiver up. The walk stops early only at a record carrying <code>psd=y</code> or <code>psd=n</code>. Otherwise it runs to the top, and the record with the fewest labels marks the organizational domain.</p>
+                <p>Under RFC 9989 the receiver asks DNS directly. For the policy, it queries <code>_dmarc</code> at the From domain first and uses that record if one exists. To find the organizational domain, which relaxed alignment needs, it moves up one label at a time, querying <code>_dmarc</code> at each parent, capped at eight queries so a domain with fifty labels cannot tie a receiver up. The walk stops early only at a record carrying <code>psd=y</code> or <code>psd=n</code>. Otherwise it runs to the top, and the record with the fewest labels marks the organizational domain.</p>
                 <p>The walk finds the organizational domain, not the policy. A receiver still uses the From domain's own record when there is one, and falls back to the organizational domain's record only when there is not.</p>
                 <figure class="dbis-compare" aria-labelledby="dbis-compare-caption">
                     <p class="dbis-compare-kicker">How DMARC finds your organizational domain</p>
@@ -220,7 +220,7 @@
                             </ol>
                         </section>
                     </div>
-                    <figcaption id="dbis-compare-caption" class="dbis-compare-caption">Same input. Same result. The old path needed an external list. The new path uses the DNS itself.</figcaption>
+                    <figcaption id="dbis-compare-caption" class="dbis-compare-caption">Same input, same result. The old path needed an external list; the new one needs only DNS.</figcaption>
                 </figure>
                 <p>That removes the download, the cache, and the question of whose copy of the list is current. It also fixes things operators had reported for years: inconsistent handling of the list, the unreliable <code>pct</code> tag, and spoofing of subdomains that do not exist, which the <code>np</code> tag now covers.</p>
                 <p>Publication is not deployment. Most receivers still evaluate DMARC the RFC 7489 way, and tree walk support will arrive one receiver at a time over a long period. Your existing record keeps working throughout. There is no deadline and nothing to rush. There are a few edits worth making so the record reads cleanly under both specs.</p>
@@ -232,18 +232,13 @@
                     <li><div><strong>Remove the retired tags.</strong> RFC 9989 removes <code>pct</code>, <code>rf</code>, and <code>ri</code>. Receivers on the new spec ignore them, and they clutter the record. If you were using <code>pct</code> to ramp enforcement in stages, there is no replacement: the new <code>t</code> tag is on or off, <code>t=y</code> for testing and <code>t=n</code> for enforcement. That is less of a loss than it sounds. Receivers applied percentage sampling inconsistently, so <code>pct</code> never gave the control it promised. Stay at <code>p=none</code> until your aggregate reports show every legitimate sender aligning, and use <code>sp</code> to enforce on subdomains ahead of the organizational domain if you want a staged path.</div></li>
                     <li><div><strong>Drop the report size suffix.</strong> If a <code>rua</code> or <code>ruf</code> address carries a size limit such as <code>mailto:dmarc@example.com!10m</code>, remove the <code>!10m</code>. RFC 9989 Appendix C.4 removes that syntax, and receivers on the new spec ignore it. The address itself is unchanged.</div></li>
                     <li><div><strong>Leave <code>psd</code> alone unless you run a public suffix.</strong> The tag has three values: <code>y</code> for a public suffix domain, <code>n</code> for an organizational domain, and <code>u</code> for unknown, which is also the default when the tag is absent and lets the tree walk decide. Registries and public suffix operators declare <code>psd=y</code>. Everyone else can omit it.</div></li>
-                    <li><div><strong>Consider <code>np=reject</code> while you are still below full enforcement.</strong> Under RFC 9989 a subdomain that does not exist inherits <code>sp</code> if you publish it, otherwise <code>p</code>, so a domain at <code>p=reject</code> already covers them. If you are still working through your senders at <code>p=none</code> or <code>p=quarantine</code>, <code>np=reject</code> stops spoofing of subdomains that are not in DNS, at no risk to real mail, because no real mail comes from a subdomain that does not exist.</div></li>
+                    <li><div><strong>Consider <code>np=reject</code> while you are still below full enforcement.</strong> Under RFC 9989 a subdomain that does not exist inherits <code>sp</code> if you publish it, otherwise <code>p</code>, so a domain at <code>p=reject</code> already covers them. If you are still working through your senders at <code>p=none</code> or <code>p=quarantine</code>, <code>np=reject</code> tells receivers that support it to reject mail from subdomains that are not in DNS, at no risk to real mail, because no real mail comes from a subdomain that does not exist.</div></li>
                     <li><div><strong>Check external reporting authorization.</strong> If <code>rua</code> points at a domain you do not control, that domain has to publish a TXT record at <code>yourdomain.example._report._dmarc.thirdparty.example</code> containing <code>v=DMARC1</code>, which says it accepts your reports. The rule moved from RFC 7489 into RFC 9990, Section 4, and the record is unchanged. Most report processors publish it for you. Confirm it anyway, because without it receivers drop the reports and nothing tells you.</div></li>
                 </ol>
-                <p>Each of these is a small DNS edit. The tree walk itself is the receivers' work, not yours.</p>
             </section>
             <div class="dbis-closing">
                 <p>dns-audit.com checks your record both ways, against RFC 9989 and against RFC 7489, and shows what changes between them.</p>
-                <a href="/" class="dbis-cta">Audit your domain →</a>
             </div>
-            <section class="dbis-section">
-                <p>The Public Suffix List carried DMARC for more than a decade. RFC 9989 moves that job into DNS, where a DNS protocol should have kept it.</p>
-            </section>
         </article>
     </main>
     <footer class="site-footer">
