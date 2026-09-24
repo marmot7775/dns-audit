@@ -209,6 +209,18 @@ def _strip_html(t):
         t = t.replace(old, new)
     return t.strip()
 
+def _audit_time(data):
+    """When the audit ran, from the result, not when this PDF was built:
+    a cached result can be rendered minutes later."""
+    stamp = (data or {}).get("audited_at")
+    when = None
+    if isinstance(stamp, str):
+        try:
+            when = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            when = None
+    return (when or datetime.now(timezone.utc)).strftime("%B %d, %Y at %H:%M UTC")
+
 def _safe(t):
     if not t: return ""
     return str(t).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
@@ -371,7 +383,7 @@ def _cover_page(data, S, toc_items=None):
     checks = data.get("checks", []) or []
     passes, warns, fails, absent, unavailable = _tally(checks)
     es = data.get("executive_summary", {})
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    now = _audit_time(data)
 
     els = []
 
@@ -1672,7 +1684,7 @@ def _migration_page(data, S, number=6):
         return []
 
     els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "Migration path to RFC 9989 Ready", S))
+    els.extend(_section_header(str(number), "Migration path to RFC 9989", S))
 
     status = migration.get("status", "")
     if status == "ready":
@@ -1746,7 +1758,7 @@ def _migration_page(data, S, number=6):
 def _about_page(data, S, number=7):
     """Build the About This Report final page."""
     domain = data.get("domain", "unknown")
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    now = _audit_time(data)
 
     els = [PageBreak()]
     els.extend(_section_header(str(number), "About this report", S))
@@ -1950,7 +1962,7 @@ def generate_pdf(audit_result: dict) -> bytes:
     Returns PDF bytes suitable for streaming to the client.
     """
     domain = re.sub(r'<[^>]+>', '', audit_result.get("domain", "unknown"))
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    now = _audit_time(audit_result)
 
     buf = io.BytesIO()
     S = _styles()
