@@ -1532,7 +1532,7 @@ function cardDetailSections(check) {
 
     if (check._tree_walk) {
         sections.push({
-            title: 'DMARC Policy Discovery (Tree Walk)',
+            title: 'DMARC Policy Discovery (DNS tree walk)',
             summary: _treeWalkSummary(check._tree_walk),
             html: renderTreeWalk(check._tree_walk),
         });
@@ -2566,7 +2566,7 @@ function renderTreeWalkSimple(tw) {
     return `
         <div class="tree-walk tree-walk-simple tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</h4>
+                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
                 <a class="tag tag-hit" href="https://www.rfc-editor.org/rfc/rfc9989.html"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -2596,7 +2596,7 @@ function renderTreeWalkFull(tw) {
     let html = `
         <div class="tree-walk tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (Tree Walk)</h4>
+                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
                 <a class="tag tag-hit" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
             </div>`;
 

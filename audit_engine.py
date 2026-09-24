@@ -227,17 +227,17 @@ BUSINESS_RISK = {
         "legitimate mail fails authentication and may be marked as spam."
     ),
     "SPF_PERMERROR": (
-        "SPF errors mean receivers cannot verify your legitimate mail; "
-        "spoofed mail may pass while real mail gets rejected, causing "
-        "customer service and deliverability problems."
+        "With an SPF PermError no message passes SPF, so DMARC has only DKIM "
+        "to rely on. Any sender that does not sign with an aligned DKIM key "
+        "will fail DMARC."
     ),
     "SPF_PLUS_ALL": (
-        "Authorizing every server on the internet defeats SPF entirely and "
-        "lets anyone send email impersonating your domain."
+        "Authorizing every server on the internet means SPF passes for any "
+        "server, including one sending mail that impersonates your domain."
     ),
     "SPF_NEUTRAL_ALL": (
-        "A neutral all mechanism tells receivers nothing about unauthorized "
-        "senders, so impersonation attempts against your customers are not blocked."
+        "?all gives unlisted servers a neutral result, which is not a pass, so "
+        "it gives DMARC nothing. Receivers that use SPF alone get no signal."
     ),
     "SPF_NO_ALL": (
         "Without an all mechanism, receivers default to neutral and have no "
@@ -246,7 +246,7 @@ BUSINESS_RISK = {
     # ── DMARC ────────────────────────────────────────────────
     "DMARC_NO_RECORD": (
         "No DMARC record means receivers have no guidance on what to do with "
-        "unauthenticated mail. Google and Yahoo require a DMARC record from senders "
+        "unauthenticated mail. Google, Yahoo, and Microsoft (Outlook.com) require a DMARC record from senders "
         "of 5,000 or more messages a day to their users. They say non-compliant mail "
         "may be rate limited, blocked, or sent to spam."
     ),
@@ -288,7 +288,7 @@ BUSINESS_RISK = {
     ),
     "DKIM_WEAK_KEY": (
         "This key is below the RSA size RFC 8301 recommends and should be "
-        "rotated to 2048 bits or an Ed25519 key."
+        "rotated to a 2048-bit RSA key."
     ),
     "DKIM_REVOKED_KEY": (
         "An empty p= tag is how RFC 6376 revokes a key. Leaving the record "
@@ -594,7 +594,7 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
                 "issue": f"External report destination not authorized: {email}",
                 "plain_english": (
                     f"Reports sent to {email} will be silently dropped. "
-                    f"RFC 7489 S7.1 requires {dest_domain} to publish a TXT record at "
+                    f"RFC 9990 section 4 requires {dest_domain} to publish a TXT record at "
                     f"{auth_fqdn} containing 'v=DMARC1' to authorize report delivery."
                 ),
                 "fix": (
@@ -813,7 +813,7 @@ def _emit_size_modifier_info(result: Dict[str, Any], tag_name: str, addr: str) -
         "issue": "RFC 9989 removed the rua/ruf size modifier (!N)",
         "plain_english": (
             f"Your DMARC record uses the legacy size modifier "
-            f"(e.g., {addr} has !{modifier}). RFC 9989 §C.4 removed "
+            f"(e.g., {addr} has !{modifier}). RFC 9989 section C.4 removed "
             "this syntax. Receivers implementing RFC 9989 will ignore "
             "the size limit; receivers following RFC 7489 still honor it. "
             "Remove the modifier so the record reads the same under both specs."
@@ -825,7 +825,7 @@ def _emit_size_modifier_info(result: Dict[str, Any], tag_name: str, addr: str) -
             f"{tag_name}=mailto:reports@example.com."
         ),
         "source": "spec_required",
-        "spec_reference": "RFC 9989 §C.4 / §4.8",
+        "spec_reference": "RFC 9989 section C.4 / section 4.8",
     })
 
 
@@ -1031,7 +1031,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
             "error",
             "No DMARC record found",
             f"No DMARC record exists at '_dmarc.{domain}'. "
-            "Google and Yahoo require a DMARC record from senders of 5,000 or more messages "
+            "Google, Yahoo, and Microsoft (Outlook.com) require a DMARC record from senders of 5,000 or more messages "
             "a day to their users, and say non-compliant mail may be rate limited, blocked, "
             "or sent to spam. "
             "You also have no aggregate reporting visibility into who is sending as your domain.",
@@ -1184,10 +1184,10 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 if key_clean == "pct":
                     _add_issue(
                         "warning",
-                        "Removed tag: 'pct' (RFC 9989 §C.5.2)",
-                        "RFC 9989 §C.5.2 (Tags Removed) and §A.6 explicitly "
+                        "Removed tag: 'pct' (RFC 9989 section C.5.2)",
+                        "RFC 9989 section C.5.2 (Tags Removed) and section A.6 explicitly "
                         "remove the pct tag. The RFC 9989 testing mechanism is "
-                        "the t tag (§4.7): t=y signals receivers to apply the "
+                        "the t tag (section 4.7): t=y signals receivers to apply the "
                         "policy one level below the published p value. Current "
                         "RFC 7489 receivers still honor pct, but RFC 9989-"
                         "compliant receivers will ignore it.",
@@ -1196,10 +1196,10 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 elif key_clean == "ri":
                     _add_issue(
                         "info",
-                        "Removed tag: 'ri' (RFC 9989 §C.5.2)",
-                        "RFC 9989 §C.5.2 (Tags Removed) explicitly lists "
+                        "Removed tag: 'ri' (RFC 9989 section C.5.2)",
+                        "RFC 9989 section C.5.2 (Tags Removed) explicitly lists "
                         "ri among the tags removed from the protocol, so it "
-                        "is also absent from the §4.7 tag registry. Current "
+                        "is also absent from the section 4.7 tag registry. Current "
                         "RFC 7489 receivers may still honor ri, but RFC 9989-"
                         "compliant receivers will ignore it; in practice "
                         "receivers send aggregate reports on their own "
@@ -1209,10 +1209,10 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 elif key_clean == "rf":
                     _add_issue(
                         "info",
-                        "Removed tag: 'rf' (RFC 9989 §C.5.2)",
-                        "RFC 9989 §C.5.2 (Tags Removed) explicitly lists "
+                        "Removed tag: 'rf' (RFC 9989 section C.5.2)",
+                        "RFC 9989 section C.5.2 (Tags Removed) explicitly lists "
                         "rf among the tags removed from the protocol, so it "
-                        "is also absent from the §4.7 tag registry. The only "
+                        "is also absent from the section 4.7 tag registry. The only "
                         "value ever defined was 'afrf', so the tag never "
                         "carried useful information; RFC 9989-compliant "
                         "receivers will ignore it.",
@@ -1349,7 +1349,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                     "Missing p= tag. Spec recovery: RFC 9989 treats "
                     "record as p=none, RFC 7489 receivers ignore.",
                     "This record has no explicit policy tag. Per "
-                    "RFC 9989 §4.10.1, because rua= contains at "
+                    "RFC 9989 section 4.10.1, because rua= contains at "
                     "least one syntactically valid reporting URI, "
                     "RFC 9989-compliant receivers MUST act as if a "
                     "record containing p=none was retrieved and "
@@ -1367,7 +1367,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                     f"Invalid {rec_tag_name}= value: {rec_tag_name}="
                     f"{rec_tag_value}. Spec recovery: RFC 9989 treats "
                     f"record as p=none, RFC 7489 receivers may ignore.",
-                    "Per RFC 9989 §4.10.1, because rua= contains "
+                    "Per RFC 9989 section 4.10.1, because rua= contains "
                     "at least one syntactically valid reporting URI, "
                     "RFC 9989-compliant receivers MUST act as if a "
                     "record containing p=none was retrieved and "
@@ -1384,7 +1384,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
             if rec_kind == "missing":
                 _add_fatal_syntax(
                     "Missing required policy tag (p=) and no valid rua= URI",
-                    "Per RFC 9989 §4.10.1, a record without a valid "
+                    "Per RFC 9989 section 4.10.1, a record without a valid "
                     "p= tag is recoverable only when rua= contains at "
                     "least one syntactically valid mailto: URI. This "
                     "record has neither, so receivers apply no DMARC "
@@ -1398,9 +1398,9 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 _add_issue(
                     "error",
                     f"Invalid {rec_tag_name}= value AND no valid rua= URI. "
-                    f"Per RFC 9989 §4.10.1, this record yields no "
+                    f"Per RFC 9989 section 4.10.1, this record yields no "
                     f"DMARC processing.",
-                    f"RFC 9989 §4.10.1 specifies that receivers "
+                    f"RFC 9989 section 4.10.1 specifies that receivers "
                     f"apply no DMARC processing when an invalid "
                     f"{rec_tag_name}= is published without a "
                     f"syntactically valid rua= URI. Effectively, this "
@@ -1609,7 +1609,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
         _add_issue(
             "warning",
             f"DMARC test mode active (t=y). Policy effectively {effective}",
-            f"The t=y tag (RFC 9989 Section 4.7) signals receivers to apply the policy "
+            f"The t=y tag (RFC 9989 section 4.7) signals receivers to apply the policy "
             f"one level below {policy}. Receivers treat this as p={effective}. "
             f"This is useful for cautious deployment of a new enforcement policy.",
             f"Remove t=y (or set t=n) once you're confident in your authentication "
@@ -1732,7 +1732,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     if dmarc_records_count > 1:
         _add("record_structure", "MULTIPLE_RECORDS", "fail",
              f"{dmarc_records_count} DMARC records found. RFC 9989 requires exactly one. "
-             "Receivers return PermError, meaning DMARC fails entirely.")
+             "Receivers apply no DMARC policy, the same as if no record were published.")
     elif dmarc_records_count == 1:
         _add("record_structure", "SINGLE_RECORD", "pass", "Exactly one DMARC record found.")
 
@@ -1851,7 +1851,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
                      f"pct={pct_val} has leading zeros. Use pct={pct_int}.")
             else:
                 _add("tag_values", "PCT_REMOVED", "warn",
-                     "pct is removed in RFC 9989 (§C.5.2). Receivers on "
+                     "pct is removed in RFC 9989 (section C.5.2). Receivers on "
                      "RFC 9989 ignore it.")
 
     # rf and ri are removed by the same section and had no row here at all.
@@ -1860,7 +1860,7 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
     for removed_tag in ("rf", "ri"):
         if tag_dict.get(removed_tag) is not None:
             _add("tag_values", f"{removed_tag.upper()}_REMOVED", "warn",
-                 f"{removed_tag} is removed in RFC 9989 (§C.5.2). "
+                 f"{removed_tag} is removed in RFC 9989 (section C.5.2). "
                  "Receivers on RFC 9989 ignore it.")
 
     # Check 12: URI validation (STRICT)
@@ -1878,8 +1878,8 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
             if not uri_stripped.lower().startswith("mailto:"):
                 _add("uri_validation", "URI_NO_MAILTO", "fail",
                      f"{tag_name}={uri_stripped} is not a valid URI. Must start with mailto:. "
-                     f"Correct format: mailto:{uri_stripped}. This is the most common DMARC error "
-                     "and older tools silently accept it. RFC 9989 requires valid URI format.")
+                     f"Correct format: mailto:{uri_stripped}. Older tools silently accept it. "
+                     "RFC 9989 requires valid URI format.")
                 all_valid = False
             else:
                 # Split mailto:<addr>!<size>. The email part is validated even
@@ -1899,8 +1899,8 @@ def _validate_dmarc_strict(record: str, dmarc_records_count: int = 1) -> Dict:
                 if size_modifier:
                     _add("uri_validation", "URI_SIZE_MODIFIER_REMOVED", "warn",
                          f"{tag_name}={uri_stripped} contains a size modifier (!{size_modifier}). "
-                         "RFC 9989 §C.4 removes the ability to specify a maximum report size; "
-                         "§4.8 keeps the syntax only so older records still parse. Reporters following RFC 9989 will "
+                         "RFC 9989 section C.4 removes the ability to specify a maximum report size; "
+                         "section 4.8 keeps the syntax only so older records still parse. Reporters following RFC 9989 will "
                          "ignore the size suffix. RFC 7489 receivers may still honor it. "
                          "Remove the modifier.")
 
@@ -2175,13 +2175,13 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
         t_present = "t" in tags_in_record
         if t_present:
             action = (
-                "Remove pct. RFC 9989 removes the tag (§C.5.2 / §A.6) and "
+                "Remove pct. RFC 9989 removes the tag (section C.5.2 / section A.6) and "
                 "you already have t= set, which is the RFC 9989 replacement "
                 "for the testing role pct used to play."
             )
         else:
             action = (
-                "Remove pct. RFC 9989 removes the tag (§C.5.2 / §A.6); "
+                "Remove pct. RFC 9989 removes the tag (section C.5.2 / section A.6); "
                 "if you were using pct<100 to test enforcement, set t=y "
                 "instead, which is the RFC 9989-defined test mode."
             )
@@ -2189,7 +2189,7 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
             "tag": "pct",
             "value": pct_val,
             "source": "spec_required",
-            "spec_reference": "RFC 9989 §C.5.2 / §A.6",
+            "spec_reference": "RFC 9989 section C.5.2 / section A.6",
             "recommendation": action,
         })
 
@@ -2198,9 +2198,9 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
             "tag": "rf",
             "value": tags_in_record["rf"],
             "source": "spec_required",
-            "spec_reference": "RFC 9989 §C.5.2",
+            "spec_reference": "RFC 9989 section C.5.2",
             "recommendation": (
-                "Remove the rf tag. RFC 9989 §C.5.2 lists rf as "
+                "Remove the rf tag. RFC 9989 section C.5.2 lists rf as "
                 "removed from the protocol. Receivers implementing "
                 "RFC 9989 will ignore this tag."
             ),
@@ -2211,9 +2211,9 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
             "tag": "ri",
             "value": tags_in_record["ri"],
             "source": "spec_required",
-            "spec_reference": "RFC 9989 §C.5.2",
+            "spec_reference": "RFC 9989 section C.5.2",
             "recommendation": (
-                "Remove the ri tag. RFC 9989 §C.5.2 lists ri as "
+                "Remove the ri tag. RFC 9989 section C.5.2 lists ri as "
                 "removed from the protocol. Receivers implementing "
                 "RFC 9989 will ignore this tag."
             ),
@@ -2243,7 +2243,7 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
             np_info["recommendation"] = (
                 "Editorial recommendation (not spec-required): consider "
                 "np=reject so mail from non-existent subdomains is rejected "
-                "the same as mail at p=reject. RFC 9989 §4.7 does not "
+                "the same as mail at p=reject. RFC 9989 section 4.7 does not "
                 "prescribe an np value relative to p; if np is absent, the "
                 "fallback is sp then p."
             )
@@ -2251,7 +2251,7 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
             np_info["recommendation"] = (
                 "Editorial recommendation (not spec-required): consider "
                 "np=reject so mail from non-existent subdomains is treated "
-                "more strictly than the apex p=quarantine. RFC 9989 §4.7 "
+                "more strictly than the apex p=quarantine. RFC 9989 section 4.7 "
                 "does not prescribe an np value; if np is absent, the "
                 "fallback is sp then p."
             )
@@ -2260,14 +2260,14 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
                 "Editorial recommendation (not spec-required): consider "
                 "np=quarantine to flag mail from non-existent subdomains "
                 "even while you keep p=none for monitoring. RFC 9989 "
-                "§4.7 does not prescribe an np value; if np is absent, "
+                "section 4.7 does not prescribe an np value; if np is absent, "
                 "the fallback is sp then p."
             )
         else:
             np_info["recommendation"] = (
                 "Editorial recommendation (not spec-required): set np "
                 "explicitly once you have an enforcement policy in place. "
-                "RFC 9989 §4.7 leaves the value to the domain owner."
+                "RFC 9989 section 4.7 leaves the value to the domain owner."
             )
 
     t_info = {"present": bool(t_val), "value": t_val}
@@ -2565,8 +2565,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
                 if not mech_value:
                     _add_syntax(
                         "Empty include: mechanism (no domain specified)",
-                        "An include: mechanism has no domain. SPF cannot look up "
-                        "an empty domain. This wastes a DNS lookup and always fails.",
+                        "An include with no domain is a syntax error, so receivers "
+                        "return PermError for the whole record.",
                         "Add a domain or remove the empty include.",
                     )
                 seen_mechanisms.append(part)
@@ -2743,8 +2743,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         _add_issue(
             "error",
             "SPF uses +all (authorizes everyone)",
-            "The +all mechanism authorizes the entire internet to send email "
-            "as your domain. This completely defeats the purpose of SPF.",
+            "The +all mechanism authorizes every server on the internet to send "
+            "as your domain, which means SPF passes for any server.",
             "Change +all to ~all or -all.",
             business_risk_key="SPF_PLUS_ALL",
         )
@@ -2752,8 +2752,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         _add_issue(
             "warning",
             "SPF uses ?all (neutral)",
-            "The ?all mechanism provides no opinion about unauthorized senders. "
-            "It does not protect your domain from spoofing.",
+            "?all gives unlisted servers a neutral result, which is not a pass, "
+            "so it gives DMARC nothing. Receivers that use SPF alone get no signal.",
             "Change ?all to ~all or -all.",
             business_risk_key="SPF_NEUTRAL_ALL",
         )
@@ -2763,7 +2763,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             "No 'all' mechanism found",
             "SPF records should end with an 'all' mechanism to define what happens "
             "to mail from servers not listed in the record. Without it, the default "
-            "is neutral (?all), which provides no protection.",
+            "is neutral, the same as ?all. A neutral result is not a pass, so it "
+            "gives DMARC nothing, and receivers that use SPF alone get no signal.",
             "Add ~all or -all to the end of the SPF record. Either one tells receivers "
             "that servers not listed are not authorized, and DMARC decides what happens "
             "to their mail.",
@@ -3142,7 +3143,7 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
             _add_issue(
                 "info",
                 "DS not directly observable; resolver AD bit is set",
-                "We could not fetch the DS record at the parent zone via direct "
+                "This audit could not fetch the DS record at the parent zone via direct "
                 "query or parent-NS query, but a validating resolver reports the "
                 "chain is intact (AD bit set). This is consistent with a working "
                 "DNSSEC deployment but is not cryptographic proof. Verify with: "
@@ -3219,7 +3220,7 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
                 if not chain_matched:
                     _add_issue(
                         "error",
-                        "DS digest does NOT match any DNSKEY (broken chain of trust)",
+                        "DS digest does not match any DNSKEY (broken chain of trust)",
                         "The DS record at the parent zone does not match any of the published "
                         "DNSKEY records. This means DNSSEC validation will fail for all resolvers, "
                         "potentially making the domain unresolvable for DNSSEC-validating clients.",
@@ -3459,7 +3460,7 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
             "No CAA records published",
             "Neither this domain nor any parent up to the registrable domain publishes "
             "CAA records, so any Certificate Authority in the world can issue "
-            "SSL/TLS certificates for your domain. CAA lets you restrict issuance to "
+            "TLS certificates for your domain. CAA lets you restrict issuance to "
             "only the CAs you actually use, reducing the risk of unauthorized certificates.",
             f'Add a CAA record: 0 issue "letsencrypt.org" (replace with your CA). '
             f'Add 0 iodef "mailto:security@{domain}" for violation alerts.',
@@ -3709,7 +3710,7 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
             "error",
             "Only one nameserver configured",
             "A single nameserver is a single point of failure. If it goes down, "
-            "your entire domain becomes unreachable: no website, no email, nothing. "
+            "the domain stops resolving once cached answers expire. "
             "RFC 1034 requires at least two nameservers.",
             "Add at least one secondary nameserver, preferably on a different network.",
         )
@@ -3751,7 +3752,7 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
             f"All nameservers are hosted by {provider}. While this provider likely has "
             "internal redundancy, using a secondary DNS provider eliminates the risk "
             "of a provider-wide outage affecting your domain.",
-            "Consider adding a secondary DNS provider for maximum resilience.",
+            "Consider adding a secondary DNS provider.",
         )
 
     # 5. IPv6 support
@@ -3760,8 +3761,8 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
         _add_issue(
             "info",
             "No IPv6-enabled nameservers (no AAAA records)",
-            "None of your nameservers have IPv6 addresses. While not critical today, "
-            "IPv6 adoption is growing and some networks may prefer IPv6 connectivity.",
+            "None of your nameservers have IPv6 addresses. IPv6-only resolvers "
+            "cannot reach them directly.",
             "Ask your DNS provider about IPv6 support for nameservers.",
         )
 
@@ -5791,7 +5792,7 @@ def _build_resilience_analysis(
         sel_list = f"Selectors found: {', '.join(sel_names)}." if sel_names else ""
         if sel_count >= 5:
             coverage = (
-                f"{sel_count} DKIM selectors detected, indicating broad coverage across multiple email services. "
+                f"{sel_count} DKIM selectors detected. "
             )
         elif sel_count >= 2:
             coverage = (
@@ -5927,7 +5928,7 @@ def _build_resilience_analysis(
             "level": "high",
             "summary": (
                 "This domain is configured to not send email. "
-                "SPF rejects all senders and DMARC policy instructs receivers to reject "
+                "SPF authorizes no senders and DMARC policy instructs receivers to reject "
                 "any message claiming to be from this domain."
             ),
             "mechanisms": mechanisms,
@@ -6008,7 +6009,7 @@ def _build_resilience_analysis(
             "do not protect against spoofing without DMARC tying them together."
         )
         risk = (
-            "Publishing a DMARC record is the single most impactful step this domain can take. "
+            "Publishing a DMARC record is the first step. "
             "Start with p=none and a rua= address to collect aggregate reports showing who is "
             "sending mail as this domain. Once legitimate sources are identified and authenticated, "
             "move to p=quarantine and then p=reject."

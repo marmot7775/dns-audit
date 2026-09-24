@@ -637,7 +637,7 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
                 ))
         except requests.exceptions.SSLError:
             result["issues"].append(_make_issue(
-                "error", "SSL/TLS error fetching MTA-STS policy",
+                "error", "TLS error fetching MTA-STS policy",
                 f"HTTPS connection to mta-sts.{domain} failed.",
                 "MTA-STS will not function.",
                 f"Install a valid TLS certificate for mta-sts.{domain}.",

@@ -333,6 +333,7 @@ def test_the_summary_does_not_issue_an_all_clear_covering_dkim(audit, selectors)
     deliv = result["executive_summary"]["deliverability_summary"].lower()
 
     assert "spf, dkim, and dmarc are properly set up" not in deliv
+    assert "spf, dkim, and dmarc are set up correctly" not in deliv
     assert "could not be confirmed by probing" in deliv
     assert "outside the scope" not in deliv, (
         "DKIM was in scope and did run. Saying it was outside the scope trades "
