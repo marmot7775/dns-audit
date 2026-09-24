@@ -50,7 +50,7 @@ def test_a_removed_tag_is_a_warning_under_rfc_9989_and_a_pass_under_7489(tag, va
     assert row["status"] == "warn"
     assert row["category"] == "tag_values"
     assert row["message"] == (
-        f"{tag} is removed in RFC 9989 (§C.5.2). Receivers on RFC 9989 ignore it."
+        f"{tag} is removed in RFC 9989 (section C.5.2). Receivers on RFC 9989 ignore it."
     )
     assert "PCT_VALID" not in _codes(strict)
 
@@ -246,8 +246,11 @@ def test_the_spf_card_at_one_lookup_is_singular_too(audit):
 # 5. A no-mail domain is not told about inbox placement
 # ---------------------------------------------------------------
 
-NO_MAIL_LINE = ("This domain publishes a null MX, so it sends no mail. Its "
-                "authentication records are configured to say so.")
+# A null MX says the domain receives no mail; it says nothing about sending.
+# The line names the declaration, not the null MX.
+NO_MAIL_LINE = ("This domain declares that it handles no mail, so there is no "
+                "inbox placement to report on. Its authentication records are "
+                "configured to say so.")
 
 
 def test_a_null_mx_domain_gets_the_no_mail_deliverability_line(audit):
@@ -261,6 +264,7 @@ def test_a_null_mx_domain_gets_the_no_mail_deliverability_line(audit):
     summary = result["executive_summary"]["deliverability_summary"]
     assert summary == NO_MAIL_LINE
     assert "reaching inboxes" not in summary
+    assert "set up correctly" not in summary
 
 
 def test_a_mail_sending_domain_keeps_the_ordinary_deliverability_line():
@@ -273,5 +277,5 @@ def test_a_mail_sending_domain_keeps_the_ordinary_deliverability_line():
     ]
     es = build_executive_summary(checks, build_security_roadmap(checks))
 
-    assert "reaching inboxes" in es["deliverability_summary"]
+    assert "set up correctly" in es["deliverability_summary"]
     assert es["deliverability_summary"] != NO_MAIL_LINE

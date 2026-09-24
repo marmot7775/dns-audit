@@ -209,6 +209,18 @@ def _strip_html(t):
         t = t.replace(old, new)
     return t.strip()
 
+def _audit_time(data):
+    """When the audit ran, from the result, not when this PDF was built:
+    a cached result can be rendered minutes later."""
+    stamp = (data or {}).get("audited_at")
+    when = None
+    if isinstance(stamp, str):
+        try:
+            when = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            when = None
+    return (when or datetime.now(timezone.utc)).strftime("%B %d, %Y at %H:%M UTC")
+
 def _safe(t):
     if not t: return ""
     return str(t).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
@@ -371,7 +383,7 @@ def _cover_page(data, S, toc_items=None):
     checks = data.get("checks", []) or []
     passes, warns, fails, absent, unavailable = _tally(checks)
     es = data.get("executive_summary", {})
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    now = _audit_time(data)
 
     els = []
 
@@ -1160,7 +1172,7 @@ def _attack_surface_page(data, S, number=4):
         steps = tw.get("steps", [])
         if steps and len(steps) > 1:
             els.append(Spacer(1, SP_MD))
-            els.append(Paragraph("DMARC DNS Tree Walk (Subdomain Audit)", S["heading2"]))
+            els.append(Paragraph("DMARC DNS tree walk (subdomain audit)", S["heading2"]))
             header = [
                 Paragraph("<b>Domain</b>", S["body_small"]),
                 Paragraph("<b>Record Found</b>", S["body_small"]),
@@ -1458,7 +1470,7 @@ def _spf_deep_section(spf_deep, S):
         a_clr = {"critical": FAIL_CLR, "warning": WARN_CLR, "info": PASS_CLR}.get(all_sev, TEXT_SEC)
         els.append(Paragraph(
             f'All mechanism: <font color="{a_clr.hexval()}"><b>{_safe(all_mech)}</b></font>'
-            f' - {_safe(all_exp)}', S["body_small"]
+            f'. {_safe(all_exp)}', S["body_small"]
         ))
 
     # Misconfigs
@@ -1672,7 +1684,7 @@ def _migration_page(data, S, number=6):
         return []
 
     els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "Migration path to RFC 9989 Ready", S))
+    els.extend(_section_header(str(number), "Migration path to RFC 9989", S))
 
     status = migration.get("status", "")
     if status == "ready":
@@ -1746,7 +1758,7 @@ def _migration_page(data, S, number=6):
 def _about_page(data, S, number=7):
     """Build the About This Report final page."""
     domain = data.get("domain", "unknown")
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    now = _audit_time(data)
 
     els = [PageBreak()]
     els.extend(_section_header(str(number), "About this report", S))
@@ -1826,8 +1838,8 @@ def _about_page(data, S, number=7):
     els.append(Paragraph("Methodology", S["subheading"]))
     els.append(Paragraph(
         "This report was generated using live DNS queries against published DNS records. "
-        "All checks use RFC-compliant evaluation logic. DMARC policy discovery implements "
-        "the DNS Tree Walk algorithm per RFC 9989, Section 4.10. "
+        "DMARC policy discovery implements "
+        "the DNS tree walk per RFC 9989 section 4.10. "
         "SPF evaluation tracks lookup counts against the RFC 7208 10-lookup limit including "
         "void lookup detection. DANE validation checks TLSA records per RFC 7672 with DNSSEC "
         "dependency verification.", S["body_small"]
@@ -1950,7 +1962,7 @@ def generate_pdf(audit_result: dict) -> bytes:
     Returns PDF bytes suitable for streaming to the client.
     """
     domain = re.sub(r'<[^>]+>', '', audit_result.get("domain", "unknown"))
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    now = _audit_time(audit_result)
 
     buf = io.BytesIO()
     S = _styles()
@@ -1966,7 +1978,7 @@ def generate_pdf(audit_result: dict) -> bytes:
         # The canvas opens every page on this face. ReportLab's default is
         # Helvetica, which left an unused Helvetica resource on every page.
         initialFontName=FONTS["sans"],
-        title=f"DNS Security Audit - {_strip_html(domain)}",
+        title=f"DNS Security Audit: {_strip_html(domain)}",
         author="dns-audit.com",
         subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Complete Audit')} "
                  f"report for {_strip_html(domain)}"),
@@ -2138,7 +2150,7 @@ if __name__ == "__main__":
                       "cost": 1, "provider": "Google Workspace"},
                  ],
                  "all_mechanism": "-all",
-                 "all_explanation": "Hardfail: unauthorized servers are rejected",
+                 "all_explanation": "Servers not listed are not authorized.",
                  "all_severity": "info",
                  "lookup_count": 3,
                  "misconfigs": [],

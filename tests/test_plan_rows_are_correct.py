@@ -52,12 +52,13 @@ def test_a_warn_card_does_not_get_the_properly_set_up_sentence():
         "SPF, DKIM, and DMARC are all in place. The plan below has what to tighten.")
     assert "looks solid" not in es["deliverability_summary"]
     assert "properly set up" not in es["deliverability_summary"]
+    assert "set up correctly" not in es["deliverability_summary"]
 
 
 def test_three_passing_cards_keep_the_all_clear():
     checks = _auth_cards()
     es = build_executive_summary(checks, build_security_roadmap(checks))
-    assert es["deliverability_summary"].startswith("Your configuration looks solid.")
+    assert es["deliverability_summary"].startswith("SPF, DKIM, and DMARC are set up correctly.")
 
 
 # ---------------------------------------------------------------
@@ -76,7 +77,7 @@ def test_sp_none_under_p_reject_gets_a_high_row_and_no_np_row():
     assert len(sp_rows) == 1, rows
     assert sp_rows[0]["priority"] == "high"
     assert sp_rows[0]["action"] == "Bring the subdomain policy up to p=reject"
-    assert sp_rows[0]["impact"].startswith("sp=none leaves every subdomain unprotected")
+    assert sp_rows[0]["impact"].startswith("With sp=none, mail from any subdomain that fails")
     assert not [i for i in rows if "np=" in i["action"]], (
         "the np= note claims subdomains inherit the enforcing policy, which "
         "is what sp=none stops")

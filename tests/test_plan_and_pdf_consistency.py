@@ -77,7 +77,7 @@ def test_rows_on_one_record_do_not_share_one_record(audit):
 # ---------------------------------------------------------------
 
 def test_fallback_row_does_not_use_the_verdict_as_its_reason(audit):
-    result = _run(audit, f"v=DMARC1; p=reject; {RUA}", spf="v=spf1 mx ~all")
+    result = _run(audit, f"v=DMARC1; p=reject; {RUA}", spf="v=spf1 mx ?all")
     verdict = _card(result, "SPF")["verdict"]
     rows = _rows(result, "SPF")
     assert rows, result["security_roadmap"]["items"]

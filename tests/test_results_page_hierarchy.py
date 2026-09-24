@@ -31,7 +31,7 @@ DMARC_SECTIONS = [
     "Email Spoofing Attack Surface",
     "Subdomain Security",
     "DMARC Record Breakdown",
-    "DMARC Policy Discovery (Tree Walk)",
+    "DMARC Policy Discovery (DNS tree walk)",
     "RFC 9989 Readiness",
     "DMARC Evaluation",
     "DMARC Report Delivery Chain",

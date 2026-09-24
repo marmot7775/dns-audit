@@ -224,6 +224,7 @@ def test_deliverability_does_not_call_unchecked_protocols_solid():
     """"SPF, DKIM, and DMARC are properly set up" on a run that read one."""
     summary = _es([DMARC_CLEAN])["deliverability_summary"]
     assert "SPF, DKIM, and DMARC are properly set up" not in summary
+    assert "SPF, DKIM, and DMARC are set up correctly" not in summary
     assert "outside the scope" in summary
 
 
@@ -233,7 +234,7 @@ def test_deliverability_all_clear_survives_a_complete_clean_run():
         {"name": n, "status": "pass", "pill_label": "Configured"}
         for n in ("SPF", "DKIM")
     ]
-    assert "properly set up" in _es(checks)["deliverability_summary"]
+    assert "set up correctly" in _es(checks)["deliverability_summary"]
 
 
 # ---------------------------------------------------------------------------
