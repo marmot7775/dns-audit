@@ -1332,7 +1332,9 @@ def _classify_change(record_type: str, old_value: str, new_value: str) -> Dict:
         # Check for all-mechanism changes
         old_all = _extract_spf_all(old_value)
         new_all = _extract_spf_all(new_value)
-        all_rank = {"+all": 0, "?all": 1, "~all": 2, "-all": 3}
+        # ~all and -all rank the same: DMARC is the policy layer, so moving
+        # between them is neither a hardening nor a weakening.
+        all_rank = {"+all": 0, "?all": 1, "~all": 2, "-all": 2}
         if old_all != new_all:
             old_rank = all_rank.get(old_all, -1)
             new_rank = all_rank.get(new_all, -1)
@@ -1342,6 +1344,8 @@ def _classify_change(record_type: str, old_value: str, new_value: str) -> Dict:
             elif new_rank < old_rank:
                 change["description"] = f"SPF weakened: {old_all} to {new_all}"
                 change["is_improvement"] = False
+            else:
+                change["description"] = f"SPF all mechanism changed: {old_all} to {new_all}"
 
     return change
 
@@ -4402,8 +4406,8 @@ def _deploy_instructions(domain: str, record: Optional[str]) -> Dict:
 
 def _is_null_spf(record: str) -> bool:
     """Detect a null SPF record: v=spf1 -all with no senders.
-    Only hardfail (-all) is an explicit declaration that the domain does not send email.
-    Softfail (~all) is ambiguous and should not be treated as null SPF."""
+    Only ``v=spf1 -all`` is the conventional declaration that a domain sends no
+    mail, so ``v=spf1 ~all`` is not treated as null SPF."""
     if not record:
         return False
     parts = record.strip().lower().split()
@@ -4529,17 +4533,17 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
 
         if all_mech == "-all":
             explanation = (
-                "SPF record ends with <strong>-all</strong> (hardfail), declaring that servers "
-                "not listed in this record are not authorized to send mail for your domain. "
-                "SPF results feed into DMARC alignment evaluation; enforcement decisions "
-                "are made at the DMARC policy layer, not by SPF alone."
+                "SPF record ends with <strong>-all</strong> (hardfail): servers not listed "
+                "here are not authorized to send mail for this domain. The SPF result feeds "
+                "DMARC, and the DMARC policy decides what happens to mail that fails. "
+                "With DMARC in place, -all and ~all are both sound choices."
             )
         elif all_mech == "~all":
             explanation = (
-                "SPF record ends with <strong>~all</strong> (softfail), indicating that servers "
-                "not listed in this record are not authorized but should not be outright rejected. "
-                "Like -all, the SPF result feeds into DMARC alignment evaluation; "
-                "enforcement decisions are made at the DMARC policy layer."
+                "SPF record ends with <strong>~all</strong> (softfail): servers not listed "
+                "here are not authorized to send mail for this domain. The SPF result feeds "
+                "DMARC, and the DMARC policy decides what happens to mail that fails. "
+                "With DMARC in place, ~all and -all are both sound choices."
             )
         elif all_mech == "?all":
             explanation = (
@@ -4622,9 +4626,9 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
 
         all_mech = raw.get("all_mechanism") or ""
         if all_mech == "-all":
-            details.append({"type": "good", "text": "-all (hardfail): declares no other servers are authorized"})
+            details.append({"type": "good", "text": "-all (hardfail): servers not listed are not authorized"})
         elif all_mech == "~all":
-            details.append({"type": "warning", "text": "~all (softfail): unlisted servers are not authorized, but receivers are asked only to treat their mail with suspicion. -all fails it outright."})
+            details.append({"type": "good", "text": "~all (softfail): servers not listed are not authorized"})
         elif all_mech == "?all":
             details.append({"type": "warning", "text": "Neutral (?all) provides no protection"})
         elif all_mech == "+all":
@@ -4668,11 +4672,9 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             # At least one lookup in the chain never answered, so the lookup
             # count is a floor rather than a total. Do not certify the record.
             status = "warn"
-        elif all_mech == "~all":
-            # Doc 38's warn rule: softfail asks receivers to accept mail from
-            # unlisted servers with suspicion rather than fail it.
-            status = "warn"
-        elif all_mech == "-all" and lookups <= 10 and not has_engine_errors:
+        elif all_mech in ("-all", "~all") and lookups <= 10 and not has_engine_errors:
+            # ~all and -all both pass: DMARC is the policy layer, so the
+            # choice between softfail and hardfail is the operator's.
             # Lenient parser recovered a valid record with a proper all mechanism
             # and within lookup limits.  Syntax warnings (e.g. missing spaces)
             # should not downgrade the card to "warn" -- show "pass" with the
@@ -4702,12 +4704,12 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             lookups = raw.get("lookup_count", 0)
             if all_mech in ("?all", "+all") and lookups and lookups > 10:
                 fix = (
-                    "Change the all mechanism to <strong>-all</strong> (hardfail) or <strong>~all</strong> (softfail). "
+                    "Change the all mechanism to <strong>~all</strong> (softfail) or <strong>-all</strong> (hardfail). "
                     "Also reduce SPF lookups to 10 or fewer by removing includes for services you no longer use "
                     "or consolidating senders."
                 )
             elif all_mech in ("?all", "+all"):
-                fix = "Change the all mechanism to <strong>-all</strong> (hardfail) or <strong>~all</strong> (softfail)."
+                fix = "Change the all mechanism to <strong>~all</strong> (softfail) or <strong>-all</strong> (hardfail)."
             elif lookups and lookups > 10:
                 fix = (
                     "Your SPF record has a PermError and is not functional. Reduce to 10 or fewer "
@@ -4761,12 +4763,6 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             _deliverability = (
                 f"Your SPF record uses {_lookups} of 10 allowed DNS lookups. "
                 f"{'You are at the limit. Adding one more email service will break SPF for all your email.' if _lookups == 10 else 'You are close to the limit. Plan carefully before adding new sending services like Mailchimp, HubSpot, or SendGrid.'}"
-            )
-        elif _all == "~all":
-            _deliverability = (
-                "Softfail (~all) means unauthorized servers are flagged but not blocked. "
-                "This is fine during setup, but for production email, consider -all (hard fail) "
-                "once you have confirmed all legitimate senders are included."
             )
 
     return {
@@ -4822,8 +4818,8 @@ _SPF_PROVIDER_MAP = {
 
 _ALL_EXPLANATIONS = {
     "~all": (
-        "Servers not listed are not authorized, and the receiver decides what that costs "
-        "the message. Under DMARC, the SPF result feeds into alignment evaluation."
+        "Servers not listed are not authorized. Receivers treat a softfail as a signal "
+        "and leave the outcome to DMARC."
     ),
     "-all": (
         "Servers not listed are not authorized. Some receivers reject on SPF fail before "

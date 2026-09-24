@@ -1175,7 +1175,7 @@ function highlightSpf(text) {
         .replace(/\?all\b/g, '<span class="rec-warn">?all</span>')
         // Safe: -all, ~all
         .replace(/-all\b/g, '<span class="rec-safe">-all</span>')
-        .replace(/~all\b/g, '<span class="rec-neutral">~all</span>')
+        .replace(/~all\b/g, '<span class="rec-safe">~all</span>')
         // Mechanisms
         .replace(/\b(include:)([^\s]+)/g, '<span class="rec-keyword">$1</span><span class="rec-value">$2</span>')
         .replace(/\b(redirect=)([^\s]+)/g, '<span class="rec-keyword">$1</span><span class="rec-value">$2</span>')

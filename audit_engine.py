@@ -2745,7 +2745,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             "SPF uses +all (authorizes everyone)",
             "The +all mechanism authorizes the entire internet to send email "
             "as your domain. This completely defeats the purpose of SPF.",
-            "Change +all to -all (hard fail) or ~all (soft fail).",
+            "Change +all to ~all or -all.",
             business_risk_key="SPF_PLUS_ALL",
         )
     elif all_mech == "?all":
@@ -2754,7 +2754,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             "SPF uses ?all (neutral)",
             "The ?all mechanism provides no opinion about unauthorized senders. "
             "It does not protect your domain from spoofing.",
-            "Change ?all to -all or ~all.",
+            "Change ?all to ~all or -all.",
             business_risk_key="SPF_NEUTRAL_ALL",
         )
     elif not all_mech and not has_redirect:
@@ -2764,8 +2764,9 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             "SPF records should end with an 'all' mechanism to define what happens "
             "to mail from servers not listed in the record. Without it, the default "
             "is neutral (?all), which provides no protection.",
-            "Add ~all (softfail) to the end of the SPF record as a safe starting point. "
-            "Once you are confident all legitimate senders are listed, tighten to -all (hardfail).",
+            "Add ~all or -all to the end of the SPF record. Either one tells receivers "
+            "that servers not listed are not authorized, and DMARC decides what happens "
+            "to their mail.",
             business_risk_key="SPF_NO_ALL",
         )
 

@@ -251,9 +251,13 @@ def test_app_js_colour_map_matches_the_one_the_test_uses():
 # Item 7: Doc 38's warn rules
 # ---------------------------------------------------------------
 
-def test_spf_softfail_is_warn(audit):
-    assert _card(_run(audit, f"v=DMARC1; p=reject; {RUA}", spf="v=spf1 mx ~all"),
-                 "SPF")["status"] == "warn"
+def test_spf_softfail_and_hardfail_both_pass(audit):
+    # DMARC is the policy layer, so ~all is not graded below -all.
+    for spf in ("v=spf1 mx ~all", "v=spf1 mx -all"):
+        card = _card(_run(audit, f"v=DMARC1; p=reject; {RUA}", spf=spf), "SPF")
+        assert card["status"] == "pass", (spf, card["status"])
+        assert not [d for d in card["details"] if d["type"] == "warning"], card["details"]
+        assert card["deliverability"] is None, card["deliverability"]
 
 
 def test_sp_weaker_than_p_is_warn(audit):
