@@ -5323,10 +5323,18 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         # this card instead, and the card must say why rather than reading
         # like a considered "nothing here".
         discovery_truncated = bool(raw.get("timed_out"))
+        # The sweep stopped because the domain's nameservers stopped
+        # answering, not because the clock ran out.
+        queries_dropped = raw.get("stopped_reason") == "queries_dropped"
+        _unanswered = raw.get("unanswered_count", 0)
         _unknown_details = [
             {
                 "type": "warning" if discovery_truncated else "info",
                 "text": (
+                    f"Selector discovery did not finish: {_unanswered} lookup"
+                    f"{'' if _unanswered == 1 else 's'} got no answer from the "
+                    f"domain's nameservers, and {_sel_count} did"
+                ) if queries_dropped else (
                     f"Selector discovery did not finish: checked {_sel_count} "
                     "before running out of time"
                 ) if discovery_truncated else (
@@ -5340,13 +5348,20 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         for issue in raw.get("issues", []):
             _unknown_details.append(_issue_to_detail(issue))
         if discovery_truncated:
+            _why_stopped = (
+                "This domain's nameservers stopped answering selector lookups, "
+                "which some servers do when many arrive at once, so the audit "
+                "stopped probing"
+            ) if queries_dropped else (
+                f"This audit's selector probe ran out of time after checking {_sel_count}"
+            )
             explanation = (
                 "DKIM (<a href=\"https://datatracker.ietf.org/doc/html/rfc6376\" "
                 "target=\"_blank\" rel=\"noopener\">RFC 6376</a>) attaches a "
                 "cryptographic signature to each outgoing message, letting receivers "
                 "verify that it was not altered and came from an authorized sender. "
-                f"This audit's selector probe ran out of time after checking {_sel_count}, "
-                "so this is an incomplete search, not a completed one that "
+                + _why_stopped +
+                ", so this is an incomplete search, not a completed one that "
                 "found nothing. A re-run, especially at a quieter time, may reach a "
                 "selector this one did not. Two things settle it directly: re-run the "
                 "audit at dns-audit.com with the selector entered for a direct lookup, "

@@ -5787,9 +5787,10 @@ def _build_resilience_analysis(
     elif dkim_timed_out:
         dkim_status = "inconclusive"
         dkim_note = (
-            "DKIM check timed out before completing. "
-            "DKIM may be configured with custom selectors. Cannot determine status."
-        )
+            "DKIM selector lookups went unanswered by this domain's nameservers. "
+            if raw_dkim.get("stopped_reason") == "queries_dropped"
+            else "DKIM check timed out before completing. "
+        ) + "DKIM may be configured with custom selectors. Cannot determine status."
     elif found_selectors:
         dkim_status = "detected"
         sel_names = [s.get("selector", "") for s in found_selectors if s.get("selector")]
