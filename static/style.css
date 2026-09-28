@@ -4828,21 +4828,8 @@ input[type="search"],
 }
 
 .st-future-item {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
     padding: 0.2rem 0;
     font-size: var(--font-xs);
-}
-
-.st-future-code {
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-    background: rgba(255, 255, 255, 0.06);
-    padding: 0.05rem 0.35rem;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted-raised);
-    flex-shrink: 0;
 }
 
 .st-future-msg {
@@ -4948,19 +4935,7 @@ input[type="search"],
 .sv-warn { color: var(--warn); }
 
 .sv-check-msg {
-    flex: 1;
     color: var(--text-primary);
-}
-
-.sv-check-code {
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-    color: var(--text-muted-raised);
-    background: rgba(255, 255, 255, 0.05);
-    padding: 0.05rem 0.3rem;
-    border-radius: var(--radius-sm);
-    flex-shrink: 0;
-    align-self: center;
 }
 
 .sv-error-banner {
@@ -4977,7 +4952,6 @@ input[type="search"],
 @media (max-width: 640px) {
     .sv-block { padding: 0.75rem 0.85rem; }
     .sv-header { flex-direction: column; align-items: flex-start; }
-    .sv-check-code { display: none; }
 }
 
 /* ── DMARC Record Breakdown ───────────────────────────────── */
