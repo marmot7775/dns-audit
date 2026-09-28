@@ -24,6 +24,22 @@ from dns_tools import get_resolver, get_uncached_resolver
 DKIM_DISCOVERY_TIMEOUT = 15   # seconds for entire discovery
 DKIM_MAX_FOUND = 15           # stop after finding this many selectors
 
+# Some nameservers rate limit NXDOMAIN answers and silently drop the rest.
+# suckless.org, measured from the droplet on 2026-09-28: 60 probes in one
+# burst got 19 answers and 41 timeouts, and the zone kept dropping for a few
+# seconds after, so the full 197 probe sweep stretched every later check in
+# the audit (fingerprinting and subdomain probing) to its own timeout: 28 s
+# with the sweep, 6 s without it. Once a wave shows this many unanswered
+# probes, the generic fallback stops. What it did not reach is reported as
+# not confirmed, never as no DKIM.
+DKIM_DROP_THRESHOLD = 5
+# The generic fallback goes out in chunks this size, so a zone that starts
+# dropping is noticed after one chunk instead of after the whole list.
+DKIM_FALLBACK_CHUNK = 52
+
+# _test_selector's return for a probe that got no answer at all.
+_UNANSWERED = object()
+
 # Map SPF includes to vendors and their DKIM selectors
 SPF_VENDOR_MAP = {
     # Google
@@ -433,11 +449,16 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                 'cname_target': cname_target,
                 'discovery_priority': 'HIGH' if matched_vendor else 'LOW',
             }
+        except dns.exception.Timeout:
+            # No answer at all. Not the same as NXDOMAIN: the name may hold a
+            # key the server never got round to telling us about.
+            return _UNANSWERED
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
             return None
 
     found = []
     timed_out = False
+    unanswered = 0
     tested = 0
     deadline = time.monotonic() + DKIM_DISCOVERY_TIMEOUT
 
@@ -448,7 +469,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     pool = executor or ThreadPoolExecutor(max_workers=15)
 
     def _run_wave(selectors: List[str]) -> None:
-        nonlocal timed_out, tested
+        nonlocal timed_out, tested, unanswered
         if not selectors or timed_out:
             return
         remaining = deadline - time.monotonic()
@@ -462,8 +483,11 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
             # completed, so a slow queue meant the 15s budget was advisory,
             # observed overshooting to 15.2s.
             for future in as_completed(futures, timeout=remaining):
-                tested += 1
                 r = future.result()
+                if r is _UNANSWERED:
+                    unanswered += 1
+                    continue
+                tested += 1
                 if r:
                     found.append(r)
                     if progress_callback:
@@ -482,10 +506,18 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
             for f in futures:
                 f.cancel()
 
+    def _dropping() -> bool:
+        return unanswered >= DKIM_DROP_THRESHOLD
+
     try:
+        # The priority wave always runs in full: these are the selectors the
+        # domain's own SPF or MX points at, and they go out first.
         _run_wave(priority_selectors)
         if not found:
-            _run_wave(fallback_selectors)
+            for i in range(0, len(fallback_selectors), DKIM_FALLBACK_CHUNK):
+                if _dropping():
+                    break
+                _run_wave(fallback_selectors[i:i + DKIM_FALLBACK_CHUNK])
     finally:
         if own_pool:
             pool.shutdown(wait=False, cancel_futures=True)
@@ -501,8 +533,15 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     # got to.
     result['tested_count'] = tested
 
+    result['unanswered_count'] = unanswered
     if timed_out:
         result['timed_out'] = True
         result['timeout_note'] = 'DKIM selector discovery timed out, results may be incomplete.'
+    elif _dropping() and not found:
+        # The zone stopped answering, so "checked N, no key" would overstate
+        # what the sweep learned. Same not confirmed card as a sweep that ran
+        # out of time, with the reason it stopped.
+        result['timed_out'] = True
+        result['stopped_reason'] = 'queries_dropped'
 
     return result

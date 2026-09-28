@@ -52,3 +52,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 69](doc-69.md): The PDF endpoint reports on domains that do not exist
 - [Doc 70](doc-70.md): The DMARC output overstates the RFC 9989 change
 - [Doc 71](doc-71.md): SPF lookup count, one rule everywhere
+- [Doc 72](doc-72.md): Audit speed, measure then fix the dominant cost
