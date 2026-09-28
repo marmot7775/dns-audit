@@ -1053,6 +1053,18 @@ function shareTweetText(d) {
         `${counts.warn} warning${counts.warn !== 1 ? 's' : ''}`;
 }
 
+// The one place a result card opens or closes. A closed card hides its body
+// with a zero-height grid row, which hides nothing from the keyboard or a
+// screen reader, so the body is also inert while the card is closed. inert
+// does not touch layout, so the open and close transition is unchanged.
+function setCardExpanded(card, open) {
+    card.classList.toggle('expanded', open);
+    const header = card.querySelector('.result-header');
+    if (header) header.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const body = card.querySelector('.result-body');
+    if (body) body.inert = !open;
+}
+
 function createResultCard(check, index) {
     const card = document.createElement('div');
     // Every card starts collapsed. The header carries the status pill and the
@@ -1086,24 +1098,19 @@ function createResultCard(check, index) {
         </div>
     `;
 
-    card.querySelector('.result-header').addEventListener('click', () => {
-        card.classList.toggle('expanded');
-        card.querySelector('.result-header').setAttribute('aria-expanded',
-            card.classList.contains('expanded') ? 'true' : 'false');
-    });
-
     // Keyboard accessibility
     const header = card.querySelector('.result-header');
     header.setAttribute('tabindex', '0');
     header.setAttribute('role', 'button');
-    header.setAttribute('aria-expanded', 'false');
     header.setAttribute('aria-controls', bodyId);
+    setCardExpanded(card, false);
+    header.addEventListener('click', () => {
+        setCardExpanded(card, !card.classList.contains('expanded'));
+    });
     header.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            card.classList.toggle('expanded');
-            header.setAttribute('aria-expanded',
-                card.classList.contains('expanded') ? 'true' : 'false');
+            setCardExpanded(card, !card.classList.contains('expanded'));
         }
     });
 
@@ -3579,11 +3586,7 @@ document.getElementById('pdf-btn').addEventListener('click', () => {
     toggleBtn.addEventListener('click', () => {
         const cards = document.querySelectorAll('.result-card');
         const expand = !majorityExpanded();
-        cards.forEach(card => {
-            card.classList.toggle('expanded', expand);
-            const header = card.querySelector('.result-header');
-            if (header) header.setAttribute('aria-expanded', expand ? 'true' : 'false');
-        });
+        cards.forEach(card => setCardExpanded(card, expand));
         syncToggleAllLabel();
     });
 })();
@@ -3596,9 +3599,7 @@ function openCard(id) {
     if (!target) return;
     const card = target.closest('.result-card');
     if (card) {
-        card.classList.add('expanded');
-        const header = card.querySelector('.result-header');
-        if (header) header.setAttribute('aria-expanded', 'true');
+        setCardExpanded(card, true);
         // A panel inside Details is behind one or two collapsed sections,
         // and behind the spec toggle if it is RFC 9989-only content.
         if (target.closest('.spec-dmarcbis.is-hidden')) {
