@@ -1864,7 +1864,6 @@ function renderSpecToggle(comparison) {
     if (comparison.legacy_only_pass && comparison.dmarcbis_only_items.length > 0) {
         let itemsHtml = comparison.dmarcbis_only_items.map(item =>
             `<div class="st-future-item">
-                <span class="st-future-code">${escapeHtml(item.code)}</span>
                 <span class="st-future-msg">${escapeHtml(item.message)}</span>
             </div>`
         ).join('');
@@ -2098,7 +2097,6 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
                 <div class="sv-check sv-check-${c.status}">
                     ${icon}
                     <span class="sv-check-msg">${escapeHtml(c.message)}</span>
-                    <code class="sv-check-code">${escapeHtml(c.code)}</code>
                 </div>`;
         });
 
