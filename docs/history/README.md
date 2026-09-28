@@ -53,3 +53,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 70](doc-70.md): The DMARC output overstates the RFC 9989 change
 - [Doc 71](doc-71.md): SPF lookup count, one rule everywhere
 - [Doc 72](doc-72.md): Audit speed, measure then fix the dominant cost
+- [Doc 73](doc-73.md): Collapsed cards take their content out of reach
