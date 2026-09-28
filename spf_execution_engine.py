@@ -10,7 +10,7 @@ Zero extra DNS queries. Transforms data already computed by the audit.
 
 from typing import Dict, List, Optional
 from spf_intelligence import SPF_VENDOR_MAP
-from spf_recursive import mechanism_is_all, mechanism_recurses, record_has_all
+from spf_recursive import mechanism_is_all, mechanism_recurses, record_has_all, spf_lookup_band
 
 
 # ============================================================
@@ -483,6 +483,7 @@ def build_spf_tree_viz(spf_recursive_result: Dict) -> Optional[Dict]:
         "total_lookups": total_lookups,
         "limit": limit,
         "over_limit": total_lookups > limit,
+        "band": spf_recursive_result.get("band") or spf_lookup_band(total_lookups),
         "root": root,
     }
 

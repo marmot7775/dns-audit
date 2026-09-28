@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from html import escape as _e
 
 from dkim_formatter import analyze_dkim_key_strength
+from spf_recursive import spf_lookup_band
 
 
 # ============================================================
@@ -641,12 +642,15 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     if spf_status == "fail" and spf_check.get("pill_label") == "Missing":
         deliverability_issues.append("no SPF record")
 
-    spf_lookups = None
-    for d in spf_check.get("details", []):
-        text = d.get("text", "")
-        if "DNS lookups" in text and ("near" in text or "at" in text or "invalid" in text.lower()):
-            deliverability_issues.append("SPF lookup count is at or near the limit")
-            break
+    # Read the band, not the detail prose. This used to match the substrings
+    # "near" or "at" in the card text, which any sentence can contain.
+    # "at" matched "satisfy" in the over-limit text, which is the only reason a
+    # PermError record ever reached a sentence here, and it was the near one.
+    _spf_band = _spf_card_band(spf_check)
+    if _spf_band == "over":
+        deliverability_issues.append("SPF lookup count is over the limit")
+    elif _spf_band == "near":
+        deliverability_issues.append("SPF lookup count is at or near the limit")
 
     # DKIM that could not be confirmed by probing is not an issue to list: the
     # domain may well sign under a selector this audit never guessed. It is
@@ -676,6 +680,11 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             deliverability_summary = "Your DMARC policy is monitoring only (p=none). It provides visibility, not protection, until you move to p=quarantine or p=reject."
         elif "no SPF" in top_issue:
             deliverability_summary = "Without SPF, receivers cannot verify your sending servers. This is a common cause of emails going to spam."
+        elif "over the limit" in top_issue:
+            deliverability_summary = (
+                "Your SPF record needs more than 10 DNS lookups, so receivers return PermError. "
+                "None of your mail passes SPF, and DMARC relies on DKIM alone."
+            )
         elif "SPF lookup" in top_issue:
             deliverability_summary = "Your SPF record is near the 10-lookup limit. Adding one more email service could break SPF for all your email."
         else:
@@ -770,6 +779,17 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
 # ============================================================
 # Email Security Roadmap (Prompt 11)
 # ============================================================
+
+def _spf_card_band(card: Dict) -> Optional[str]:
+    """The SPF card's lookup band, from spf_deep. A payload built before the
+    band existed carries only the count, so derive it from that."""
+    deep = card.get("spf_deep") or {}
+    if deep.get("lookup_band"):
+        return deep["lookup_band"]
+    if "lookup_count" in deep:
+        return spf_lookup_band(deep["lookup_count"])
+    return None
+
 
 def _roadmap_fix_text(card: Dict) -> str:
     """A card's fix as plain text for a Priorities row. Some fixes carry
@@ -923,12 +943,21 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                  if _weak_n == 1 else
                                  "These keys are below current recommendations and should be rotated.")})
 
-    # SPF near limit
-    spf_deep = spf.get("spf_deep", {})
-    if spf_deep and spf_deep.get("lookup_count", 0) >= 8:
+    # SPF lookup count. The band is the same one the card, the deliverability
+    # summary and the optimization list read, so this row cannot call a count
+    # high priority that the card calls well within the limit.
+    spf_deep = spf.get("spf_deep") or {}
+    _spf_band = _spf_card_band(spf)
+    if _spf_band == "over":
         items.append({"priority": "high", "protocol": "SPF",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
                       "impact": "Past 10 lookups, receivers return PermError. None of the mail passes SPF, and DMARC relies on DKIM alone."})
+    elif _spf_band == "near":
+        items.append({"priority": "medium", "protocol": "SPF",
+                      "action": f"Free up SPF lookups ({spf_deep['lookup_count']}/10)",
+                      "impact": "One more include, a, or mx mechanism would take this past 10. "
+                                "Past 10, receivers return PermError, none of the mail passes SPF, "
+                                "and DMARC relies on DKIM alone."})
 
     # Nameservers. A red or amber card here had no row and no remediation
     # anywhere on the page. The action is the card's own fix text.
@@ -4589,7 +4618,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
                 f"satisfy DMARC alignment for any message from this domain. Audit your "
                 f"includes and remove services you no longer use."
             )
-        elif lookups and lookups > 8:
+        elif spf_lookup_band(lookups) == "near":
             explanation += (
                 f" <strong>Note:</strong> SPF uses {lookups} of the allowed 10 DNS lookups "
                 f"(<a href=\"https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4\" target=\"_blank\" rel=\"noopener\">RFC 7208 section 4.6.4</a>). "
@@ -4622,13 +4651,19 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             i.get("kind") == "lookup_limit"
             for i in (raw.get("spf_recursive") or {}).get("issues", [])
         )
+        _band = spf_lookup_band(lookups, raw.get("spf_indeterminate"))
         if _limit_reported:
             pass
-        elif lookups <= 8:
+        elif _band == "unknown":
+            # The count is a floor, so it is not reported as within the limit.
+            details.append({"type": "info",
+                            "text": (f"At least {lookups} DNS lookup{'s' if lookups != 1 else ''}. "
+                                     "A lookup in the chain did not complete, so the total is not known")})
+        elif _band == "ok":
             details.append({"type": "good",
                             "text": (f"{lookups} DNS lookup{'s' if lookups != 1 else ''} "
                                      "(well within the 10-lookup limit)")})
-        elif lookups <= 10:
+        elif _band == "near":
             details.append({"type": "warning", "text": f"{lookups} DNS lookups ({'at' if lookups == 10 else 'near'} the 10-lookup limit)"})
         else:
             details.append({"type": "error", "text": f"{lookups} DNS lookups. Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."})
@@ -4768,7 +4803,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
                 f"HubSpot, SendGrid) consumes lookups. Audit your includes: remove "
                 f"services you no longer use and consolidate senders where possible."
             )
-        elif _lookups and _lookups > 8:
+        elif spf_lookup_band(_lookups) == "near":
             _deliverability = (
                 f"Your SPF record uses {_lookups} of 10 allowed DNS lookups. "
                 f"{'You are at the limit. Adding one more email service will break SPF for all your email.' if _lookups == 10 else 'You are close to the limit. Plan carefully before adding new sending services like Mailchimp, HubSpot, or SendGrid.'}"
@@ -4992,7 +5027,8 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
 
     # Optimization suggestions
     optimizations = []
-    if lookups >= 8:
+    lookup_band = spf_lookup_band(lookups, raw.get("spf_indeterminate"))
+    if lookup_band in ("near", "over"):
         optimizations.append(
             f"Your SPF record uses {lookups} of 10 allowed lookups. Audit your includes: "
             f"remove services you no longer use and consolidate senders where possible."
@@ -5004,6 +5040,7 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
         "all_explanation": all_explanation,
         "all_severity": all_severity,
         "lookup_count": lookups,
+        "lookup_band": lookup_band,
         "misconfigs": misconfigs,
         "optimizations": optimizations,
         "dmarcbis_note": (
