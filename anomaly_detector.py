@@ -89,28 +89,8 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
     if dmarc_present and dmarc_enforced and has_mx:
         pass  # DKIM absence is not an anomaly: selectors are not publicly enumerable
 
-    # 3. SPF near lookup limit (9/10 -- not already over)
-    if spf:
-        lookup_count = spf.get("lookup_count")
-        if lookup_count is not None:
-            try:
-                lookup_count = int(lookup_count)
-            except (TypeError, ValueError):
-                lookup_count = None
-        if lookup_count is not None and lookup_count == 9:
-            anomalies.append({
-                "title": "SPF near lookup limit",
-                "description": (
-                    "SPF is using 9 of the allowed 10 DNS lookups. "
-                    "Adding one more include, a, or mx mechanism will push it "
-                    "over the limit. Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."
-                ),
-                "severity": "medium",
-                "recommendation": (
-                    "Remove includes for services you no longer use, or consolidate senders "
-                    "to stay under the 10-lookup limit."
-                ),
-            })
+    # 3. (removed) SPF near the lookup limit. The plan row covers it, and a
+    # count near the limit is not unusual, so it is not an anomaly.
 
     # 4. MTA-STS without TLS-RPT
     if mta_sts:

@@ -86,6 +86,36 @@ SPF_NXDOMAIN = "nxdomain"
 # SERVFAIL, timeout, no reachable nameserver. We do not know what is
 # published, so we must neither advise on it nor call the record clean.
 SPF_INDETERMINATE = "indeterminate"
+
+
+# RFC 7208 section 4.6.4 caps the terms that cause a DNS query at 10.
+SPF_LOOKUP_LIMIT = 10
+
+
+def spf_lookup_band(lookups, indeterminate: bool = False) -> str:
+    """The one rule for judging an SPF lookup count. Every surface that
+    speaks about the count (card, plan, deliverability summary, optimization
+    list, PDF, lookup budget bar) reads this band rather than its own number,
+    so the page cannot say "well within" and "high priority" about one record.
+
+    "ok"      0 to 8: headroom left, nothing to report.
+    "near"    9 or 10: still passes, but one more include, a, or mx
+              mechanism takes it past the limit.
+    "over"    above 10: receivers return PermError.
+    "unknown" a lookup in the chain never answered and the count seen is 8
+              or fewer. The count is only a floor, so it is not banded ok.
+    """
+    try:
+        n = int(lookups or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n > SPF_LOOKUP_LIMIT:
+        return "over"
+    if n >= SPF_LOOKUP_LIMIT - 1:
+        return "near"
+    if indeterminate:
+        return "unknown"
+    return "ok"
 # More than one v=spf1 record is published at the name. RFC 7208 section 4.5
 # makes that a PermError for the whole evaluation, not just for that name.
 SPF_MULTIPLE = "multiple"
@@ -499,6 +529,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         "void_lookups": void_lookups,
         "indeterminate": bool(indeterminate_domains),
         "indeterminate_domains": indeterminate_domains,
+        "band": spf_lookup_band(total, bool(indeterminate_domains)),
         "permerror_domains": permerror_domains,
         "multiple_spf_domains": multiple_spf_domains,
         "macro_terms": [{"domain": d, "term": t} for d, t in macro_terms],
@@ -542,7 +573,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             "impact": "No room for new services. Any addition will break SPF.",
             "fix": "Audit your includes and remove any services you no longer use to free up lookup slots.",
         })
-    elif total >= 8:
+    elif spf_lookup_band(total) == "near":
         result["status"] = "warn"
         result["summary"] = (
             f"{total} DNS lookups (approaching the 10-lookup limit)."
