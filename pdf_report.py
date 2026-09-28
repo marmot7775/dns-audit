@@ -25,6 +25,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from audit_engine import SCOPE_CHECKS, SCOPE_LABELS, ALL_SCOPE_CHECK_KEYS
+from spf_recursive import spf_lookup_band
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -1456,7 +1457,8 @@ def _spf_deep_section(spf_deep, S):
     # Lookup count
     lookup_count = spf_deep.get("lookup_count", 0)
     if lookup_count > 0:
-        lc_clr = PASS_CLR if lookup_count <= 7 else (WARN_CLR if lookup_count <= 9 else FAIL_CLR)
+        lc_clr = {"ok": PASS_CLR, "over": FAIL_CLR}.get(
+            spf_deep.get("lookup_band") or spf_lookup_band(lookup_count), WARN_CLR)
         els.append(Paragraph(
             f'DNS lookups: <font color="{lc_clr.hexval()}"><b>{lookup_count}/10</b></font>',
             S["body"]

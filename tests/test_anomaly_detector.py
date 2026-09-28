@@ -133,36 +133,14 @@ class TestDmarcWithoutDkim:
 
 
 # ---------------------------------------------------------------------------
-# Rule 3 -- SPF near lookup limit
+# Rule 3 (removed): SPF near the lookup limit is a plan row, not an anomaly
 # ---------------------------------------------------------------------------
 
-class TestSpfNearLimit:
-    def _base(self, lookup_count):
-        raw = {"spf": {"record": "v=spf1 include:x -all", "lookup_count": lookup_count}}
-        return detect_anomalies(raw, has_mx=False)
-
-    def test_exactly_9_fires(self):
-        result = self._base(9)
-        a = find(result, "lookup limit")
-        assert a is not None
-        assert a["severity"] == "medium"
-
-    def test_8_does_not_fire(self):
-        assert find(self._base(8), "lookup limit") is None
-
-    def test_10_does_not_fire(self):
-        # 10 is already flagged by the SPF check itself
-        assert find(self._base(10), "lookup limit") is None
-
-    def test_none_lookup_count_no_fire(self):
-        assert find(self._base(None), "lookup limit") is None
-
-    def test_string_9_fires(self):
-        # lookup_count stored as string
-        assert find(self._base("9"), "lookup limit") is not None
-
-    def test_invalid_string_no_fire(self):
-        assert find(self._base("many"), "lookup limit") is None
+class TestSpfLookupCountIsNotAnAnomaly:
+    def test_no_count_fires(self):
+        for n in (8, 9, 10, 11, "9", None, "many"):
+            raw = {"spf": {"record": "v=spf1 include:x -all", "lookup_count": n}}
+            assert find(detect_anomalies(raw, has_mx=False), "lookup limit") is None, n
 
 
 # ---------------------------------------------------------------------------
@@ -497,8 +475,9 @@ class TestSeverityOrdering:
             "dnssec": {"has_dnssec": True, "chain_valid": False},
             # high: single nameserver
             "nameservers": {"nameservers": [{"hostname": "ns1.example.com"}], "ns_count": 1},
-            # medium: SPF near limit
-            "spf": {"record": "v=spf1 -all", "lookup_count": 9},
+            # medium: MTA-STS without TLS-RPT
+            "mta_sts": {"txt_record": "v=STSv1; id=1"},
+            "tls_rpt": {"record": None},
         }
         result = detect_anomalies(raw, has_mx=False)
         assert len(result) >= 3

@@ -3437,8 +3437,11 @@ function renderSpfTree(tree) {
     const used = tree.total_lookups;
     const limit = tree.limit || 10;
     const pct = Math.min((used / limit) * 100, 100);
-    const barClass = used > limit ? 'st-bar-over' : used >= 8 ? 'st-bar-warn' : 'st-bar-ok';
-    const statusLabel = used > limit ? 'Over limit' : used >= 8 ? 'Near limit' : '';
+    // The band comes from spf_recursive.spf_lookup_band, the same rule the
+    // card and the plan read. The fallback mirrors it for an older payload.
+    const band = tree.band || (used > limit ? 'over' : used >= limit - 1 ? 'near' : 'ok');
+    const barClass = band === 'over' ? 'st-bar-over' : band === 'ok' ? 'st-bar-ok' : 'st-bar-warn';
+    const statusLabel = band === 'over' ? 'Over limit' : band === 'near' ? 'Near limit' : '';
 
     let html = `
         <div class="spf-tree st-animated">

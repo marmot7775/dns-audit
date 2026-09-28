@@ -399,7 +399,7 @@ GOLDEN_DEEP_PANELS = {
     ("DKIM", "dkim_deep"): {"has_invalid", "has_weak", "keys", "rotation_guidance"},
     ("SPF", "spf_deep"): {
         "all_explanation", "all_mechanism", "all_severity", "dmarcbis_note",
-        "lookup_count", "mechanisms",
+        "lookup_band", "lookup_count", "mechanisms",
     },
 }
 
