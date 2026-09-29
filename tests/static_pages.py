@@ -1,7 +1,7 @@
 """The static pages the header and footer tests hold identical (Doc 51).
 
 Doc 36 and Doc 39 each built this list and each asserted it covered the
-same eight pages (nine since Doc 80). One copy now, so a new page shows up in both at once.
+same eight pages (nine since Doc 80, ten since Doc 81). One copy now, so a new page shows up in both at once.
 """
 import glob
 import os
@@ -24,4 +24,5 @@ EXPECTED_PAGES = {
     "articles/dnssec.html",
     "articles/index.html",
     "articles/spf-lookups.html",
+    "articles/p-reject.html",
 }

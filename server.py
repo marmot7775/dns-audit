@@ -1393,6 +1393,10 @@ if STATIC_DIR.exists():
     async def articles_spf_lookups():
         return FileResponse(str(STATIC_DIR / "articles" / "spf-lookups.html"))
 
+    @app.get("/articles/p-reject", tags=["Pages"])
+    async def articles_p_reject():
+        return FileResponse(str(STATIC_DIR / "articles" / "p-reject.html"))
+
     @app.get("/dmarcbis", tags=["Pages"])
     async def dmarcbis_redirect():
         return RedirectResponse(url="/articles/dmarcbis", status_code=301)
@@ -1458,6 +1462,7 @@ async def sitemap():
         {"loc": "/articles/dnssec", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/articles/dane", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/articles/spf-lookups", "changefreq": "monthly", "priority": "0.8"},
+        {"loc": "/articles/p-reject", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/about", "changefreq": "monthly", "priority": "0.5"},
         {"loc": "/privacy", "changefreq": "yearly", "priority": "0.3"},
     ]

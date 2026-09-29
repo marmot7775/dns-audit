@@ -30,7 +30,7 @@ ADDRESS_RE = re.compile(
 # runtime so no literal address lives in this file.
 _FIXTURE = "user" + "@" + "gmail" + ".com"
 
-# Doc 41: the public contact alias, allowed only in the nine page footers,
+# Doc 41: the public contact alias, allowed only in the ten page footers,
 # the results note in app.js, and the doc that asked for it. Doc 51 added
 # SECURITY.md as a private reporting channel, and its own doc names it.
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
@@ -43,6 +43,7 @@ ALIAS_FILES = (
     "static/articles/dmarcbis.html",
     "static/articles/dnssec.html",
     "static/articles/spf-lookups.html",
+    "static/articles/p-reject.html",
     "static/articles/index.html",
     "static/app.js",
     "docs/history/doc-41.md",
