@@ -155,6 +155,7 @@ from dns_tools import (
 )
 
 from result_transformer import (
+    attach_reject_dkim_note,
     attach_what_this_is,
     transform_dmarc,
     transform_spf,
@@ -5606,6 +5607,11 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # wrong with it. Stamped here, on the finished list, so the stub cards a
     # deadline produced above get the line too.
     attach_what_this_is(checks)
+    attach_reject_dkim_note(
+        checks, raw_results.get("dkim"),
+        non_mail=is_defensive or _positive_non_mail_signal(raw_results.get("mx"),
+                                                           raw_results.get("spf")),
+    )
 
     # --- Assemble final response ---
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
