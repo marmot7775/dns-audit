@@ -138,6 +138,13 @@ def test_p_reject_article_links_only_the_provider_requirement_pages():
     with open(os.path.join(ARTICLES_DIR, "p-reject.html"), encoding="utf-8") as f:
         content = f.read()
     article = content[content.index("<article"):content.index("</article>")]
-    assert _anchors(article) == _P_REJECT_LINKS
+    anchors = _anchors(article)
+    assert [a for a in anchors if not a[0].startswith("/")] == _P_REJECT_LINKS
+    # Doc 84: the two links to the other articles, on the words given.
+    assert [a for a in anchors if a[0].startswith("/")] == [
+        ("/articles/dmarcbis", "RFC 9989"),
+        ("/articles/spf-lookups",
+         "a platform that was added to the SPF record when it was set up"),
+    ]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989", "7960", "7505",
                                                          "8617", "7489"}
