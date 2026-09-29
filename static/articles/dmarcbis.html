@@ -22,8 +22,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=a528021">
-    <script src="/static/theme.js?v=a528021"></script>
+    <link rel="stylesheet" href="/static/style.css?v=547f2a5">
+    <script src="/static/theme.js?v=547f2a5"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -229,7 +229,7 @@
                 <h2>What to change in your record</h2>
                 <p>The heavy lifting is on the receiver side. On yours, it is five edits you can make in one sitting.</p>
                 <ol class="dbis-steps">
-                    <li><div><strong>Remove the retired tags.</strong> RFC 9989 removes <code>pct</code>, <code>rf</code>, and <code>ri</code>. Receivers on the new spec ignore them, and they clutter the record. If you were using <code>pct</code> to ramp enforcement in stages, there is no replacement: the new <code>t</code> tag is on or off, <code>t=y</code> for testing and <code>t=n</code> for enforcement. That is less of a loss than it sounds. Receivers applied percentage sampling inconsistently, so <code>pct</code> never gave the control it promised. Stay at <code>p=none</code> until your aggregate reports show every legitimate sender aligning, and use <code>sp</code> to enforce on subdomains ahead of the organizational domain if you want a staged path.</div></li>
+                    <li><div><strong>Remove the retired tags.</strong> RFC 9989 removes <code>pct</code>, <code>rf</code>, and <code>ri</code>. Receivers on the new spec ignore them, and they clutter the record. If you were using <code>pct</code> to ramp enforcement in stages, there is no replacement: the new <code>t</code> tag is on or off, <code>t=y</code> for testing and <code>t=n</code> for enforcement. That is less of a loss than it sounds. Receivers applied percentage sampling inconsistently, so <code>pct</code> never gave the control it promised. <a href="/articles/p-reject">Stay at <code>p=none</code> until your aggregate reports show every legitimate sender aligning</a>, and use <code>sp</code> to enforce on subdomains ahead of the organizational domain if you want a staged path.</div></li>
                     <li><div><strong>Drop the report size suffix.</strong> If a <code>rua</code> or <code>ruf</code> address carries a size limit such as <code>mailto:dmarc@example.com!10m</code>, remove the <code>!10m</code>. RFC 9989 Appendix C.4 removes that syntax, and receivers on the new spec ignore it. The address itself is unchanged.</div></li>
                     <li><div><strong>Leave <code>psd</code> alone unless you run a public suffix.</strong> The tag has three values: <code>y</code> for a public suffix domain, <code>n</code> for an organizational domain, and <code>u</code> for unknown, which is also the default when the tag is absent and lets the tree walk decide. Registries and public suffix operators declare <code>psd=y</code>. Everyone else can omit it.</div></li>
                     <li><div><strong>Consider <code>np=reject</code> while you are still below full enforcement.</strong> Under RFC 9989 a subdomain that does not exist inherits <code>sp</code> if you publish it, otherwise <code>p</code>, so a domain at <code>p=reject</code> already covers them. If you are still working through your senders at <code>p=none</code> or <code>p=quarantine</code>, <code>np=reject</code> tells receivers that support it to reject mail from subdomains that are not in DNS, at no risk to real mail, because no real mail comes from a subdomain that does not exist.</div></li>

@@ -22,8 +22,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=a528021">
-    <script src="/static/theme.js?v=a528021"></script>
+    <link rel="stylesheet" href="/static/style.css?v=547f2a5">
+    <script src="/static/theme.js?v=547f2a5"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -60,7 +60,7 @@
             <h1 class="dbis-article-title">What to check before you publish p=reject</h1>
             <p class="dbis-article-sub">You have been at p=none for months and the reports look clean. The DMARC standard adds one requirement before the last step, and it is the one small setups miss.</p>
             <p class="article-card-meta">Updated <time datetime="2026-09">September 2026</time></p>
-            <p class="dbis-lede">Most DMARC deployments follow the same path. Publish <code>p=none</code>, watch the aggregate reports, fix every legitimate sender that fails, then publish <code>p=reject</code>. Most domains skip quarantine entirely and go from remediation straight to reject, and that works. What the vendor guides leave out is that the DMARC standard published in May 2026, RFC 9989, puts a condition on that last step. A domain at reject has to sign all of its mail with DKIM. Not most of it. All of it. This article explains why the standard says so, what it costs you if you ignore it, and how to tell when a domain is ready.</p>
+            <p class="dbis-lede">Most DMARC deployments follow the same path. Publish <code>p=none</code>, watch the aggregate reports, fix every legitimate sender that fails, then publish <code>p=reject</code>. Most domains skip quarantine entirely and go from remediation straight to reject, and that works. What the vendor guides leave out is that the DMARC standard published in May 2026, <a href="/articles/dmarcbis">RFC 9989</a>, puts a condition on that last step. A domain at reject has to sign all of its mail with DKIM. Not most of it. All of it. This article explains why the standard says so, what it costs you if you ignore it, and how to tell when a domain is ready.</p>
             <section class="dbis-section">
                 <p>One word to settle first. A stream is any system that sends mail using your domain: your mail server, your marketing platform, your help desk, your invoicing tool. A company with four of those has four streams, and each one either signs or it does not.</p>
             </section>
@@ -75,7 +75,7 @@
             <section class="dbis-section">
                 <h2>The requirement</h2>
                 <p>So RFC 9989 makes it a rule. A domain that publishes <code>p=reject</code> must not rely on SPF alone for its DMARC pass and must sign its mail with DKIM. In RFC language that is a MUST, the strongest word the standard has, and it appears twice: in the section on interoperability and again in the list of requirements for full participation. The same standard recommends both SPF and DKIM for every domain at any policy; at reject the recommendation becomes a requirement.</p>
-                <p>In a small company the stream that fails this test is usually a platform that was added to the SPF record when it was set up and never configured to sign with the company's domain. It signs with its own domain instead, or not at all. In the aggregate reports it shows up as a source that passes SPF and has no aligned DKIM, where aligned means the domain in the signature matches the domain in the From address. Every message that platform sends is one forward away from a bounce. That stream is not ready for reject, and until it signs, neither is the domain.</p>
+                <p>In a small company the stream that fails this test is usually <a href="/articles/spf-lookups">a platform that was added to the SPF record when it was set up</a> and never configured to sign with the company's domain. It signs with its own domain instead, or not at all. In the aggregate reports it shows up as a source that passes SPF and has no aligned DKIM, where aligned means the domain in the signature matches the domain in the From address. Every message that platform sends is one forward away from a bounce. That stream is not ready for reject, and until it signs, neither is the domain.</p>
             </section>
             <section class="dbis-section">
                 <h2>The mailing list warning</h2>
