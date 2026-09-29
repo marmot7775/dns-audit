@@ -2478,16 +2478,28 @@ function renderRecordBuilder(rb) {
 
     // ── Deploy instructions ──
     let deployHtml = '';
-    if (rb.deploy) {
+    if (rb.deploy && rb.deploy.inherited_from && rb.deploy.inherited_policy === 'reject') {
+        // Already reject by inheritance: nothing published at this name
+        // protects it further, and the records above are the parent's.
+        deployHtml = `
+            <div class="rcb-deploy">
+                <div class="rcb-deploy-label">Deployment</div>
+                <div class="rcb-deploy-item">The policy is inherited from ${escapeHtml(rb.deploy.inherited_from)}, and changes are made there.</div>
+            </div>`;
+    } else if (rb.deploy) {
         const d = rb.deploy;
         const replaceNote = d.replace_existing
             ? 'Replace your existing DMARC record. Do not add a second one.'
             : 'Add this as a new TXT record.';
+        const inheritedNote = d.inherited_from
+            ? `<div class="rcb-deploy-item">This record is at ${escapeHtml(d.inherited_from)}, the organizational domain. This name has no record of its own and inherits its policy from there, so changes are made at ${escapeHtml(d.inherited_from)}.</div>`
+            : '';
         deployHtml = `
             <div class="rcb-deploy">
                 <div class="rcb-deploy-label">Deployment</div>
                 <div class="rcb-deploy-item"><strong>Host:</strong> <code>${escapeHtml(d.host)}</code></div>
                 <div class="rcb-deploy-item"><strong>Type:</strong> TXT</div>
+                ${inheritedNote}
                 <div class="rcb-deploy-item">${escapeHtml(replaceNote)}</div>
                 <div class="rcb-deploy-item">${escapeHtml(d.note_ttl)}</div>
                 <div class="rcb-deploy-item">After publishing, re-run this audit to verify.</div>
@@ -3026,6 +3038,9 @@ function _planWhy(item, card, resilience) {
 }
 
 function _dmarcPolicy(card) {
+    // The policy this name gets. An inherited subdomain's card shows the
+    // parent's record, whose p= is not necessarily the one that applies.
+    if (card && card.effective_policy) return card.effective_policy;
     const m = /(^|;)\s*p\s*=\s*([a-z]+)/i.exec((card && card.record) || '');
     return m ? m[2].toLowerCase() : '';
 }
@@ -3056,9 +3071,13 @@ function _planWhat(item, card, anchor) {
     // A DMARC row carries its own record, the one that does what the row
     // says. The readiness panel's suggested record went on every DMARC row,
     // so a row about sp offered a record that kept sp=none.
+    // An inherited subdomain's row carries the organizational domain's host:
+    // the parent's record published at the subdomain would replace the
+    // policy the subdomain inherits.
     if (item.protocol === 'DMARC' && item.record) {
-        const host = `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
+        const host = item.host || `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
         let html = _planRecordBlock(host, 'TXT', item.record);
+        if (item.host_note) html += `<div class="plan-record-note">${escapeHtml(item.host_note)}</div>`;
         html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
         if (card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
         return { html, hasPropagation: !!card.ttl_info };

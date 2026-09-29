@@ -727,9 +727,14 @@ def _plan_what_to_change(data, item, card, S):
     # The row's own record, as on the web: the readiness panel's one
     # suggested record used to go on every DMARC row.
     if protocol == "DMARC" and item.get("record"):
-        host = f"_dmarc.{_strip_html(data.get('domain', ''))}"
+        # An inherited subdomain's row names the organizational domain's host:
+        # publishing the parent's record at the subdomain would replace the
+        # policy the subdomain inherits.
+        host = item.get("host") or f"_dmarc.{_strip_html(data.get('domain', ''))}"
         els = [Paragraph(f"TXT record at <b>{_safe(host)}</b>", S["body_small"])]
         els.extend(_record_block(item["record"], S, small=True))
+        if item.get("host_note"):
+            els.append(Paragraph(_safe(item["host_note"]), S["body_small"]))
         # No appendix letter: the migration path's letter depends on which
         # sections rendered, and a fixed "Appendix A" pointed at the wrong one.
         els.append(Paragraph(
@@ -1024,6 +1029,8 @@ def _dmarc_deep_dive(data, S, number=3):
     if rb and rb.get("mode") != "ready":
         els.append(Spacer(1, SP_MD))
         els.append(Paragraph("Record Builder", S["heading2"]))
+        if dmarc.get("inherited_from"):
+            els.append(Paragraph(_safe(_inherited_record_note(dmarc)), S["body_small"]))
 
         current = rb.get("current_record")
         recommended = rb.get("recommended_record")
@@ -1677,6 +1684,16 @@ def _appendix_divider(S, titles=()):
     return els
 
 
+def _inherited_record_note(dmarc):
+    """Where an inherited subdomain's records live. The records in these
+    sections are the organizational domain's, and published at the
+    subdomain's own name they would replace the policy it inherits."""
+    org = dmarc.get("inherited_from", "")
+    return (f"These records are at _dmarc.{org}, the organizational domain. This name "
+            f"has no record of its own and inherits its policy from there, so changes "
+            f"are made at {org}.")
+
+
 def _migration_page(data, S, number=6):
     """Build the migration path section."""
     dmarc = _get_check(data, "DMARC")
@@ -1687,6 +1704,8 @@ def _migration_page(data, S, number=6):
 
     els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
     els.extend(_section_header(str(number), "Migration path to RFC 9989", S))
+    if dmarc.get("inherited_from"):
+        els.append(Paragraph(_safe(_inherited_record_note(dmarc)), S["body_small"]))
 
     status = migration.get("status", "")
     if status == "ready":
