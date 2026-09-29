@@ -56,4 +56,5 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 73](doc-73.md): Collapsed cards take their content out of reach
 - [Doc 74](doc-74.md): Internal validation codes stay out of the page
 - [Doc 76](doc-76.md): Inherited subdomains are judged by the policy that applies to them
-- [Doc 77](doc-77.md): Plan records drop retired tags, and readiness agrees with the plan (text arrived cut off at Housekeeping)
+- [Doc 77](doc-77.md): Plan records drop retired tags, and readiness agrees with the plan
+- [Doc 78](doc-78.md): No-mail domains, dispositions and small wording
