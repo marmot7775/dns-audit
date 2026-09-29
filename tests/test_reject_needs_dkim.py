@@ -98,10 +98,38 @@ def test_a_domain_that_sends_no_mail_gets_no_note(audit):
     assert _notes(result) == []
 
 
-def test_an_inherited_reject_gets_the_note(audit):
+def _spf_only_rows(result):
+    return [d for d in _dmarc(result)["details"] if d.get("xc") == "spf_only_path"]
+
+
+def test_an_inherited_reject_gets_no_note(audit):
+    # Doc 83: the note is for the domain that publishes p=reject. An inherited
+    # reject keeps the cross-check's row instead, so the card still says it once.
     result = audit(_zone(f"v=DMARC1; p=quarantine; sp=reject; {RUA}", sub=True), SUB)
     assert _dmarc(result)["effective_policy"] == "reject"
+    assert _notes(result) == []
+    assert len(_spf_only_rows(result)) == 1
+
+
+def test_at_reject_the_note_replaces_the_spf_only_row(audit):
+    result = audit(_zone(f"v=DMARC1; p=reject; {RUA}"), D)
     assert len(_notes(result)) == 1
+    assert _spf_only_rows(result) == []
+    dkim_rows = [d["text"] for d in _dmarc(result)["details"]
+                 if "DKIM" in d["text"] and "SPF" in d["text"]]
+    assert dkim_rows == []
+
+
+def test_a_named_selector_that_is_missing_also_gets_one_row(audit):
+    result = audit(_zone(f"v=DMARC1; p=reject; {RUA}"), D, dkim_selector="s1")
+    assert len(_notes(result)) == 1
+    assert _spf_only_rows(result) == []
+
+
+def test_at_quarantine_the_spf_only_row_stays(audit):
+    result = audit(_zone(f"v=DMARC1; p=quarantine; {RUA}"), D)
+    assert _notes(result) == []
+    assert len(_spf_only_rows(result)) == 1
 
 
 def test_an_inherited_quarantine_gets_no_note(audit):
@@ -112,8 +140,8 @@ def test_an_inherited_quarantine_gets_no_note(audit):
 
 def _checks():
     return [
-        {"name": "DMARC", "effective_policy": "reject",
-         "tag_breakdown": {"config_warnings": []}},
+        {"name": "DMARC", "effective_policy": "reject", "inherited_from": None,
+         "details": [], "tag_breakdown": {"config_warnings": []}},
         {"name": "DKIM", "status": "unavailable"},
     ]
 
