@@ -22,8 +22,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=a528021">
-    <script src="/static/theme.js?v=a528021"></script>
+    <link rel="stylesheet" href="/static/style.css?v=547f2a5">
+    <script src="/static/theme.js?v=547f2a5"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -73,7 +73,7 @@ include:mailgun.org include:mail.zendesk.com ~all</code></pre>
             </section>
             <section class="dbis-section">
                 <h2>permerror isn't a warning</h2>
-                <p>A message that gets permerror can't pass SPF. DMARC can still pass on an aligned DKIM signature, and most platforms sign with your domain when you let them, so the first question is which of your senders don't. Mail with no aligned DKIM pass fails DMARC. Receivers honoring <code>p=quarantine</code> or <code>p=reject</code> then send it to spam or refuse it.</p>
+                <p>A message that gets permerror can't pass SPF. DMARC can still pass on an aligned DKIM signature, and most platforms sign with your domain when you let them, so the first question is which of your senders don't. Mail with no aligned DKIM pass fails DMARC. <a href="/articles/p-reject">Receivers honoring <code>p=quarantine</code> or <code>p=reject</code> then send it to spam or refuse it</a>.</p>
                 <p>An include that points at a domain with no SPF record is worse than a wasted lookup. Any check that reaches it returns permerror on its own. A vendor you stopped paying can pull its record down years after you added the include, and nothing on your side changes. There's a second cap on top of the 10. RFC 7208 tells receivers to allow two lookups that come back empty, meaning the name doesn't exist or has no record of that type, and to return permerror on the third. An <code>a</code> or <code>mx</code> term naming a host that no longer exists spends one of those.</p>
             </section>
             <section class="dbis-section">
