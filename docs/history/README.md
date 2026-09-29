@@ -65,3 +65,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 83](doc-83.md): DMARC card at p=reject with no DKIM key found
 - [Doc 84](doc-84.md): Links between the articles
 - [Doc 85](doc-85.md): Two copy fixes on live articles
+- [Doc 86](doc-86.md): Link audit findings to the articles
