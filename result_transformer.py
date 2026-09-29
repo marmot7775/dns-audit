@@ -30,6 +30,11 @@ from html import escape as _e
 from dkim_formatter import analyze_dkim_key_strength
 from spf_recursive import spf_lookup_band
 
+# The tags RFC 9989 removed from DMARC (Appendix C.5.2). The one source for
+# every reader: the validator, the readiness verdict, the plan rows, the
+# record builder and the migration path. Each used to carry its own copy.
+RFC9989_RETIRED_TAGS = ("pct", "rf", "ri")
+
 
 # ============================================================
 # What each check is
@@ -812,13 +817,19 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
                        remove=()) -> Optional[str]:
     """The record with only the named tags changed, in its own tag order.
 
+    Every proposed record starts from one cleaned base: the published record
+    without the tags RFC 9989 retired. Rows built from the raw record put
+    them back, so on bbc.co.uk "Remove the tags RFC 9989 retired: pct, ri"
+    was followed by an np row whose record had pct=100 and ri=86400 again,
+    and following the rows in order undid the first one.
+
     A tag being set that is not in the record goes after p= and sp=, where
     np sits in the canonical order.
     """
     if not record:
         return None
     set_tags = dict(set_tags or {})
-    drop = {t.lower() for t in remove}
+    drop = {t.lower() for t in remove} | set(RFC9989_RETIRED_TAGS)
     parts = []
     for part in record.split(";"):
         part = part.strip()
@@ -903,7 +914,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if tb:
         cw = tb.get("config_warnings", [])
         for w in cw:
-            if w.get("level") == "critical" and w.get("title") == "No aggregate reporting":
+            # Matched on the title: the warning is advisory on an enforcing
+            # policy and critical at p=none, and the row is high either way.
+            if w.get("title") == "No aggregate reporting":
                 items.append({"priority": "high", "protocol": "DMARC",
                               "action": "Add aggregate reporting (rua=)",
                               "impact": "You cannot see who is sending as your domain or "
@@ -1018,7 +1031,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # The removed-tags row comes from the record, not the health reasons: a
     # p=none record's verdict is "monitoring" and names no reasons, so its
     # pct got no row at all.
-    _removed = [t for t in ("pct", "rf", "ri") if t in _parse_record_tags(_cur or "")]
+    _removed = [t for t in RFC9989_RETIRED_TAGS if t in _parse_record_tags(_cur or "")]
     if _removed:
         _reasons = [f"Removed tags: {', '.join(_removed)}"]
     else:
@@ -3560,7 +3573,7 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
     fo = tags.get("fo", "0")
     rua = tags.get("rua")
     ruf = tags.get("ruf")
-    deprecated_present = [t for t in ("pct", "rf", "ri") if t in tags]
+    deprecated_present = [t for t in RFC9989_RETIRED_TAGS if t in tags]
 
     # Resolve np fallback
     np_resolved = np_val if np_present else (sp if sp else policy)
@@ -3601,7 +3614,14 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
                 "without rua it reports nothing, so it only satisfies the bulk-sender "
                 "requirement. Add rua= to get the reports the policy exists for."
             )
-        warnings.append({"level": "critical", "title": "No aggregate reporting", "text": msg, "tags": ["rua"]})
+        # rua is OPTIONAL (RFC 7489 section 6.3, RFC 9989 section 4.7). On an
+        # enforcing policy its absence is a prominent amber warning, not a
+        # failure: at critical it made the health verdict "misconfigured", so
+        # proton.me (p=quarantine, no rua) read "Action needed" in red above
+        # a readiness checklist that passed. p=none without rua enforces
+        # nothing and reports nothing, and keeps its critical level.
+        _rua_level = "advisory" if policy in ("reject", "quarantine") else "critical"
+        warnings.append({"level": _rua_level, "title": "No aggregate reporting", "text": msg, "tags": ["rua"]})
 
     # 2 and 3. sp or np weaker than an enforcing p. none is a gap (critical);
     # quarantine under reject is weaker enforcement (advisory). These used
@@ -3782,15 +3802,27 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
             "tags": ["sp", "p"],
         })
 
-    # 16. np absent at enforcing policy
+    # 16. np absent at enforcing policy. An absent np falls back to sp, then
+    # p (RFC 9989 section 4.7), so with an enforcing fallback there is no gap
+    # to close; the plan row beside it says the tag is optional, and this
+    # used to say "close potential gaps". Only a fallback of none is one.
     if not np_present and policy in ("reject", "quarantine"):
+        if (np_resolved or "").lower() in ("reject", "quarantine"):
+            _np_text = (
+                f"No explicit non-existent subdomain policy. np is optional: it falls "
+                f"back to {np_resolved_via}={np_resolved}, so non-existent subdomains "
+                f"already get {np_resolved}."
+            )
+        else:
+            _np_text = (
+                f"No explicit non-existent subdomain policy. Falls back to "
+                f"{np_resolved_via}={np_resolved}, which requests no action. "
+                f"Consider adding np= to close the gap."
+            )
         warnings.append({
             "level": "advisory",
             "title": "No explicit np= policy",
-            "text": (
-                f"No explicit non-existent subdomain policy. Falls back to "
-                f"{np_resolved_via}={np_resolved}. Consider adding np= to close potential gaps."
-            ),
+            "text": _np_text,
             "tags": ["np"],
         })
 
@@ -3881,7 +3913,7 @@ def _calculate_dmarcbis_health(tags: Dict[str, str], policy: str, config_warning
     critical = [w for w in config_warnings if w["level"] == "critical"]
     advisory = [w for w in config_warnings if w["level"] == "advisory"]
 
-    deprecated_present = [t for t in ("pct", "rf", "ri") if t in tags]
+    deprecated_present = [t for t in RFC9989_RETIRED_TAGS if t in tags]
     # RFC 9989 section 4.7 makes psd= OPTIONAL with a default of "u", and
     # publishing psd=n on a name that is not the Organizational Domain
     # actively changes relaxed-alignment scope and external rua
@@ -4184,7 +4216,7 @@ def _dmarc_end_state(tags: Dict[str, str], domain: str = "", no_mail: bool = Fal
         "rf": "Removed in RFC 9989. Only afrf was ever implemented.",
         "ri": "Removed in RFC 9989. Receivers standardize on daily reports.",
     }
-    for dep in ("pct", "rf", "ri"):
+    for dep in RFC9989_RETIRED_TAGS:
         if dep in rec:
             changes.append({
                 "tag": dep, "action": "removed", "old": rec[dep], "value": None,
@@ -4221,7 +4253,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
     np_val = tags.get("np")
     fo = tags.get("fo", "0")
     has_ruf = bool(tags.get("ruf"))
-    deprecated = [t for t in ("pct", "rf", "ri") if t in tags]
+    deprecated = [t for t in RFC9989_RETIRED_TAGS if t in tags]
 
     # Build the current record for before/after
     current_parts = []
@@ -4248,6 +4280,20 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         keys = [k for k in _tag_order if k in _working]
         keys += [k for k in _working if k not in _tag_order]
         return "; ".join(f"{k}={_working[k]}" for k in keys)
+
+    # Step: Remove the retired tags, first. Every later step's record is
+    # built on the cleaned base, as every plan row and the record builder
+    # are. As the last step, steps 1 to 3 on github.com carried pct=100
+    # into records the plan had just told the reader to take it out of.
+    if deprecated:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Remove the tags RFC 9989 removed: {', '.join(deprecated)}",
+            "why": "These tags are ignored by RFC 9989 receivers. Removing them cleans up the record.",
+            "record_after": _record(**{t: None for t in deprecated}),
+            "tags_changed": deprecated,
+        })
 
     # Step: Add reporting if missing
     if not rua and not no_mail:
@@ -4383,16 +4429,6 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
             ),
             "record_after": _record(**{t.split("=")[0]: "reject" for t in dmarcbis_needed}),
             "tags_changed": [t.split("=")[0] for t in dmarcbis_needed],
-        })
-
-    # Step: Remove deprecated tags
-    if deprecated:
-        step_num += 1
-        steps.append({
-            "step": step_num,
-            "action": f"Remove the tags RFC 9989 removed: {', '.join(deprecated)}",
-            "why": "These tags are ignored by RFC 9989 receivers. Removing them cleans up the record.",
-            "tags_changed": deprecated,
         })
 
     # Final target record. The same end state the Record Builder recommends,

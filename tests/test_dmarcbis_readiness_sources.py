@@ -65,10 +65,11 @@ def test_np_recommendation_for_p_reject_is_editorial():
     )
     assert np["spec_reference"] is None
     assert np["recommendation"] is not None
-    # The recommendation copy should make the "not spec-required" framing
-    # explicit so a reader skimming the field sees the disclaimer.
-    assert "not spec-required" in np["recommendation"].lower() or \
-           "editorial" in np["recommendation"].lower()
+    # With p=reject the fallback already rejects, so the copy says np is
+    # optional and names what it inherits rather than suggesting the tag
+    # (Doc 77: there is no gap to close).
+    assert "optional" in np["recommendation"].lower()
+    assert "p=reject" in np["recommendation"]
 
 
 def test_np_recommendation_for_p_none_is_editorial():
