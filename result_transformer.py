@@ -138,12 +138,17 @@ REJECT_DKIM_NOTE_TITLE = "DKIM required at p=reject"
 
 def attach_reject_dkim_note(checks: List[Dict], raw_dkim: Optional[Dict],
                             non_mail: bool = False) -> List[Dict]:
-    """Add the note to the DMARC card when the policy that applies is reject
-    and the DKIM lookup finished without finding a live key. In place.
+    """Add the note to the DMARC card when the audited name's own record is
+    p=reject and the DKIM lookup finished without finding a live key. In place.
 
     Skipped when DKIM was not in scope or did not complete (nothing was
-    learned), and on a domain that declares it sends no mail, where p=reject
-    with no DKIM is the correct setup.
+    learned), on a domain that declares it sends no mail, where p=reject with
+    no DKIM is the correct setup, and when the reject is inherited from a
+    parent's record (Doc 83): the RFC rule binds the domain that publishes
+    p=reject, and under relaxed alignment the subdomain's mail can pass on a
+    signature from the parent's keys, which a probe of the subdomain never
+    sees. Where the note fires it replaces the cross-check's SPF-only
+    row, so the card says the gap once; at p=quarantine that row stays.
     """
     if non_mail or not raw_dkim:
         return checks
@@ -158,8 +163,10 @@ def attach_reject_dkim_note(checks: List[Dict], raw_dkim: Optional[Dict],
         return checks
     dmarc = next((c for c in checks if c.get("name") == "DMARC"), None)
     tb = (dmarc or {}).get("tag_breakdown")
-    if not tb or dmarc.get("effective_policy") != "reject":
+    if not tb or dmarc.get("effective_policy") != "reject" or dmarc.get("inherited_from"):
         return checks
+    dmarc["details"] = [d for d in dmarc.get("details") or []
+                        if d.get("xc") != "spf_only_path"]
     tb.setdefault("config_warnings", []).append({
         "level": "info",
         "title": REJECT_DKIM_NOTE_TITLE,
