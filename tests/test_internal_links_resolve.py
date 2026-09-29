@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import server as server_module
+from result_transformer import ARTICLE_SENTENCES
 from static_pages import PAGES, STATIC
 
 client = TestClient(server_module.app)
@@ -60,3 +61,19 @@ def test_the_article_cross_links_are_in_the_set():
 def test_internal_link_answers_200(page, target):
     response = client.get(target, follow_redirects=False)
     assert response.status_code == 200, f"{page} links {target}: {response.status_code}"
+
+
+# Doc 86: the audit's findings link five articles. Those hrefs live in
+# result_transformer, not in a static page, so they are collected from there.
+FINDING_LINKS = sorted({t for s in ARTICLE_SENTENCES for t in _internal_targets(s)})
+
+
+def test_the_finding_links_are_the_five_articles():
+    assert FINDING_LINKS == ["/articles/dane", "/articles/dmarcbis", "/articles/dnssec",
+                             "/articles/p-reject", "/articles/spf-lookups"]
+
+
+@pytest.mark.parametrize("target", FINDING_LINKS)
+def test_finding_link_answers_200(target):
+    response = client.get(target, follow_redirects=False)
+    assert response.status_code == 200, f"finding links {target}: {response.status_code}"

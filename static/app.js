@@ -1241,7 +1241,7 @@ function _renderDetailItem(d) {
     return `
         <div class="detail-item ${typeClass}">
             <span class="detail-icon" aria-hidden="true">${icon}</span>
-            <span>${escapeHtml(d.text || '')}</span>
+            <span>${d.html ? sanitizeHtml(d.text || '') : escapeHtml(d.text || '')}</span>
             ${businessRisk}
         </div>
     `;
@@ -2257,7 +2257,7 @@ function renderDmarcTagBreakdown(bd) {
                         <span class="rb-cw-title">${escapeHtml(w.title)}</span>
                         ${tagPills}
                     </div>
-                    <div class="rb-cw-text">${escapeHtml(w.text)}</div>
+                    <div class="rb-cw-text">${w.html ? sanitizeHtml(w.text) : escapeHtml(w.text)}</div>
                 </div>`;
         });
         configWarningsHtml = `
@@ -3906,10 +3906,12 @@ function sanitizeHtml(html) {
                     for (const name of attrsToRemove) {
                         child.removeAttribute(name);
                     }
-                    // Block non-http(s) protocols on links (XSS prevention)
+                    // Block non-http(s) protocols on links (XSS prevention).
+                    // A same-site path (/articles/..., Doc 86) is allowed;
+                    // // is protocol-relative, so it is not.
                     if (tag === 'a') {
                         const href = child.getAttribute('href') || '';
-                        if (href && !/^https?:\/\//i.test(href)) {
+                        if (href && !/^https?:\/\//i.test(href) && !/^\/(?![\/\\])/.test(href)) {
                             child.removeAttribute('href');
                         }
                         // Force safe link behavior

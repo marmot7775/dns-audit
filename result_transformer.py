@@ -128,6 +128,45 @@ def attach_what_this_is(checks: List[Dict]) -> List[Dict]:
 
 
 
+def _article_link(path: str, text: str) -> str:
+    """Doc 86: the same anchor form as the RFC links, with a same-site path."""
+    return f"<a href=\"{path}\" target=\"_blank\" rel=\"noopener\">{text}</a>"
+
+
+# Doc 86: one sentence per finding, pointing at the article that answers it.
+ARTICLE_SPF_LOOKUPS = (
+    "How to get back under 10, and why flattening once by hand makes it worse, "
+    "is in " + _article_link("/articles/spf-lookups", "the SPF lookup article") + "."
+)
+ARTICLE_P_REJECT = (
+    _article_link("/articles/p-reject", "What to check before you publish p=reject")
+    + " covers this requirement and how to confirm it from aggregate reports."
+)
+ARTICLE_DMARCBIS = (
+    _article_link("/articles/dmarcbis", "What RFC 9989 changes for your DMARC record")
+    + " explains this in full."
+)
+ARTICLE_DNSSEC = (
+    _article_link("/articles/dnssec", "DNSSEC in 2026")
+    + " covers what changed, what it protects against, and what a good deployment "
+    "looks like."
+)
+ARTICLE_DANE = (
+    _article_link("/articles/dane", "DANE for email in 2026")
+    + " covers who runs it and what to do about it."
+)
+ARTICLE_SENTENCES = (ARTICLE_SPF_LOOKUPS, ARTICLE_P_REJECT, ARTICLE_DMARCBIS,
+                     ARTICLE_DNSSEC, ARTICLE_DANE)
+
+
+def _without_article_link(text: str) -> str:
+    """A detail's text minus its article sentence, for places that reuse the
+    text outside the card (a fallback plan row must not change)."""
+    for sentence in ARTICLE_SENTENCES:
+        text = text.replace(" " + sentence, "")
+    return text
+
+
 # RFC 9989 sections 7.4 and 8: a domain at p=reject MUST NOT rely on SPF alone
 # and MUST sign with DKIM. The audit cannot see which streams sign, only which
 # keys it could find, so this is an info note and never a grade: a domain
@@ -177,8 +216,11 @@ def attach_reject_dkim_note(checks: List[Dict], raw_dkim: Optional[Dict],
             "selectors it looked up. That does not prove the domain is unsigned, "
             "because each sending service picks its own selector name. Your aggregate "
             "reports settle it: every source that sends as this domain should show an "
-            "aligned DKIM pass. A source passing on SPF alone loses its forwarded mail."
+            "aligned DKIM pass. A source passing on SPF alone loses its forwarded mail. "
+            + ARTICLE_P_REJECT
         ),
+        # The text carries a link: renderers sanitize it instead of escaping it.
+        "html": True,
         "tags": ["p"],
     })
     return checks
@@ -1215,7 +1257,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # reason the row is here. A card with neither a fix nor a bad
         # detail has nothing for the reader to do, so it gets no row at all
         # rather than a row that says nothing.
-        bad = [d.get("text", "") for d in card.get("details", [])
+        bad = [_without_article_link(d.get("text", "")) for d in card.get("details", [])
                if d.get("type") in ("error", "warning") and d.get("text")]
         if not bad:
             continue
@@ -2313,7 +2355,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             _method_note = (
                 " Policy was discovered via the "
                 "<a href=\"https://www.rfc-editor.org/rfc/rfc9989.html\" target=\"_blank\" rel=\"noopener\">RFC 9989</a> "
-                "DNS tree walk."
+                "DNS tree walk. " + ARTICLE_DMARCBIS
             )
         else:
             _method_note = (
@@ -2533,7 +2575,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                     "ignore pct and quarantine all of them, because pct is removed "
                     "in RFC 9989."
                 )
-            details.append({"type": "warning", "text": _pct_text, "tag": "pct"})
+            details.append({"type": "warning", "text": _pct_text + " " + ARTICLE_DMARCBIS,
+                            "tag": "pct", "html": True})
 
         # Append all issues from the audit engine (syntax_errors already merged into issues)
         for issue in raw.get("issues", []):
@@ -4777,13 +4820,15 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
                 f"Receivers must return PermError once the limit is exceeded. "
                 f"A PermError is not a pass, so SPF cannot "
                 f"satisfy DMARC alignment for any message from this domain. Audit your "
-                f"includes and remove services you no longer use."
+                f"includes and remove services you no longer use. "
+                + ARTICLE_SPF_LOOKUPS
             )
         elif spf_lookup_band(lookups) == "near":
             explanation += (
                 f" <strong>Note:</strong> SPF uses {lookups} of the allowed 10 DNS lookups "
                 f"(<a href=\"https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4\" target=\"_blank\" rel=\"noopener\">RFC 7208 section 4.6.4</a>). "
-                f"{'At the limit. Any addition will cause a PermError.' if lookups == 10 else 'Approaching the limit. Plan for headroom before adding new services.'}"
+                f"{'At the limit. Any addition will cause a PermError.' if lookups == 10 else 'Approaching the limit. Plan for headroom before adding new services.'} "
+                + ARTICLE_SPF_LOOKUPS
             )
 
     # Details
@@ -6648,6 +6693,15 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
 # ============================================================
 
 def transform_dnssec(raw: Dict, domain: str = "") -> Dict:
+    card = _transform_dnssec_card(raw, domain)
+    # Doc 86: a card that is not a pass points at the article. No link on a
+    # clean card.
+    if card.get("status") != "pass" and card.get("explanation"):
+        card["explanation"] = card["explanation"].rstrip() + " " + ARTICLE_DNSSEC
+    return card
+
+
+def _transform_dnssec_card(raw: Dict, domain: str = "") -> Dict:
     # The DNSKEY query never completed (SERVFAIL, NoNameservers, or a
     # timeout on both attempts), so has_dnssec=False here is not a real
     # negative answer. Reporting it as "not configured" told a signed and
@@ -6942,6 +6996,16 @@ def transform_caa(raw: Dict, domain: str) -> Dict:
 # ============================================================
 
 def transform_dane(raw: Dict, domain: str) -> Dict:
+    card = _transform_dane_card(raw, domain)
+    # Doc 86: a card that is not a pass points at the article, except with no
+    # MX hosts, where there is no inbound mail to protect.
+    no_mx = not raw.get("mx_unavailable") and not raw.get("mx_hosts_checked", 0)
+    if card.get("status") != "pass" and not no_mx and card.get("explanation"):
+        card["explanation"] = card["explanation"].rstrip() + " " + ARTICLE_DANE
+    return card
+
+
+def _transform_dane_card(raw: Dict, domain: str) -> Dict:
     has_tlsa = raw.get("has_tlsa", False)
     # Three-state. None means the DNSSEC check did not complete, so this card
     # may not say DNSSEC is missing, and may not say the DANE chain is valid.
