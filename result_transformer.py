@@ -1071,7 +1071,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # for roadmap space with findings the domain can act on.
         pass
     elif bimi.get("status") != "pass":
-        action = bimi.get("fix") or "Review your BIMI configuration"
+        action = _roadmap_fix_text(bimi) or "Review your BIMI configuration"
         items.append({"priority": "low", "protocol": "BIMI",
                       "action": action,
                       "impact": "An issue with your existing BIMI setup may prevent your logo from displaying."})
