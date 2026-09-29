@@ -14,6 +14,15 @@ from dkim_formatter import _is_ed25519
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2}
 
 
+def _dmarc_tag(record: Optional[str], tag: str) -> str:
+    """One tag's value from a DMARC record, lowercased; empty when absent."""
+    for part in (record or "").split(";"):
+        key, _, value = part.partition("=")
+        if key.strip().lower() == tag:
+            return value.strip().lower()
+    return ""
+
+
 def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False, tree_walk: dict = None) -> list:
     """
     Detect cross-check anomalies from raw audit results.
@@ -66,16 +75,34 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
     # 1. DMARC enforcement without SPF
     # spf.get("status") == "unavailable" means the SPF lookup did not
     # complete, so an empty record field says nothing about the domain.
-    if dmarc_present and dmarc_enforced and spf.get("status") != "unavailable":
+    #
+    # Not on a name with no MX: the SPF plan row already tells it to publish
+    # null SPF, and this used to tell the same name to publish
+    # "v=spf1 include:your-esp.com ~all" beside it. And "SPF alignment can
+    # never pass" is only true under aspf=s. With relaxed alignment an
+    # envelope sender at another name under the same organizational domain
+    # aligns (RFC 7489 section 3.1.2), so mail.github.com can pass on a
+    # github.com MAIL FROM.
+    if dmarc_present and dmarc_enforced and has_mx and spf.get("status") != "unavailable":
         spf_record = spf.get("record") or spf.get("raw_record")
         if not spf_record:
+            _aspf = _dmarc_tag(dmarc.get("record") or dmarc.get("inherited_record"), "aspf")
+            if _aspf == "s":
+                description = (
+                    "DMARC is set to {} but no SPF record was found, and aspf=s requires "
+                    "the envelope sender to be this exact name. SPF alignment cannot pass, "
+                    "so every message relies on DKIM to satisfy DMARC."
+                ).format(dmarc_policy)
+            else:
+                description = (
+                    "DMARC is set to {} but no SPF record was found. Mail that uses this "
+                    "name as the envelope sender gets no SPF result, so it relies on DKIM, "
+                    "or on an envelope sender elsewhere under the organizational domain, "
+                    "which relaxed alignment accepts."
+                ).format(dmarc_policy)
             anomalies.append({
                 "title": "DMARC enforcement without SPF",
-                "description": (
-                    "DMARC is set to {} but no SPF record was found. "
-                    "SPF alignment can never pass, so every message must rely "
-                    "solely on DKIM to satisfy DMARC."
-                ).format(dmarc_policy),
+                "description": description,
                 "severity": "high",
                 "recommendation": (
                     "Publish an SPF record (e.g. \"v=spf1 include:your-esp.com ~all\") "
