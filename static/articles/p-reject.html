@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What to check before you publish p=reject | dns-audit.com</title>
+    <meta name="description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready.">
+    <meta name="keywords" content="p=reject, DMARC enforcement, DMARC policy, DKIM, RFC 9989, email forwarding, mailing lists, SPF, p=quarantine, aggregate reports">
+    <meta name="author" content="Neil Anuskiewicz">
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="DNS Security Auditor" />
+    <meta property="og:url" content="https://dns-audit.com/articles/p-reject" />
+    <meta property="og:title" content="What to check before you publish p=reject" />
+    <meta property="og:description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready." />
+    <meta property="og:image" content="https://dns-audit.com/static/og-image.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="What to check before you publish p=reject" />
+    <meta name="twitter:description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready." />
+    <link rel="canonical" href="https://dns-audit.com/articles/p-reject">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/style.css?v=a038459">
+    <script src="/static/theme.js?v=a038459"></script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "What to check before you publish p=reject",
+        "description": "RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready.",
+        "url": "https://dns-audit.com/articles/p-reject",
+        "author": { "@type": "Person", "name": "Neil Anuskiewicz" },
+        "datePublished": "2026-09-29",
+        "dateModified": "2026-09-29"
+    }
+    </script>
+</head>
+<body>
+    <a href="#main-content" class="skip-to-content">Skip to content</a>
+    <header class="site-header">
+        <div class="container header-inner">
+            <a href="/" class="logo"><span class="logo-text">dns<span class="logo-accent">-audit</span>.com</span></a>
+            <div class="header-right">
+                <nav class="site-nav" aria-label="Main navigation">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/articles/" class="nav-link nav-link-active">Articles</a>
+                    <a href="/about" class="nav-link">About</a>
+                    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
+                        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+    <main class="dbis-page" id="main-content">
+        <article class="dbis-article">
+            <h1 class="dbis-article-title">What to check before you publish p=reject</h1>
+            <p class="dbis-article-sub">You have been at p=none for months and the reports look clean. The DMARC standard adds one requirement before the last step, and it is the one small setups miss.</p>
+            <p class="article-card-meta">Updated <time datetime="2026-09">September 2026</time></p>
+            <p class="dbis-lede">Most DMARC deployments follow the same path. Publish <code>p=none</code>, watch the aggregate reports, fix every legitimate sender that fails, then publish <code>p=reject</code>. Most domains skip quarantine entirely and go from remediation straight to reject, and that works. What the vendor guides leave out is that the DMARC standard published in May 2026, RFC 9989, puts a condition on that last step. A domain at reject has to sign all of its mail with DKIM. Not most of it. All of it. This article explains why the standard says so, what it costs you if you ignore it, and how to tell when a domain is ready.</p>
+            <section class="dbis-section">
+                <p>One word to settle first. A stream is any system that sends mail using your domain: your mail server, your marketing platform, your help desk, your invoicing tool. A company with four of those has four streams, and each one either signs or it does not.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>A statement that never arrived</h2>
+                <p>The standard explains the DKIM requirement with a bank, and the example is worth walking through because it is exactly what happens to small companies.</p>
+                <p>A bank sends a statement to a customer at an alumni address, something like <code>jones@alumni.example.edu</code>. The alumni association does not run mailboxes; it forwards everything to the address the graduate gave them years ago. The same happens with a role address such as <code>finance@association.example</code>, which forwards to whoever holds the job this year.</p>
+                <p>When the forwarder passes the statement along, the receiving server sees a connection from the forwarder's IP address, not the bank's. SPF works by checking that IP against the list the bank published, and the forwarder is not on it, so SPF fails. Nothing was wrong with the bank's SPF record. Forwarding just moved the message to a server the record does not cover.</p>
+                <p>DKIM behaves differently. It is a signature the bank's server adds to the message itself, checked against a key in the bank's DNS. The forwarder does not touch it, so the signature still verifies at the final destination. If the bank signed the statement, it passes DMARC on DKIM and arrives. If the bank relied on SPF alone, the statement fails DMARC, and at <code>p=reject</code> the receiver bounces it. The customer never sees the statement and the bank never learns why.</p>
+                <p>That is the whole argument. Forwarding breaks SPF and leaves DKIM alone, and forwarding is everywhere: alumni addresses, role addresses, people who forward their work mail to a personal account. RFC 7960 catalogs every variety.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>The requirement</h2>
+                <p>So RFC 9989 makes it a rule. A domain that publishes <code>p=reject</code> must not rely on SPF alone for its DMARC pass and must sign its mail with DKIM. In RFC language that is a MUST, the strongest word the standard has, and it appears twice: in the section on interoperability and again in the list of requirements for full participation. The same standard recommends both SPF and DKIM for every domain at any policy; at reject the recommendation becomes a requirement.</p>
+                <p>In a small company the stream that fails this test is usually a platform that was added to the SPF record when it was set up and never configured to sign with the company's domain. It signs with its own domain instead, or not at all. In the aggregate reports it shows up as a source that passes SPF and has no aligned DKIM, where aligned means the domain in the signature matches the domain in the From address. Every message that platform sends is one forward away from a bounce. That stream is not ready for reject, and until it signs, neither is the domain.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>The mailing list warning</h2>
+                <p>RFC 9989 carries a second warning about reject, and it is worth knowing what it is worth. The standard says a domain whose users post to mailing lists should not publish <code>p=reject</code>. The reason is the same forwarding problem in a different shape: a list resends your message to every subscriber from the list's own server. Where the standard uses should not rather than must not, it means you may proceed once you understand the cost.</p>
+                <p>The standard is candid about that cost. In the ten years since the large consumer mailbox providers started publishing <code>p=reject</code>, mailing list software has adopted workarounds that rewrite the From address on relayed messages so they pass DMARC under the list's own domain. The RFC calls those workarounds far from ideal and firmly established. ARC, a newer mechanism meant to let lists stop rewriting, had not caught on at publication.</p>
+                <p>So for most lists, a person posting from a reject domain is fine, because the list repairs the message before it goes out. What remains is the list that never adopted rewriting. There, the receiver rejects the relayed post, the list software reads the rejection as a dead address, and the subscriber is quietly dropped from the list. That is a real cost. For most companies it is also a small one, and most look at their reports, decide the occasional lost list post is acceptable, and publish reject. That is a fair reading of the standard, not a violation of it.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>Plan as if reject means reject</h2>
+                <p>The standard also tells receivers not to reject a message solely because the sender's policy says reject, and to treat failing mail as quarantine when they have nothing else to go on. Then it admits, in the same section, that few receivers do any of that, and that mail relayed through lists without a rewritten From is frequently rejected under <code>p=reject</code>. Take the admission at face value. Receivers are not going to soften your policy for you.</p>
+                <p>The one place you will see a receiver deviate is the aggregate report itself, which has a field for it, PolicyOverride. If a receiver decides to deliver mail your policy says to reject, that is where it tells you.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>Why most domains skip quarantine</h2>
+                <p>Under DMARC, quarantine and reject both keep failing mail out of the inbox at receivers that honor your policy. The difference is where the mail goes instead. Quarantine sends it to the spam folder, where the recipient can still open it and be fooled by it. Reject refuses it during delivery, before the receiver has accepted it, so a spoofed message produces no bounce and no trace. For a domain that exists to be trusted, a bank, a payroll provider, a store sending order confirmations, that difference is the point of DMARC, and reject is the destination.</p>
+                <p>The standard prescribes a quarantine stage on the way there, so you can see what receivers do with failing mail before you go to reject. In practice most domains skip it. They remediate at <code>p=none</code> until the reports are clean, then publish reject, and that works because the aggregate reports at none already show, for every source, whether it passed on DKIM or only on SPF. Once every source that belongs to you shows aligned DKIM, the quarantine stage has little left to tell you.</p>
+                <p>Quarantine earns its place in one situation: a domain with a stream that cannot be signed yet. Reject is off the table for that domain by the standard's own rule, and quarantine is as far as it can go until the stream is fixed. A domain sitting there is not finished. It is blocked on one sender.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>Which policy for which domain</h2>
+                <figure class="dbis-table-fig" aria-labelledby="dbis-policy-caption">
+                    <div class="dbis-table-wrap">
+                        <table class="dbis-table">
+                            <thead>
+                                <tr>
+                                    <th>Domain</th>
+                                    <th>End state</th>
+                                    <th>Condition</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Main company domain, the one with people's mailboxes on it</td>
+                                    <td><code>p=reject</code></td>
+                                    <td>Every stream signs with aligned DKIM and the reports have settled. The mailing list cost has been looked at and accepted.</td>
+                                </tr>
+                                <tr>
+                                    <td>Transactional or brand domain</td>
+                                    <td><code>p=reject</code></td>
+                                    <td>Every platform signs with the domain in the From address.</td>
+                                </tr>
+                                <tr>
+                                    <td>Subdomain dedicated to one sending service, with its own DMARC record</td>
+                                    <td><code>p=reject</code></td>
+                                    <td>Moves on its own evidence. A problem with one service does not hold the others back.</td>
+                                </tr>
+                                <tr>
+                                    <td>Domain that sends no mail</td>
+                                    <td><code>p=reject</code> plus null MX (RFC 7505) and <code>v=spf1 -all</code></td>
+                                    <td>No legitimate mail to lose.</td>
+                                </tr>
+                                <tr>
+                                    <td>Any domain with a stream still passing on SPF alone</td>
+                                    <td><code>p=quarantine</code> at most</td>
+                                    <td>Reject is prohibited until the stream signs.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <figcaption id="dbis-policy-caption" class="dbis-compare-caption">Reject is the end state for every domain that can meet the DKIM requirement. Quarantine is where a domain waits when one cannot.</figcaption>
+                </figure>
+            </section>
+            <section class="dbis-section">
+                <h2>When a domain is ready</h2>
+                <p>List every domain and subdomain that sends mail and give each its own DMARC record. For each one, readiness is two questions. Does every source in the reports that belongs to you show an aligned DKIM pass, not just an SPF pass? And has the list of sources stopped changing?</p>
+                <p>The second question is the one that takes time. The standard says the process can take many months depending on how often a domain sends, and it often takes longer than that, because a system that sends once a quarter does not appear in the reports until it sends. Waiting costs nothing. The standard requires receivers to leave mail handling unchanged under <code>p=none</code>, and the bulk sender rules at <a href="https://support.google.com/a/answer/81126" target="_blank" rel="noopener">Google</a>, <a href="https://senders.yahooinc.com/best-practices/" target="_blank" rel="noopener">Yahoo</a> and <a href="https://support.microsoft.com/en-us/outlook/fix-ndr-error-550-5-7-515-in-outlook-com" target="_blank" rel="noopener">Microsoft</a> require a DMARC record but accept <code>p=none</code>. Nothing about inbox placement forces the move to reject. The reports tell you when.</p>
+                <p>The guides are right that reject is where a domain should end up. They leave out the condition the standard now attaches to it. A domain at <code>p=reject</code> with a stream on SPF alone is not finished. It is losing mail every time someone forwards a message, and the standard says it should not be there.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>Where this comes from</h2>
+                <p>RFC 9989, Section 7.4, has the bank example, the DKIM requirement, the mailing list warning, the staging advice, and the admission about receivers. Section 8 repeats the DKIM requirement and the receiver rule as conformance requirements. Section 5.4 covers what receivers do with <code>p=none</code> and the PolicyOverride field. Section 4.5 recommends SPF and DKIM together. Section 5.1.7 says enforcement may take many months. Section 3.2.9 defines enforcement and Section 7.2 explains why rejecting during delivery beats bouncing. RFC 7960 catalogs indirect mail flows, RFC 7505 defines the null MX, and RFC 8617 defines ARC.</p>
+            </section>
+            <div class="dbis-closing">
+                <p>dns-audit.com reads your DMARC record, checks the DKIM selectors you have published, audits which subdomains exist and what policy each inherits, and evaluates the record under both RFC 7489 and RFC 9989. It cannot see which streams are signed; your aggregate reports do that.</p>
+            </div>
+        </article>
+    </main>
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div class="footer-left">
+                <div class="footer-brand-name">dns-audit.com</div>
+                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
+            </div>
+            <div class="footer-right">
+                <div class="footer-nav">
+                    <a href="/articles/" class="footer-link">Articles</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="/about" class="footer-link">About</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="/privacy" class="footer-link">Privacy</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+                </div>
+                <div class="footer-trust">
+                    <span class="footer-version">v2.0.0</span>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security Policy</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
+                </div>
+                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
