@@ -127,6 +127,55 @@ def attach_what_this_is(checks: List[Dict]) -> List[Dict]:
     return checks
 
 
+
+# RFC 9989 sections 7.4 and 8: a domain at p=reject MUST NOT rely on SPF alone
+# and MUST sign with DKIM. The audit cannot see which streams sign, only which
+# keys it could find, so this is an info note and never a grade: a domain
+# signing under a selector the probe did not guess would otherwise be marked
+# down for nothing.
+REJECT_DKIM_NOTE_TITLE = "DKIM required at p=reject"
+
+
+def attach_reject_dkim_note(checks: List[Dict], raw_dkim: Optional[Dict],
+                            non_mail: bool = False) -> List[Dict]:
+    """Add the note to the DMARC card when the policy that applies is reject
+    and the DKIM lookup finished without finding a live key. In place.
+
+    Skipped when DKIM was not in scope or did not complete (nothing was
+    learned), and on a domain that declares it sends no mail, where p=reject
+    with no DKIM is the correct setup.
+    """
+    if non_mail or not raw_dkim:
+        return checks
+    if raw_dkim.get("status") == "unavailable" or raw_dkim.get("timed_out"):
+        return checks
+    # Not the card's status: "no key found by probing" is the card's Not
+    # confirmed state, which is status "unavailable" on purpose.
+    if not any(c.get("name") == "DKIM" for c in checks):
+        return checks
+    live, _ = _split_dkim_selectors(raw_dkim.get("found_selectors") or [])
+    if live:
+        return checks
+    dmarc = next((c for c in checks if c.get("name") == "DMARC"), None)
+    tb = (dmarc or {}).get("tag_breakdown")
+    if not tb or dmarc.get("effective_policy") != "reject":
+        return checks
+    tb.setdefault("config_warnings", []).append({
+        "level": "info",
+        "title": REJECT_DKIM_NOTE_TITLE,
+        "text": (
+            "RFC 9989 sections 7.4 and 8 say a domain at p=reject MUST sign its mail "
+            "with DKIM and MUST NOT rely on SPF alone, because forwarding breaks SPF "
+            "and leaves a DKIM signature intact. This audit found no DKIM key at the "
+            "selectors it looked up. That does not prove the domain is unsigned, "
+            "because each sending service picks its own selector name. Your aggregate "
+            "reports settle it: every source that sends as this domain should show an "
+            "aligned DKIM pass. A source passing on SPF alone loses its forwarded mail."
+        ),
+        "tags": ["p"],
+    })
+    return checks
+
 # ============================================================
 # Status mapping helpers
 # ============================================================
