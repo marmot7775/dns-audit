@@ -5357,6 +5357,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                         and _xc_adkim != "s"):
                     _xc_details.append({
                         "type": "info",
+                        # Tagged so the reject note can replace it (result_transformer
+                        # attach_reject_dkim_note); kept at p=quarantine.
+                        "xc": "spf_only_path",
                         "text": (
                             "DMARC enforcement relies solely on SPF (no DKIM detected). "
                             "Adding DKIM provides a second authentication path that survives mail forwarding"
@@ -5370,6 +5373,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     # forwarding is true whether or not a second path exists.
                     _xc_details.append({
                         "type": "info",
+                        "xc": "spf_only_path",
                         "text": (
                             "DMARC enforcement has a working SPF path. This audit could not "
                             "confirm a DKIM key by probing, so it cannot say whether a second "
