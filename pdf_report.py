@@ -1001,6 +1001,9 @@ def _dmarc_deep_dive(data, S, number=3):
             w_bg = {"critical": FAIL_BG, "advisory": WARN_BG}.get(level, SURFACE_BG)
             title = w.get("title", "")
             text = w.get("text", "")
+            if w.get("html"):
+                # Doc 86: an article link. The PDF keeps the link text only.
+                text = _strip_html(text)
             tags_involved = ", ".join(w.get("tags", []))
 
             content = []
@@ -1367,7 +1370,8 @@ def _protocol_card(check, S, pointer=None):
         dt = d.get("type", "info")
         icon = DETAIL_ICON.get(dt, "\u2022")
         sk = f"d_{dt}" if f"d_{dt}" in S else "d_info"
-        els.append(Paragraph(f"{_glyphs(icon)}  {_safe(d.get('text', ''))}", S[sk]))
+        text = _strip_html(d.get("text", "")) if d.get("html") else d.get("text", "")
+        els.append(Paragraph(f"{_glyphs(icon)}  {_safe(text)}", S[sk]))
 
     # The explanation paragraph is in the appendix, under "What each check
     # means", so this section stays one screen per check.
