@@ -58,3 +58,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 76](doc-76.md): Inherited subdomains are judged by the policy that applies to them
 - [Doc 77](doc-77.md): Plan records drop retired tags, and readiness agrees with the plan
 - [Doc 78](doc-78.md): No-mail domains, dispositions and small wording
+- [Doc 79](doc-79.md): Details content fits its panel at every width
