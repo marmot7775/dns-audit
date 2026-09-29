@@ -22,6 +22,7 @@ from pypdf import PdfReader
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import audit_engine
+import result_transformer
 import dmarc_tree_walk as tw
 import pdf_report
 from conftest import FakeZone
@@ -290,8 +291,10 @@ def _pct_row(card):
 def test_pct_row_at_p_none_says_pct_does_nothing(audit):
     row = _pct_row(_card(_run(audit, f"v=DMARC1; p=none; pct=50; {RUA}")))
 
+    # Doc 86 appends the dmarcbis article sentence.
     assert row == ("pct has no effect at p=none: there is no action to apply to a fraction "
-                   "of failing mail. Remove it; RFC 9989 removed the tag.")
+                   "of failing mail. Remove it; RFC 9989 removed the tag. "
+                   + result_transformer.ARTICLE_DMARCBIS)
 
 
 def test_pct_row_at_reject_names_quarantine_for_the_rest(audit):
@@ -299,7 +302,7 @@ def test_pct_row_at_reject_names_quarantine_for_the_rest(audit):
 
     assert row.endswith("RFC 7489 receivers reject the selected fraction and quarantine the rest "
                         "(RFC 7489 section 6.6.4); RFC 9989 receivers ignore pct and reject all "
-                        "of them."), row
+                        "of them. " + result_transformer.ARTICLE_DMARCBIS), row
 
 
 def test_pct_row_at_quarantine_is_unchanged(audit):
