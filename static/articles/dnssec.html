@@ -33,7 +33,7 @@
         "url": "https://dns-audit.com/articles/dnssec",
         "author": { "@type": "Person", "name": "Neil Anuskiewicz" },
         "datePublished": "2026-04-26",
-        "dateModified": "2026-09-17"
+        "dateModified": "2026-09-29"
     }
     </script>
     <script type="application/ld+json">
@@ -91,7 +91,7 @@
         <article class="dbis-article">
             <h1 class="dbis-article-title">DNSSEC in 2026: what changed and whether you need it</h1>
             <p class="dbis-article-sub">The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like.</p>
-            <p class="dbis-lede">Most opinions about DNSSEC were formed before 2017 and never revisited. Mine was that it carried too much operational risk for the threat it closed: KSK rollovers broke domains, registrars wanted a ticket for every DS update, and RSA signatures pushed responses into TCP fallback. That was a fair reading at the time. It is out of date now, and this article is the check I should have done sooner: what changed, what DNSSEC protects against, where it still falls short, and what a good deployment looks like.</p>
+            <p class="dbis-lede">Most opinions about DNSSEC were formed before 2017 and never revisited. The common one was that it carried too much operational risk for the threat it closed: KSK rollovers broke domains, registrars wanted a ticket for every DS update, and RSA signatures pushed responses into TCP fallback. That was a fair reading at the time. It is out of date now. This article covers what changed, what DNSSEC protects against, where it still falls short, and what a good deployment looks like.</p>
             <section class="dbis-section">
                 <h2>What got fixed</h2>
                 <p>The DNSSEC of the 2010s needed a person at every step. You signed the zone, copied the DS record out of your DNS host, pasted it into your registrar's form, and did it again at every key rollover. Miss the registrar step on a KSK rotation and every validating resolver treated your domain as bogus. Most of the pain was in the handoffs, not the cryptography.</p>
