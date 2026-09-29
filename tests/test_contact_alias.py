@@ -24,6 +24,7 @@ FOOTER_FILES = [
     "static/articles/dane.html",
     "static/articles/dmarcbis.html",
     "static/articles/dnssec.html",
+    "static/articles/spf-lookups.html",
     "static/articles/index.html",
 ]
 SITE_FILES = FOOTER_FILES + ["static/app.js"]

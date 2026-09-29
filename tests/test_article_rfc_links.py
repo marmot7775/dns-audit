@@ -108,3 +108,16 @@ def test_dane_article_internal_links_resolve_to_pages():
         if href.startswith("/articles/") and href != "/articles/":
             name = href[len("/articles/"):] + ".html"
             assert os.path.exists(os.path.join(ARTICLES_DIR, name)), href
+
+
+# Doc 80: the SPF article names one RFC, 7208, and links it once from
+# Further reading. No other external link belongs on the page.
+def test_spf_lookups_article_links_only_rfc_7208():
+    with open(os.path.join(ARTICLES_DIR, "spf-lookups.html"), encoding="utf-8") as f:
+        content = f.read()
+    anchors = _anchors(content)
+    external = [(href, text) for href, text in anchors if href.startswith("http")
+                and "dns-audit.com" not in href and "github.com" not in href
+                and "linkedin.com" not in href]
+    assert external == [("https://www.rfc-editor.org/rfc/rfc7208", "RFC 7208")]
+    assert set(re.findall(r"RFC\s+(\d+)", content)) == {"7208"}

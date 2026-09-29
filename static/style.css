@@ -7053,6 +7053,8 @@ input[type="search"],
     padding: 0;
     color: inherit;
     font-size: inherit;
+    white-space: pre;
+    overflow-wrap: normal;
 }
 
 .dbis-section blockquote {
@@ -7070,7 +7072,7 @@ input[type="search"],
    Article pages (dmarcbis, dnssec, about)
    ========================================================================== */
 
-.dbis-page { max-width: 68ch; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+.dbis-page { max-width: 68ch; width: 100%; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
 .dbis-article { max-width: 68ch; font-family: var(--font-body); color: var(--text-primary); }
 .dbis-article-title { font-size: var(--font-4xl); font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); margin-bottom: 0.25rem; line-height: 1.2; }
 .dbis-article-sub { font-size: var(--font-md); color: var(--text-muted); margin-bottom: 2rem; }
@@ -7335,6 +7337,7 @@ input[type="search"],
 }
 .article-card-dmarcbis .article-card-accent { background: var(--dmarcbis); }
 .article-card-dnssec .article-card-accent { background: var(--primary); }
+.article-card-spf .article-card-accent { background: var(--ttl-long-text); }
 .article-card-content {
     flex: 1;
     padding: var(--space-xl);
@@ -7398,6 +7401,7 @@ input[type="search"],
     .article-card:hover .article-card-accent { width: 6px; }
     .article-card:hover .article-card-title a { color: var(--primary-light); }
     .article-card-dmarcbis:hover .article-card-title a { color: var(--dmarcbis); }
+    .article-card-spf:hover .article-card-title a { color: var(--ttl-long-text); }
 }
 
 @media (max-width: 719px) {
