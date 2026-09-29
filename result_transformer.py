@@ -372,6 +372,11 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     dmarc_status = dmarc.get("status", "")
     spf_check = check_map.get("SPF", {})
     spf_status = spf_check.get("status", "")
+    # The policy that applies to this name. For an inherited subdomain the
+    # health verdict above describes the parent's record, whose p= may not be
+    # the policy this name gets (github.com p=quarantine, sp=reject).
+    _eff_policy = dmarc.get("effective_policy")
+    _inherited_from = dmarc.get("inherited_from")
 
     # Count protected vectors.
     #
@@ -433,10 +438,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             )
         else:
             verdict = "Your domain has no DMARC record. SPF alone cannot prevent email spoofing."
-    elif health_status == "monitoring":
+    elif health_status == "monitoring" and _eff_policy in (None, "none"):
         verdict = "Your domain is monitoring email authentication but not yet enforcing it. This requests no action from receivers, who each decide independently what to do with mail that fails."
     elif _vector_total and protected_count == _vector_total:
-        if health_status == "ready":
+        # An inherited name's readiness is the parent record's, and the
+        # improvements it names are made at the parent, not here.
+        if health_status == "ready" or _inherited_from:
             verdict = "Spoofing of this domain is blocked at every level checked."
         else:
             verdict = "Your domain blocks spoofed email across all vectors, with minor improvements available."
@@ -1148,6 +1155,33 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "high" if card["status"] == "fail" else "low",
                       "protocol": name, "action": bad[0],
                       "impact": bad[1] if len(bad) > 1 else ""})
+
+    # An inherited subdomain has no DMARC record of its own. Every row above
+    # was worded from the organizational domain's record, and the plan offered
+    # it for publishing at the subdomain's name, where it would replace the
+    # policy the subdomain inherits (a record at the name is used and the
+    # parent is never consulted, RFC 7489 section 6.6.3). Those changes are
+    # made at the parent, so the rows say so and name its host. When the
+    # subdomain already gets reject, nothing it could change there protects it
+    # further, and one line saying where the policy lives is enough.
+    _inh_from = dmarc.get("inherited_from")
+    if _inh_from:
+        _parent_host = f"_dmarc.{_inh_from}"
+        _dmarc_rows = [i for i in items if i["protocol"] == "DMARC"]
+        if _dmarc_rows and dmarc.get("effective_policy") == "reject":
+            items = [i for i in items if i["protocol"] != "DMARC"]
+            items.append({"priority": "low", "protocol": "DMARC",
+                          "action": f"The policy is inherited from {_inh_from}, and changes are made there",
+                          "impact": "",
+                          "what_note": f"This name already gets reject from the record at {_parent_host}."})
+        else:
+            for i in _dmarc_rows:
+                i["host"] = _parent_host
+                i["host_note"] = (f"This record is at {_inh_from}, the organizational domain, "
+                                  f"so the change is made there. It applies to every subdomain "
+                                  f"that inherits it.")
+                if not i.get("record"):
+                    i["what_note"] = i["host_note"]
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -2540,13 +2574,22 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                     w["hidden"] = True
         health = _calculate_dmarcbis_health(_parsed, _pol, config_warnings)
         _domain = raw.get("domain", "")
-        migration = _build_migration_path(_parsed, _pol, health["status"], domain=_domain,
+        # An inherited record lives at the organizational domain, so every
+        # edit to it is published there. Built for the subdomain's name, the
+        # Deployment box told mail.github.com to publish github.com's
+        # p=quarantine record at _dmarc.mail.github.com, which would replace
+        # the sp=reject it inherits with quarantine.
+        _record_home = inherited_source if inherited else _domain
+        migration = _build_migration_path(_parsed, _pol, health["status"], domain=_record_home,
                                           no_mail=is_no_mail)
         why_dmarcbis = _build_why_dmarcbis(_parsed, _pol, health["status"], domain=_domain)
         record_builder = _build_record_builder(
             _parsed, _pol, health["status"], breakdown_record,
-            config_warnings, domain=_domain, no_mail=is_no_mail,
+            config_warnings, domain=_record_home, no_mail=is_no_mail,
         )
+        if inherited:
+            record_builder["deploy"]["inherited_from"] = inherited_source
+            record_builder["deploy"]["inherited_policy"] = inherited_policy
         tag_breakdown = {
             "health": health,
             "tags": tags_list,
@@ -2610,8 +2653,16 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         "spec_comparison": _build_spec_comparison(
             raw.get("strict_validation"), raw.get("legacy_validation")
         ),
+        # The policy receivers apply to this name. With a record of its own
+        # that is its p=. Inherited, it is what the tree walk resolved (sp,
+        # or np for a name that does not exist, then p), the same value the
+        # "Effective policy" detail above states. Every surface that judges
+        # the audited name reads this, not the p= of the record displayed.
+        "effective_policy": (inherited_policy if inherited else (policy or "").lower() or None),
+        "inherited_from": inherited_source if inherited else None,
         "attack_surface": _build_attack_surface(raw, display_record or record, is_no_mail=is_no_mail,
-                                                usable=status != "fail"),
+                                                usable=status != "fail",
+                                                direct_policy=inherited_policy if inherited else None),
         "tag_breakdown": tag_breakdown,
         "record_builder": no_record_builder,
         "dmarcbis_readiness": _build_dmarcbis_card_data(
@@ -2732,11 +2783,20 @@ def _build_spec_comparison(strict: Optional[Dict], legacy: Optional[Dict]) -> Op
 # ============================================================
 
 def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = False,
-                          usable: bool = True) -> Optional[Dict]:
+                          usable: bool = True,
+                          direct_policy: Optional[str] = None) -> Optional[Dict]:
     """Build the 4-vector email spoofing attack surface analysis.
 
     usable is False when the DMARC card fails, meaning there is no record a
     receiver can act on. Only then does the overall grade go red.
+
+    direct_policy is the policy an inherited subdomain actually gets. The
+    record is then the organizational domain's, and its p= is not what
+    applies to the audited name: mail.github.com inherits sp=reject from a
+    github.com record whose p= is quarantine, and Direct Domain Spoofing
+    read "Spoofed mail goes to spam". The subdomain and non-existent vectors
+    still read the record, because names under the audited one inherit from
+    the same record.
     """
     if not record:
         return None
@@ -2762,6 +2822,9 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
         pct = 100
 
     vectors = []
+    record_policy = policy
+    if direct_policy:
+        policy = direct_policy.lower()
 
     # ── Vector 1: Direct Domain Spoofing ────────────────────
     # pct= scopes what fraction of failing mail the policy is even applied
@@ -2828,6 +2891,7 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
             "detail": f"An attacker could send an email appearing to be from ceo@{domain} to your employees requesting a wire transfer. No DMARC action is requested, so each receiver applies only its own filtering to mail that fails.",
         }
     vectors.append(v1)
+    policy = record_policy
 
     # ── Vector 2: Subdomain Spoofing ────────────────────────
     effective_sp = sp if sp else policy
@@ -2987,7 +3051,12 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     attacker_path = ""
     if weakest:
         if weakest["name"] == "Direct Domain Spoofing":
-            attacker_path = f"The easiest path to spoofing this domain is direct: mail sent as user@{domain} is not blocked, because the policy is p={policy}."
+            if direct_policy:
+                attacker_path = (f"The easiest path to spoofing this domain is direct: mail sent as "
+                                 f"user@{domain} is not blocked, because the policy it inherits is "
+                                 f"{direct_policy.lower()}.")
+            else:
+                attacker_path = f"The easiest path to spoofing this domain is direct: mail sent as user@{domain} is not blocked, because the policy is p={policy}."
         elif weakest["name"] == "Subdomain Spoofing":
             attacker_path = f"The easiest path to spoofing this domain is through a subdomain such as mail.{domain}, because the subdomain policy is weaker than the root."
         elif weakest["name"] == "Non-Existent Subdomain Spoofing":

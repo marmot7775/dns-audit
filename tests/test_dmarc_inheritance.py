@@ -412,16 +412,16 @@ class TestAnomalyDetectorInheritedDmarc(unittest.TestCase):
     # --- has_mx guard on the anomaly ---
 
     def test_inherited_enforce_no_mx_no_anomaly(self):
-        """Inherited reject + no SPF but no MX: enforcement anomaly still fires
-        (has_mx does not gate rule 1, only affects some other rules)."""
+        """Inherited reject + no SPF + no MX: no anomaly. The SPF plan row
+        already gives the null SPF advice for a name with no MX, and the
+        anomaly used to recommend an include:...~all record beside it
+        (Doc 76)."""
         raw = {
             "dmarc": self._inherited_dmarc("reject"),
             "spf": {"record": None},
         }
-        # Rule 1 fires regardless of has_mx
         result = detect_anomalies(raw, has_mx=False)
-        # Rule 1 does NOT check has_mx, so it fires
-        assert _find_anomaly(result, "without SPF") is not None
+        assert _find_anomaly(result, "without SPF") is None
 
     # --- no own-record, no inherited: not present ---
 

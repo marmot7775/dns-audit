@@ -55,7 +55,9 @@ class TestDmarcWithoutSpf:
             "dmarc": {"policy": policy, "record": "v=DMARC1; p={}".format(policy)},
             "spf": {"record": spf_record},
         }
-        return detect_anomalies(raw, has_mx=False)
+        # A mail domain: with no MX the null SPF plan row speaks instead
+        # (Doc 76), so this rule only fires where MX is published.
+        return detect_anomalies(raw, has_mx=True)
 
     def test_quarantine_no_spf(self):
         result = self._base("quarantine", spf_record=None)
@@ -87,8 +89,15 @@ class TestDmarcWithoutSpf:
             "dmarc": {"policy": "reject", "record": "v=DMARC1; p=reject"},
             "spf": {"record": None, "raw_record": None},
         }
-        result = detect_anomalies(raw, has_mx=False)
+        result = detect_anomalies(raw, has_mx=True)
         assert find(result, "without SPF") is not None
+
+    def test_no_mx_no_fire(self):
+        raw = {
+            "dmarc": {"policy": "reject", "record": "v=DMARC1; p=reject"},
+            "spf": {"record": None},
+        }
+        assert find(detect_anomalies(raw, has_mx=False), "without SPF") is None
 
 
 # ---------------------------------------------------------------------------
