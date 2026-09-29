@@ -208,12 +208,13 @@ def test_the_focus_ring_is_the_primary_token_in_both_themes(browser):
 # Doc 58: no article page scrolls sideways on a phone
 # ---------------------------------------------------------------
 
-ARTICLE_PATHS = ["/articles", "/articles/dmarcbis", "/articles/dnssec", "/articles/dane"]
+ARTICLE_PATHS = ["/articles", "/articles/dmarcbis", "/articles/dnssec", "/articles/dane",
+                 "/articles/spf-lookups"]
 
 OVERFLOW_JS = """() => {
     const vw = window.innerWidth;
     const over = [...document.querySelectorAll('body *')]
-        .filter(el => !el.closest('.dbis-table-fig'))
+        .filter(el => !el.closest('.dbis-table-fig, pre'))
         .filter(el => el.getBoundingClientRect().right > vw + 1)
         .map(el => el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).split(' ').join('.') : '')
              + ' ' + Math.round(el.getBoundingClientRect().right));
@@ -225,7 +226,8 @@ OVERFLOW_JS = """() => {
 @pytest.mark.parametrize("path", ARTICLE_PATHS)
 def test_article_pages_do_not_scroll_sideways_on_a_phone(browser, path, width):
     """Doc 58: at 375 and 390 wide, /articles/dmarcbis was 519px wide. Long
-    inline code now wraps, and the changes table scrolls inside its figure."""
+    inline code now wraps, and the changes table scrolls inside its figure.
+    Doc 80: the SPF records keep their lines and scroll inside their pre."""
     ctx = browser.new_context(viewport={"width": width, "height": 800})
     page = ctx.new_page()
     page.route("**/*", _serve_static)

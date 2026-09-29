@@ -21,8 +21,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=46c4314">
-    <script src="/static/theme.js?v=46c4314"></script>
+    <link rel="stylesheet" href="/static/style.css?v=a038459">
+    <script src="/static/theme.js?v=a038459"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
@@ -54,9 +54,25 @@
                     <button type="button" class="tag tag-hit articles-filter" data-filter="dmarc" aria-pressed="false">DMARC</button>
                     <button type="button" class="tag tag-hit articles-filter" data-filter="dnssec" aria-pressed="false">DNSSEC</button>
                     <button type="button" class="tag tag-hit articles-filter" data-filter="dane" aria-pressed="false">DANE</button>
+                    <button type="button" class="tag tag-hit articles-filter" data-filter="spf" aria-pressed="false">SPF</button>
                 </div>
             </div>
             <div class="articles-list">
+                <article class="article-card article-card-spf" data-tags="spf">
+                    <div class="article-card-accent"></div>
+                    <div class="article-card-content">
+                        <div class="article-card-labels">
+                            <span class="tag">SPF</span>
+                        </div>
+                        <h2 class="article-card-title"><a href="/articles/spf-lookups">SPF permerror from too many lookups: how to get back under 10</a></h2>
+                        <p class="article-card-description">Ten lookups per check, and the order of your record decides which sender breaks. How to count, what to cut, and why flattening once by hand makes it worse.</p>
+                        <p class="article-card-meta">
+                            <time datetime="2026-09-29">September 2026</time>
+                            <span class="article-card-meta-dot">&middot;</span>
+                            10 min read
+                        </p>
+                    </div>
+                </article>
                 <article class="article-card article-card-dane" data-tags="dane">
                     <div class="article-card-accent"></div>
                     <div class="article-card-content">
@@ -106,7 +122,7 @@
             <p class="articles-empty" role="status">No articles in this category yet.</p>
         </div>
     </main>
-    <script src="/static/articles.js?v=46c4314" defer></script>
+    <script src="/static/articles.js?v=a038459" defer></script>
     <footer class="site-footer">
         <div class="container footer-inner">
             <div class="footer-left">
