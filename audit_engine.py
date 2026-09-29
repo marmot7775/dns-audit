@@ -5223,6 +5223,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 raw_results.get("dkim", {}),
                 tree_walk_result,
                 dkim_confirmed=_dkim_card.get("status") != "unavailable",
+                is_no_mail=is_defensive,
             )
         except Exception:
             log.debug("DMARC evaluation failed", exc_info=True)
@@ -5786,9 +5787,19 @@ def _build_resilience_analysis(
         c.get("name") == "DKIM" and "timed out" in (c.get("verdict") or "").lower()
         for c in checks
     )
+    # The DKIM card reads a domain with no live key and a null MX or null SPF
+    # as not applicable, and this row has to say the same. It used to say
+    # DKIM "may well be configured" beside a card reading N/A.
+    _non_mail = _positive_non_mail_signal(raw_results.get("mx"), raw_results.get("spf"))
     if not dkim_tested:
         dkim_status = "inconclusive"
         dkim_note = "DKIM check was not included in this audit scope."
+    elif _non_mail and not found_selectors:
+        dkim_status = "not_applicable"
+        dkim_note = (
+            "This domain declares that it does not send email (null MX or a null "
+            "SPF record), so it has nothing to sign. DKIM does not apply."
+        )
     elif dkim_timed_out:
         dkim_status = "inconclusive"
         dkim_note = (

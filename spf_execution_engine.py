@@ -234,7 +234,8 @@ def build_spf_execution_trace(spf_recursive_result: Dict, spf_record: Optional[s
 
 def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
                            raw_dkim: Dict, tree_walk: Optional[Dict],
-                           dkim_confirmed: bool = True) -> Optional[Dict]:
+                           dkim_confirmed: bool = True,
+                           is_no_mail: bool = False) -> Optional[Dict]:
     """
     Build a DMARC evaluation summary showing how receivers would process
     legitimate mail from this domain's authorized servers.
@@ -250,6 +251,9 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         dkim_confirmed: False when the DKIM card could not settle whether the
             domain signs (selectors cannot be enumerated). Finding no key then
             is "not confirmed", not "none".
+        is_no_mail: True for a domain that declares it sends no mail (null
+            MX or v=spf1 -all). Carried on the result so the page can leave
+            out advice that only applies to a domain that sends.
 
     Returns:
         Evaluation dict, or None if insufficient data
@@ -268,8 +272,16 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
     spf_record = raw_spf.get("record") if raw_spf else None
     spf_lookup_count = raw_spf.get("lookup_count", 0) if raw_spf else 0
 
+    # v=spf1 -all authorizes no host, so SPF cannot pass for any message.
+    # That is the right record for a domain that sends no mail, and it is not
+    # a path to DMARC pass.
+    from result_transformer import _is_null_spf
+    null_spf = _is_null_spf(spf_record)
+
     if not spf_record:
         spf_result = "none"
+    elif null_spf:
+        spf_result = "authorizes no servers"
     elif spf_lookup_count > 10:
         # Only treat as permerror when lookups genuinely exceed the RFC 7208
         # limit.  Syntax warnings (e.g. malformed but recovered records) should
@@ -352,6 +364,16 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
             f"{'redundant paths' if len(configured_methods) > 1 else 'a path'} to DMARC pass. "
             f"Based on DNS records only, not live mail testing."
         )
+    elif null_spf:
+        explanation = (
+            "SPF authorizes no servers (v=spf1 -all), which is correct for a domain "
+            "that sends no mail. "
+            + ("Whether the domain signs with DKIM could not be confirmed from DNS. "
+               if dkim_unknown else
+               "No DKIM key was found either, so no message can pass DMARC and "
+               f"the domain's policy ({policy}) applies to all mail sent in its name. ")
+            + "Based on DNS records only, not live mail testing."
+        )
     elif dkim_unknown:
         explanation = (
             "SPF is not configured in a way that can satisfy DMARC alignment, and "
@@ -376,6 +398,7 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         "policy": policy,
         "disposition": disposition,
         "explanation": explanation,
+        "no_mail": bool(is_no_mail),
     }
 
 

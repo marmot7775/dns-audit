@@ -73,4 +73,14 @@ CI-style venv run of the full suite.
 
 ## Housekeeping
 
-- Save as
+- Save as docs/history/doc-77.md, add its line to
+  docs/history/README.md.
+- Cache-bust static assets if app.js changes.
+
+## Rules
+
+- No em dashes or double hyphens in any string.
+- One commit, one PR.
+- After deploy, report /api/health version, every proposed DMARC
+  record on live bbc.co.uk and github.com (web and PDF), and the
+  proton.me readiness label and np line.

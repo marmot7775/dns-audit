@@ -1356,7 +1356,7 @@ function renderResilience(res, showRisk) {
         const sClass = info.status === 'missing' || info.status === 'broken' ? 'fail'
             : info.status === 'not_detected' || info.status === 'none'
                 || info.status === 'no_mail' ? 'warn'
-            : info.status === 'inconclusive' ? 'info' : 'pass';
+            : info.status === 'inconclusive' || info.status === 'not_applicable' ? 'info' : 'pass';
         mechHtml += `<div class="resilience-mech">
             <span class="resilience-mech-name">${escapeHtml(name.toUpperCase())}</span>
             <span class="${tagClass(sClass)}">${escapeHtml(sentenceCase(info.status))}</span>
@@ -3252,7 +3252,7 @@ function renderSpfExecution(exec) {
             <div class="se-header-row">
                 <div class="se-header">SPF Evaluation Trace</div>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc7208"
-                   target="_blank" rel="noopener">rfc7208</a>
+                   target="_blank" rel="noopener">RFC 7208</a>
             </div>`;
 
     // Intro
@@ -3318,8 +3318,11 @@ function renderSpfExecution(exec) {
 function renderDmarcEvaluation(ev) {
     if (!ev) return '';
 
+    // v=spf1 -all is the right record for a domain that sends no mail, so it
+    // gets the neutral pill, not a failure.
+    const spfNull = ev.spf_result === 'authorizes no servers';
     const spfPillClass = (ev.spf_result === 'pass' || ev.spf_result === 'configured') ? 'tag-pass'
-        : ev.spf_result === 'none' ? ''
+        : (ev.spf_result === 'none' || spfNull) ? ''
             : 'tag-fail';
     const dkimPillClass = (ev.dkim_result === 'pass' || ev.dkim_result === 'configured') ? 'tag-pass'
         : (ev.dkim_result === 'none' || ev.dkim_result === 'not confirmed') ? ''
@@ -3330,20 +3333,27 @@ function renderDmarcEvaluation(ev) {
         : ev.policy === 'quarantine' ? 'tag-warn'
             : '';
 
-    const spfAlignIcon = ev.spf_aligned ? `${ICON.pass} alignment possible` : `${ICON.fail} not configured`;
+    const spfAlignIcon = ev.spf_aligned ? `${ICON.pass} alignment possible`
+        : spfNull ? 'cannot pass'
+            : `${ICON.fail} not configured`;
     const spfAlignClass = ev.spf_aligned ? 'de-aligned' : 'de-not-aligned';
     const dkimAlignIcon = ev.dkim_aligned ? `${ICON.pass} alignment possible`
         : ev.dkim_result === 'not confirmed' ? 'not confirmed by probing'
             : `${ICON.fail} not configured`;
     const dkimAlignClass = ev.dkim_aligned ? 'de-aligned' : 'de-not-aligned';
 
-    const dispLabel = ev.disposition === 'none' ? 'no action requested'
+    // Beside an enforcing policy, a bare "no action requested" read as the
+    // policy's effect. When DMARC can pass, the disposition is what happens to
+    // passing mail, so say that.
+    const dispLabel = ev.disposition === 'none'
+        ? (ev.dmarc_result === 'configured' ? 'passing mail gets no DMARC action' : 'no action requested')
         : ev.disposition === 'quarantine' ? 'quarantined'
             : ev.disposition === 'reject' ? 'rejected'
                 : ev.disposition === 'unknown' ? 'depends on DKIM'
                     : escapeHtml(ev.disposition);
 
-    const mailingListNote = ev.policy === 'reject'
+    // A domain that sends no mail has nothing going through mailing lists.
+    const mailingListNote = ev.policy === 'reject' && !ev.no_mail
         ? `<div class="de-mailing-list-note">RFC 9989 notes that p=reject can cause delivery failures for messages sent through mailing lists or forwarding services. Consider this if your domain participates in mailing lists.</div>`
         : '';
 
@@ -3352,7 +3362,7 @@ function renderDmarcEvaluation(ev) {
             <div class="se-header-row">
                 <h4 class="se-header">DMARC Evaluation</h4>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9989"
-                   target="_blank" rel="noopener">rfc9989</a>
+                   target="_blank" rel="noopener">RFC 9989</a>
             </div>
             <div class="de-intro">${escapeHtml(ev.explanation)}</div>
             <div class="de-rows">
@@ -3401,7 +3411,7 @@ function renderReportChain(rc) {
             <div class="se-header-row">
                 <h4 class="se-header">DMARC Report Delivery Chain</h4>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9990#section-4"
-                   target="_blank" rel="noopener">rfc9990 &sect;4</a>
+                   target="_blank" rel="noopener">RFC 9990 section 4</a>
             </div>
             <div class="${introClass}">${escapeHtml(introText)}</div>
             <div class="rc-dests">`;
