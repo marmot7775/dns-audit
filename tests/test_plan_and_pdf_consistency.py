@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from result_transformer import _parse_record_tags, build_security_roadmap
+from result_transformer import RFC9989_RETIRED_TAGS, _parse_record_tags, build_security_roadmap
 from test_dmarc_grades import DOMAIN, RUA, _card, _pdf_text, _run, _zone
 
 
@@ -37,8 +37,10 @@ def test_a_policy_row_record_sets_the_tag_it_names(audit, dmarc, action, tag, wa
     row = _rows(_run(audit, dmarc))[action]
     tags = _parse_record_tags(row["record"])
     assert tags[tag] == want, row["record"]
-    # Nothing else in the record moved.
-    before = _parse_record_tags(dmarc)
+    # Nothing else in the record moved, except the tags RFC 9989 retired:
+    # every proposed record starts from the record without them (Doc 77).
+    before = {k: v for k, v in _parse_record_tags(dmarc).items()
+              if k not in RFC9989_RETIRED_TAGS}
     assert {k: v for k, v in tags.items() if k != tag} == \
         {k: v for k, v in before.items() if k != tag}
 

@@ -175,6 +175,7 @@ from result_transformer import (
     build_consistency_findings,
     _build_provider_intelligence,
     _lookup_unavailable_card,
+    RFC9989_RETIRED_TAGS,
 )
 from dns_snapshots import store_audit_snapshots, get_all_history, purge_old_snapshots
 
@@ -848,7 +849,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # np, psd, t are new; pct, rf, ri are removed from RFC 9989
     KNOWN_TAGS = {"v", "p", "sp", "np", "rua", "ruf", "adkim", "aspf", "fo", "psd", "t"}
     # Tags from RFC 7489 that RFC 9989 removes — recognize but flag
-    DEPRECATED_TAGS = {"pct", "rf", "ri"}
+    DEPRECATED_TAGS = set(RFC9989_RETIRED_TAGS)
 
     result = {
         "check": "DMARC",
@@ -2239,21 +2240,17 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
         # the apex, since no such mail can be legitimate.
         np_info["source"] = "editorial"
         np_info["spec_reference"] = None
-        if policy == "reject":
+        # An absent np falls back to sp, then p (RFC 9989 section 4.7). When
+        # that fallback already enforces there is nothing to close, and the
+        # plan row beside this calls the tag optional; this used to suggest
+        # adding it anyway. Only a fallback of none is worth a suggestion.
+        _sp = (dmarc_result.get("sp") or tags_in_record.get("sp") or "").lower()
+        _fb_tag, _fb_val = ("sp", _sp) if _sp else ("p", (policy or "").lower())
+        if _fb_val in ("reject", "quarantine"):
             np_info["recommendation"] = (
-                "Editorial recommendation (not spec-required): consider "
-                "np=reject so mail from non-existent subdomains is rejected "
-                "the same as mail at p=reject. RFC 9989 section 4.7 does not "
-                "prescribe an np value relative to p; if np is absent, the "
-                "fallback is sp then p."
-            )
-        elif policy == "quarantine":
-            np_info["recommendation"] = (
-                "Editorial recommendation (not spec-required): consider "
-                "np=reject so mail from non-existent subdomains is treated "
-                "more strictly than the apex p=quarantine. RFC 9989 section 4.7 "
-                "does not prescribe an np value; if np is absent, the "
-                "fallback is sp then p."
+                f"np is optional (RFC 9989 section 4.7). With np absent, "
+                f"non-existent subdomains fall back to {_fb_tag}={_fb_val}, so they "
+                f"already get {_fb_val}."
             )
         elif policy == "none":
             np_info["recommendation"] = (
@@ -2262,6 +2259,14 @@ def _assess_dmarcbis_readiness(dmarc_result: Dict) -> Dict:
                 "even while you keep p=none for monitoring. RFC 9989 "
                 "section 4.7 does not prescribe an np value; if np is absent, "
                 "the fallback is sp then p."
+            )
+        elif policy in ("reject", "quarantine"):
+            np_info["recommendation"] = (
+                f"Editorial recommendation (not spec-required): consider "
+                f"np={policy}. With np absent, non-existent subdomains fall back "
+                f"to {_fb_tag}={_fb_val}, which requests no action, so mail from "
+                f"a subdomain that was never created gets none. RFC 9989 section "
+                f"4.7 does not prescribe an np value."
             )
         else:
             np_info["recommendation"] = (
