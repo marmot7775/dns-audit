@@ -62,4 +62,5 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 80](doc-80.md): New article, SPF lookup limit
 - [Doc 81](doc-81.md): New article, what to check before you publish p=reject
 - [Doc 82](doc-82.md): SPF lookups article, three edits
+- [Doc 83](doc-83.md): DMARC card at p=reject with no DKIM key found
 - [Doc 84](doc-84.md): Links between the articles
