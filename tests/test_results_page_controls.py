@@ -110,7 +110,8 @@ def test_rfc_7489_mode_switches_the_header_counts(browser, audit):  # noqa: F811
 
 
 PAGES = ["/", "/about", "/privacy", "/articles/", "/articles/dmarcbis",
-         "/articles/dnssec", "/articles/dane", "/articles/spf-lookups"]
+         "/articles/dnssec", "/articles/dane", "/articles/spf-lookups",
+         "/articles/p-reject"]
 
 
 @pytest.mark.parametrize("path", PAGES)
