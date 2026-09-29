@@ -1287,6 +1287,22 @@ main {
 
 .tag-mono { font-family: var(--font-mono); }
 
+/* Inside Details a chip can hold a record value or a sentence. It wraps
+   inside itself rather than running past the panel edge; a one-line chip
+   keeps the 22px face. */
+.cd-body .tag {
+    height: auto;
+    min-height: 22px;
+    min-width: 0;
+    max-width: 100%;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    flex-shrink: 1;
+}
+
 a.tag { text-decoration: none; }
 
 /* A tag that is also a control keeps a 44px touch target around its 22px
@@ -2166,6 +2182,8 @@ h3.result-title,
     font-size: var(--font-sm);
     font-weight: 500;
     color: var(--text-primary);
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .se-counter {
@@ -2382,9 +2400,7 @@ h3.result-title,
     font-size: var(--font-sm);
     color: var(--text-primary);
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .rc-auth {
@@ -2422,7 +2438,7 @@ h3.result-title,
 @media (max-width: 640px) {
     .report-chain { padding: 1.1rem 1rem; }
     .rc-dest { gap: 0.35rem; }
-    .rc-address { font-size: var(--font-xs); max-width: 200px; }
+    .rc-address { font-size: var(--font-xs); }
     .rc-auth { margin-left: 0; width: 100%; }
 }
 
@@ -2518,6 +2534,7 @@ details.st-node {
 
 details.st-node>summary {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
     padding: 0.35rem 0.5rem;
@@ -2554,6 +2571,8 @@ details.st-node>summary:hover {
     font-size: var(--font-sm);
     font-weight: 500;
     color: var(--text-primary);
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .st-cost {
@@ -2599,6 +2618,8 @@ details.st-node>summary:hover {
 
 .st-ip {
     display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
     font-family: var(--font-mono);
     font-size: var(--font-xs);
     padding: 0.1rem 0.35rem;
@@ -3570,6 +3591,9 @@ details.st-node>summary:hover {
 
 .resilience-mech {
     display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
     align-items: center;
     gap: 0.35rem;
     font-size: var(--font-xs);
@@ -3587,6 +3611,8 @@ details.st-node>summary:hover {
 }
 
 .resilience-mech-note {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-size: var(--font-xs);
     color: var(--text-tertiary);
 }
@@ -4495,7 +4521,7 @@ input[type="search"],
 
 .as-vectors {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
 }
 
@@ -4514,6 +4540,7 @@ input[type="search"],
 
 .as-vector-header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.25rem;
@@ -4541,7 +4568,7 @@ input[type="search"],
 
 @media (max-width: 640px) {
     .as-vectors {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -5059,6 +5086,8 @@ input[type="search"],
     color: var(--text-primary);
     padding: 0.1rem 0.4rem;
     border-radius: var(--radius-sm);
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .rb-default {
@@ -5089,6 +5118,7 @@ input[type="search"],
     color: var(--text-primary);
     margin-top: 0.25rem;
     line-height: 1.45;
+    overflow-wrap: anywhere;
 }
 
 /* Per-tag warnings */
@@ -6024,15 +6054,16 @@ input[type="search"],
     font-weight: 600;
     color: var(--text-primary);
 }
+/* The summary wraps inside its own box when the header runs out of room,
+   so the whole sentence stays readable; it never ellipsizes. */
 .cd-header-count {
     color: var(--text-tertiary);
     font-size: 0.82em;
     margin-left: auto;
     padding-left: var(--space-sm);
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-align: right;
+    overflow-wrap: anywhere;
 }
 .cd-chevron {
     display: inline-flex;
@@ -7626,8 +7657,24 @@ input[type="search"],
         min-height: 44px;
     }
 
+    /* On a phone the summary takes its own line under the title. The title
+       fills the first line, so the chevron stays beside it. */
     .cd-header {
         min-height: 44px;
+        flex-wrap: wrap;
+    }
+
+    .cd-header-count {
+        order: 1;
+        flex-basis: 100%;
+        margin-left: 0;
+        padding-left: 0;
+        text-align: left;
+    }
+
+    .cd-header-title {
+        flex: 1 1 0;
+        min-width: 0;
     }
 }
 
