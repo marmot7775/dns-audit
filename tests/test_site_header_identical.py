@@ -74,6 +74,7 @@ def test_active_link_matches_the_page():
         "articles/dmarcbis.html": "Articles",
         "articles/dnssec.html": "Articles",
         "articles/spf-lookups.html": "Articles",
+        "articles/p-reject.html": "Articles",
     }
     for rel, label in expected.items():
         header = _header(os.path.join(STATIC, rel))

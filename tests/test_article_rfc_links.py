@@ -121,3 +121,23 @@ def test_spf_lookups_article_links_only_rfc_7208():
                 and "linkedin.com" not in href]
     assert external == [("https://www.rfc-editor.org/rfc/rfc7208", "RFC 7208")]
     assert set(re.findall(r"RFC\s+(\d+)", content)) == {"7208"}
+
+
+# Doc 81: the p=reject article links only the three providers' own sender
+# requirements pages, each checked at build time to say p=none is accepted,
+# and names only the RFCs its sources section lists.
+_P_REJECT_LINKS = [
+    ("https://support.google.com/a/answer/81126", "Google"),
+    ("https://senders.yahooinc.com/best-practices/", "Yahoo"),
+    ("https://support.microsoft.com/en-us/outlook/fix-ndr-error-550-5-7-515-in-outlook-com",
+     "Microsoft"),
+]
+
+
+def test_p_reject_article_links_only_the_provider_requirement_pages():
+    with open(os.path.join(ARTICLES_DIR, "p-reject.html"), encoding="utf-8") as f:
+        content = f.read()
+    article = content[content.index("<article"):content.index("</article>")]
+    assert _anchors(article) == _P_REJECT_LINKS
+    assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989", "7960", "7505",
+                                                         "8617", "7489"}
