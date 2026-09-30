@@ -31,7 +31,11 @@
         "headline": "DNSSEC in 2026: what changed and whether you need it",
         "description": "The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like.",
         "url": "https://dns-audit.com/articles/dnssec",
-        "author": { "@type": "Person", "name": "Neil Anuskiewicz" },
+        "author": { "@id": "https://dns-audit.com/about#neil" },
+        "publisher": { "@id": "https://dns-audit.com/about#neil" },
+        "mainEntityOfPage": "https://dns-audit.com/articles/dnssec",
+        "image": "https://dns-audit.com/static/og-image.png",
+        "isPartOf": { "@id": "https://dns-audit.com/#website" },
         "datePublished": "2026-04-26",
         "dateModified": "2026-09-29"
     }
@@ -64,6 +68,32 @@
                     "@type": "Answer",
                     "text": "Algorithm 13 (ECDSA P-256), automated key rollover via CDS and CDNSKEY, a continuously monitored DS record at the registrar, end-to-end chain validation tested with DNSViz or Verisign's analyzer, hosted signing rather than hand-rolled, and a KSK rollover plan that has been rehearsed."
                 }
+            }
+        ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://dns-audit.com/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Articles",
+                "item": "https://dns-audit.com/articles/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "DNSSEC in 2026: what changed and whether you need it",
+                "item": "https://dns-audit.com/articles/dnssec"
             }
         ]
     }

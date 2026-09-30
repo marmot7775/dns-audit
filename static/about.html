@@ -26,13 +26,45 @@
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "dns-audit.com",
-        "url": "https://dns-audit.com",
-        "applicationCategory": "SecurityApplication",
-        "operatingSystem": "Web",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "author": { "@type": "Person", "name": "Neil Anuskiewicz", "url": "https://www.linkedin.com/in/neilanuskiewicz/" }
+        "@graph": [
+            {
+                "@type": "WebApplication",
+                "name": "dns-audit.com",
+                "url": "https://dns-audit.com",
+                "applicationCategory": "SecurityApplication",
+                "operatingSystem": "Web",
+                "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+                "author": { "@id": "https://dns-audit.com/about#neil" }
+            },
+            {
+                "@type": "Person",
+                "@id": "https://dns-audit.com/about#neil",
+                "name": "Neil Anuskiewicz",
+                "jobTitle": "Email Deliverability and Authentication Consultant",
+                "url": "https://dns-audit.com/about",
+                "sameAs": [
+                    "https://www.linkedin.com/in/neilanuskiewicz/",
+                    "https://github.com/marmot7775"
+                ]
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": 1,
+                        "name": "Home",
+                        "item": "https://dns-audit.com/"
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 2,
+                        "name": "About",
+                        "item": "https://dns-audit.com/about"
+                    }
+                ]
+            }
+        ]
     }
     </script>
 </head>
