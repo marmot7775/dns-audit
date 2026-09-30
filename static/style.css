@@ -282,7 +282,10 @@ h3 {
 
 /* -- Base -- */
 html {
-    font-size: 16px;
+    /* Doc 87: the reader's own default size (browser or OS setting). Every
+       --font-* token is rem, so text follows it; layout tokens stay px, so
+       larger text wraps inside the same containers. */
+    font-size: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
@@ -2701,7 +2704,7 @@ details.st-node>summary:hover {
 .detail-item {
     display: flex;
     /* Wrap stays: .business-risk-callout is a third child that relies on it
-       to drop onto its own line (flex: 1 0 100%). The text span below is
+       to drop onto its own line (flex: 1 1 100%). The text span below is
        what must never wrap as a whole. */
     flex-wrap: wrap;
     align-items: flex-start;
@@ -2735,7 +2738,10 @@ details.st-node>summary:hover {
 
 /* Business impact callout (Prompt: SPF/DMARC/DKIM business_risk) */
 .business-risk-callout {
-    flex: 1 0 100%;
+    /* Grows to its own line (basis 100% plus the left margin cannot share
+       one) and may shrink: with flex-shrink 0 the margin pushed it past the
+       row by 1.5rem, which cleared the card edge only at a 16px root (Doc 87). */
+    flex: 1 1 100%;
     margin: 0.4rem 0 0.1rem 1.5rem;
     padding: 0.5rem 0.75rem;
     border-left: 3px solid var(--warn);
