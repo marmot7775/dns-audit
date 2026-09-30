@@ -144,7 +144,24 @@ def test_no_component_sets_a_literal_font_size_outside_the_token_scale():
     assert offenders == [], offenders
 
 
-def test_root_type_size_is_16px():
+def test_root_type_size_is_a_percentage():
+    """Doc 87: the root size inherits the reader's default (100% of it). A
+    pixel value overrides a reader who set a larger default text size."""
     css = _css()
-    m = re.search(r"html \{[^}]*font-size:\s*(\d+)px", css)
-    assert m and m.group(1) == "16", m.group(0) if m else "no html font-size"
+    m = re.search(r"(?m)^html \{[^}]*?font-size:\s*([0-9.]+)(%|px|rem|em)\s*;", css)
+    assert m, "no html font-size"
+    assert m.group(2) == "%", m.group(0)
+
+
+def test_type_is_rem_and_layout_is_px():
+    """Doc 87: text scales with the reader's setting, containers do not, so a
+    larger default gives larger text in the same layout, not a wider page."""
+    root = re.search(r":root\s*\{([^}]*)\}", _css()).group(1)
+    tokens = dict(re.findall(r"(--[\w-]+):\s*([^;]+);", root))
+    sizes = {k: v for k, v in tokens.items()
+             if k.startswith("--font-") and re.match(r"[0-9.]", v)}
+    assert sizes and all(v.endswith("rem") for v in sizes.values()), sizes
+    layout = {k: v for k, v in tokens.items()
+              if k.startswith("--space-") or k == "--max-width"}
+    assert "--max-width" in layout and all(v.strip().endswith("px") for v in layout.values()), layout
+
