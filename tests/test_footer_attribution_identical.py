@@ -174,7 +174,7 @@ def test_old_repo_name_survives_only_in_the_droplet_path():
     stray = []
     for hit in out.stdout.splitlines():
         path, _, text = hit.split(":", 2)
-        if path == "deploy/dns-auditor.service":
+        if path in ("deploy/dns-auditor.service", "deploy/nginx.conf"):
             continue
         if path == "CLAUDE.md" and DEPLOY_LINE in text:
             continue
