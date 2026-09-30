@@ -1,7 +1,8 @@
 """The ?v= on the versioned assets names a commit at or after their last change.
 
-nginx serves /static/ with a seven day expiry and Cache-Control immutable, so
-a browser or Cloudflare that holds style.css?v=X never asks for it again
+nginx (deploy/nginx.conf) serves a /static/ request that carries ?v= with a
+seven day expiry and Cache-Control immutable; one without ?v= gets a one hour
+max-age and must-revalidate. So a browser or Cloudflare that holds style.css?v=X never asks for it again
 while X stays the same. The only thing that moves X is the cache-bust loop in
 CLAUDE.md, run by hand after the commit that changes an asset. Skipping it
 used to pass every test and ship a stylesheet that returning visitors would
