@@ -5,7 +5,9 @@ The privacy page says the client IP is never written anywhere. Sentry is
 the one place that could quietly break that: its SDK attaches request
 headers, stack frame locals and log breadcrumbs to every event, and its
 default scrubbing misses CF-Connecting-IP, User-Agent, and this code's own
-client_ip locals and "ip=" log lines.
+client_ip locals and "ip=" log lines. The URL is personal data too: the
+domain field takes whatever is typed, so "alice@example.com" is audited as
+example.com but sits whole in the query string or the PDF path.
 
 The end-to-end test runs in a subprocess because the FastAPI integration
 wraps route handlers when the routes are registered, so Sentry has to be
@@ -29,6 +31,7 @@ REPO = os.path.join(os.path.dirname(__file__), "..")
 
 VISITOR_IP = "203.0.113.77"
 VISITOR_UA = "Mozilla/5.0 (X11; Linux x86_64) SentryProbe/9.9"
+TYPED_DOMAIN = "alice.probe@example.com"
 
 _SCRIPT = textwrap.dedent(f"""
     import json, sys
@@ -57,20 +60,20 @@ _SCRIPT = textwrap.dedent(f"""
     server.run_full_audit = boom
 
     client = TestClient(server.app)
-    r = client.get(
-        "/api/audit",
-        params={{"domain": "example.com"}},
-        headers={{
+    headers = {{
             "X-Real-IP": "{VISITOR_IP}",
             "CF-Connecting-IP": "{VISITOR_IP}",
             "True-Client-IP": "{VISITOR_IP}",
             "User-Agent": "{VISITOR_UA}",
             "Referer": "https://forum.example.net/private/thread/42",
             "Cookie": "session=abc",
-        }},
-    )
+    }}
+    statuses = [
+        client.get("/api/audit", params={{"domain": "{TYPED_DOMAIN}"}}, headers=headers).status_code,
+        client.get("/api/audit/{TYPED_DOMAIN}/pdf", headers=headers).status_code,
+    ]
     sentry_sdk.flush()
-    json.dump({{"status": r.status_code, "events": events}}, sys.stdout)
+    json.dump({{"statuses": statuses, "events": events}}, sys.stdout)
 """)
 
 
@@ -92,33 +95,36 @@ def test_no_dsn_means_no_sentry(monkeypatch):
     assert not sentry_sdk.get_client().is_active()
 
 
-def test_error_event_carries_no_visitor_data(tmp_path):
+def test_error_events_carry_no_visitor_data(tmp_path):
     result = _run_with_sentry(tmp_path)
     events = result["events"]
-    assert events, "the failed audit should have produced a Sentry event"
+    # One from the JSON audit, one from the PDF route's failed audit.
+    assert len(events) >= 2, result
 
-    event = events[0]
-    blob = json.dumps(event)
+    for event in events:
+        blob = json.dumps(event)
 
-    # The event is still useful: the exception, the route, the domain.
-    assert "engine exploded" in blob
-    assert "example.com" in blob
+        # The event is still useful: the exception, the route, the domain
+        # as audited.
+        assert "engine exploded" in blob
+        assert "example.com" in blob
+        assert event.get("transaction", "").startswith("/api/audit")
 
-    # And it holds nothing about who asked.
-    assert VISITOR_IP not in blob
-    assert "SentryProbe" not in blob
-    assert "forum.example.net" not in blob
-    assert "session=abc" not in blob
-    assert "user" not in event
-    request = event.get("request", {})
-    assert set(request) <= {"method", "url", "query_string"}
-    assert not any(
-        crumb.get("category") == "dns-auditor"
-        for crumb in event.get("breadcrumbs", {}).get("values", [])
-    ), "INFO log lines carry the client IP and must not become breadcrumbs"
+        # And it holds nothing about who asked, or what they typed.
+        assert VISITOR_IP not in blob
+        assert "SentryProbe" not in blob
+        assert "forum.example.net" not in blob
+        assert "session=abc" not in blob
+        assert "alice.probe" not in blob
+        assert "user" not in event
+        assert set(event.get("request", {})) <= {"method"}
+        assert not any(
+            crumb.get("category") == "dns-auditor"
+            for crumb in event.get("breadcrumbs", {}).get("values", [])
+        ), "INFO log lines carry the client IP and must not become breadcrumbs"
 
 
-def test_before_send_keeps_only_method_url_query():
+def test_before_send_keeps_only_the_method():
     event = {
         "request": {
             "method": "GET",
@@ -131,9 +137,5 @@ def test_before_send_keeps_only_method_url_query():
         "user": {"ip_address": VISITOR_IP},
     }
     out = server_module._sentry_before_send(event, {})
-    assert out["request"] == {
-        "method": "GET",
-        "url": "https://dns-audit.com/api/audit",
-        "query_string": "domain=example.com",
-    }
+    assert out["request"] == {"method": "GET"}
     assert "user" not in out

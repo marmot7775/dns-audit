@@ -338,14 +338,25 @@ def _sentry_before_send(event, hint):
     The SDK scrubs some headers when send_default_pii is off, but not
     CF-Connecting-IP, True-Client-IP or User-Agent, which Cloudflare and
     browsers send on every request. Drop every header, cookie and env value
-    instead of trying to list them all. The URL and query string stay: they
-    carry the domain and scope, which the audit log already records.
+    instead of trying to list them all.
+
+    The URL and query string go too. They hold the domain as typed, before
+    normalize_domain: "alice@example.com" is audited as example.com but
+    would reach Sentry whole. The route template (the event's transaction)
+    and the normalized domain in the log message say what failed.
     """
     request = event.get("request")
     if request:
-        event["request"] = {
-            k: request[k] for k in ("method", "url", "query_string") if k in request
-        }
+        event["request"] = {"method": request["method"]} if "method" in request else {}
+
+    # Framework frames (Starlette, FastAPI, anyio) hold the ASGI scope and
+    # the raw path under names no denylist can keep up with. Their locals
+    # rarely help debug this app, so only this app's own frames keep theirs,
+    # and those are scrubbed by name above.
+    for exc in (event.get("exception") or {}).get("values") or []:
+        for frame in (exc.get("stacktrace") or {}).get("frames") or []:
+            if not frame.get("in_app"):
+                frame.pop("vars", None)
     event.pop("user", None)
     return event
 
