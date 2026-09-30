@@ -66,3 +66,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 84](doc-84.md): Links between the articles
 - [Doc 85](doc-85.md): Two copy fixes on live articles
 - [Doc 86](doc-86.md): Link audit findings to the articles
+- [Doc 87](doc-87.md): Root type size inherits the reader's setting
