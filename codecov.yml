@@ -1,0 +1,13 @@
+# Coverage is reported on every PR but never blocks one. The tests CI job is
+# the merge gate; these statuses are for reading, not gating.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+comment:
+  layout: "condensed_header, diff, files"
+  require_changes: true
