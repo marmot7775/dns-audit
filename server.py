@@ -52,7 +52,7 @@ from config import (
     RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX_IPS,
     MAX_CONCURRENT_AUDITS, CORS_ORIGINS,
     DOMAIN_PATTERN, SELECTOR_PATTERN,
-    TRUSTED_PROXY_IPS, BUILD_SHA,
+    TRUSTED_PROXY_IPS, BUILD_SHA, ENVIRONMENT,
 )
 from dns_tools import normalize_domain
 from ua_classify import is_bot, ua_summary
@@ -316,6 +316,77 @@ def _log_audit(request: Request, domain: str, scope: str,
         audit_logger.info(json.dumps(entry))
     except Exception as e:
         log.warning("Audit log write failed: %s", e)
+
+
+# ============================================================
+# Error reporting (Sentry)
+# ============================================================
+
+# Local variable names that hold a visitor's IP, user agent or referer in
+# this codebase, plus the Starlette request and ASGI scope, whose reprs
+# include every header. Sentry captures locals on every stack frame, and its
+# own denylist knows none of these names.
+_SENTRY_PII_VARS = [
+    "client_ip", "ip", "ua", "ua_raw", "ref", "user_agent",
+    "request", "scope", "headers",
+]
+
+
+def _sentry_before_send(event, hint):
+    """Keep only what a stack trace needs from the request.
+
+    The SDK scrubs some headers when send_default_pii is off, but not
+    CF-Connecting-IP, True-Client-IP or User-Agent, which Cloudflare and
+    browsers send on every request. Drop every header, cookie and env value
+    instead of trying to list them all. The URL and query string stay: they
+    carry the domain and scope, which the audit log already records.
+    """
+    request = event.get("request")
+    if request:
+        event["request"] = {
+            k: request[k] for k in ("method", "url", "query_string") if k in request
+        }
+    event.pop("user", None)
+    return event
+
+
+def _init_sentry() -> bool:
+    """Start Sentry when SENTRY_DSN is set. Tests, CI and local runs leave it
+    unset, and then nothing is sent anywhere."""
+    dsn = os.getenv("SENTRY_DSN", "").strip()
+    if not dsn:
+        return False
+
+    import sentry_sdk
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    from sentry_sdk.scrubber import (
+        DEFAULT_DENYLIST,
+        DEFAULT_PII_DENYLIST,
+        EventScrubber,
+    )
+
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=ENVIRONMENT,
+        release=BUILD_SHA,
+        send_default_pii=False,
+        event_scrubber=EventScrubber(
+            denylist=DEFAULT_DENYLIST + DEFAULT_PII_DENYLIST + _SENTRY_PII_VARS,
+            recursive=True,
+        ),
+        before_send=_sentry_before_send,
+        # The audit handlers catch their exceptions and log.error them with
+        # exc_info, so ERROR records are the events. No INFO breadcrumbs:
+        # the "Audit requested" lines carry the client IP.
+        integrations=[LoggingIntegration(level=None, event_level=logging.ERROR)],
+        traces_sample_rate=None,
+    )
+    log.info("Sentry error reporting enabled (environment=%s, release=%s)",
+             ENVIRONMENT, BUILD_SHA)
+    return True
+
+
+_init_sentry()
 
 
 # ============================================================
