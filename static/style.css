@@ -3448,7 +3448,7 @@ details.st-node>summary:hover {
     }
 
     .st-seg-group {
-        min-width: 220px;
+        min-width: min(220px, 100%);
     }
 
     .spfd-mechs {
