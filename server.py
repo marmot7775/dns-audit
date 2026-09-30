@@ -381,6 +381,8 @@ def _init_sentry() -> bool:
         integrations=[LoggingIntegration(level=None, event_level=logging.ERROR)],
         traces_sample_rate=None,
     )
+    log.info("Sentry error reporting enabled (environment=%s, release=%s)",
+             ENVIRONMENT, BUILD_SHA)
     return True
 
 
