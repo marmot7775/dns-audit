@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Codecov upload authenticates with GitHub OIDC, so no token secret.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -26,7 +30,14 @@ jobs:
       - name: Install Chromium for the browser tests
         run: python -m playwright install --with-deps chromium
       - name: Run tests
-        run: python -m pytest tests/ -v
+        run: python -m pytest tests/ -v --cov --cov-report=xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage.xml
+          # A Codecov outage should not block a merge.
+          fail_ci_if_error: false
 
   security:
     runs-on: ubuntu-latest

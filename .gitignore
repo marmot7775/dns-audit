@@ -75,6 +75,7 @@ config.toml
 # Test / coverage
 .coverage
 htmlcov/
+coverage.xml
 .pytest_cache/
 .ruff_cache/
 .tox/
