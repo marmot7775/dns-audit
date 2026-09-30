@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history: test_asset_version_is_current compares the ?v= commit
+          # with the last commit that touched the versioned assets.
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
