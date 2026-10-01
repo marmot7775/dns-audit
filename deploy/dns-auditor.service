@@ -19,11 +19,13 @@ Environment="PATH=/home/DEPLOY_USER/.venv/bin"
 #
 # --host 127.0.0.1 is also deliberate: nginx terminates TLS in front of this
 # and proxies to loopback, so the app must never accept connections directly.
-# --proxy-headers is deliberately absent; see _get_client_ip in server.py.
+# --proxy-headers --forwarded-allow-ips 127.0.0.1 are uvicorn's defaults,
+# named so an environment variable cannot widen them. Only nginx on loopback
+# is trusted; see _get_client_ip in server.py.
 # --no-access-log: uvicorn's access log prints the client address of every
 # request to stdout, which journald and syslog keep on disk. The privacy page
 # says the application writes the IP to no file.
-ExecStart=/home/DEPLOY_USER/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000 --no-access-log
+ExecStart=/home/DEPLOY_USER/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
 Restart=always
 RestartSec=3
 LimitNOFILE=65535

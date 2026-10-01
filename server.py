@@ -439,9 +439,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     frame-ancestors 'none'.
 
     Strict-Transport-Security is not here either. It used to be gated on
-    request.url.scheme == "https", which can never be true: uvicorn runs
-    without --proxy-headers (see _get_client_ip for why that matters), so
-    behind nginx the scheme is always http and the branch was dead. The HSTS
+    request.url.scheme == "https". That scheme comes from nginx's
+    X-Forwarded-Proto through uvicorn's proxy headers (see _get_client_ip),
+    so it says nothing about the visitor's connection to the edge. The HSTS
     header users actually receive comes from the edge. If this app ever needs
     to send its own, gate it on a config value, not on the scheme.
     """
@@ -556,15 +556,24 @@ def _get_client_ip(request: Request) -> str:
     Client-sent headers like CF-Connecting-IP and X-Forwarded-For
     are NOT trusted directly (trivially spoofable for rate limit bypass).
 
-    DO NOT add --proxy-headers to the uvicorn command line. This whole
-    check depends on it being absent. With the flag off, request.client.host
-    is nginx's loopback address, which is exactly the "is the direct peer a
-    trusted proxy" test above. With the flag on, uvicorn rewrites
-    request.client.host from X-Forwarded-For before this function ever runs,
-    so peer_ip becomes an attacker-supplied value, it stops matching
-    TRUSTED_PROXY_IPS, and the rate limiter's trust model is gone. The one
-    thing the flag looks like it would fix, request.url.scheme being http
-    behind nginx, is not worth that: see SecurityHeadersMiddleware.
+    uvicorn's proxy headers are ON. They are uvicorn's default, and the
+    unit file names them explicitly with --forwarded-allow-ips 127.0.0.1.
+    An earlier version of this docstring said they were off; they never
+    were. With them on, uvicorn rewrites request.client.host from
+    X-Forwarded-For before this function runs, but only for a connection
+    from 127.0.0.1, and it takes the rightmost address that is not a
+    trusted proxy. nginx appends $remote_addr, which real_ip has already set
+    from CF-Connecting-IP, so that rightmost address is the visitor's real
+    IP and anything a client puts in its own X-Forwarded-For sits to the
+    left of it and is ignored. peer_ip is then the visitor, which is not in
+    TRUSTED_PROXY_IPS, so the X-Real-IP branch is skipped and the same
+    address comes back. A direct connection from anywhere but loopback gets
+    no rewriting at all. tests/test_proxy_headers_trust.py pins both.
+
+    Turning the headers off would not change the IP this returns (nginx's
+    X-Real-IP carries the same address), but it would make request.url
+    http, and Starlette's trailing-slash redirects would then send visitors
+    to http:// URLs. Leave them on.
     """
     peer_ip = request.client.host if request.client else None
     real_ip = request.headers.get("X-Real-IP")
