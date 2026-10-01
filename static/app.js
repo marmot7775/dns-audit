@@ -825,7 +825,7 @@ function renderResults(data) {
         defensiveCard.className = 'defensive-dns-card';
         defensiveCard.innerHTML = `
             <div class="defensive-header">Defensive DNS Detected</div>
-            <div class="defensive-body">This domain publishes records that say it does not handle email. The signals below show which directions are closed. Publishing them is a security best practice for non-mail domains.</div>
+            <div class="defensive-body">This domain publishes records that close some or all of its email directions. The signals below show which. Publishing them is a security best practice for domains that do not send or receive mail.</div>
             <div class="defensive-signals">${signalHtml}</div>
         `;
         resultsList.parentNode.insertBefore(defensiveCard, resultsList);
@@ -1455,9 +1455,10 @@ function _reportChainSummary(rc) {
     const dests = (rc && rc.report_destinations) || [];
     if (!dests.length) return '';
     const unauthorized = dests.filter(d => d.authorized === false).length;
-    return unauthorized > 0
-        ? `${_count(dests.length, 'destination')}, ${unauthorized} not authorized`
-        : `${_count(dests.length, 'destination')}, no authorization failures`;
+    const unconfirmed = dests.filter(d => d.authorization_check_failed).length;
+    if (unauthorized > 0) return `${_count(dests.length, 'destination')}, ${unauthorized} not authorized`;
+    if (unconfirmed > 0) return `${_count(dests.length, 'destination')}, ${unconfirmed} not confirmed`;
+    return `${_count(dests.length, 'destination')}, no authorization failures`;
 }
 
 function _spfExecutionSummary(exec) {
@@ -3406,10 +3407,13 @@ function renderReportChain(rc) {
 
     const dests = rc.report_destinations;
     const hasUnauthorized = dests.some(d => d.authorized === false);
-    const introClass = hasUnauthorized ? 'rc-intro rc-intro-warn' : 'rc-intro';
+    const hasUnconfirmed = dests.some(d => d.authorization_check_failed);
+    const introClass = (hasUnauthorized || hasUnconfirmed) ? 'rc-intro rc-intro-warn' : 'rc-intro';
     const introText = hasUnauthorized
         ? 'One or more external report destinations are not authorized. Reports to those addresses will be silently dropped.'
-        : 'No report destination failed the RFC 9990 authorization check.';
+        : hasUnconfirmed
+            ? 'The authorization lookup for one or more external report destinations did not finish, so they are not confirmed. Run the audit again.'
+            : 'No report destination failed the RFC 9990 authorization check.';
 
     let html = `
         <div class="report-chain rc-animated">

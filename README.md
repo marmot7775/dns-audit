@@ -16,7 +16,7 @@ dns-audit.com audits a domain's DNS and email security: enter a domain and get p
 |-------|-------------|
 | **DMARC + RFC 9989** | Validation against RFC 9989 and against RFC 7489, side by side, with a per-tag decoder, dangerous-combination detection, and the DNS Tree Walk of [RFC 9989 Section 4.10](https://www.rfc-editor.org/rfc/rfc9989.html#section-4.10) for hierarchical policy discovery. |
 | **SPF** | Syntax validation, mechanism analysis, recursive evaluation with full lookup chain tracing, void lookup detection, and vendor-labeled include tree visualization. Flags `+all`, `?all`, missing `all`, `redirect`+`all` conflicts, deprecated `ptr`, overly broad CIDRs, and invalid IPs. |
-| **DKIM** | Selector discovery from a list of about 1,100 known selectors. Up to 40 are tried first, chosen from vendors detected in SPF and MX, and a sweep of 156 common names runs only when those find nothing. Key strength analysis for RSA (1024/2048/4096) and Ed25519. Direct lookup of user-supplied selectors. Wildcard DNS detection prevents false positives. |
+| **DKIM** | Selector discovery from a list of about 1,100 known selectors. When SPF or MX names a vendor, up to 40 selectors chosen for it are tried first; otherwise the list's first entries are. A sweep of up to 156 more common names runs only when those find nothing, and stops early once keys are found. Key strength analysis for RSA (1024/2048/4096) and Ed25519. Direct lookup of user-supplied selectors. Wildcard DNS detection prevents false positives. |
 
 ### Mail and Transport
 
