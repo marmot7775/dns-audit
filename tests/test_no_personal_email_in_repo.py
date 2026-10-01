@@ -34,7 +34,8 @@ _FIXTURE = "user" + "@" + "gmail" + ".com"
 # the results note in app.js, and the doc that asked for it. Doc 51 added
 # SECURITY.md as a private reporting channel, and its own doc names it.
 # Doc 88 added a mailbox note under Accounts on the privacy page (a file
-# already listed), and its doc names it.
+# already listed), and its doc names it. Doc 90 put it in the About page
+# body and a second results note (both files already listed); its doc names it.
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
 ALIAS_FILES = (
     "static/index.html",
@@ -51,6 +52,7 @@ ALIAS_FILES = (
     "docs/history/doc-41.md",
     "docs/history/doc-51.md",
     "docs/history/doc-88.md",
+    "docs/history/doc-90.md",
     "SECURITY.md",
 )
 
