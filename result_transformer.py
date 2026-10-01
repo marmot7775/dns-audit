@@ -36,6 +36,16 @@ from dmarc_tree_walk import _psl_org_domain, _tld_extract
 # record builder and the migration path. Each used to carry its own copy.
 RFC9989_RETIRED_TAGS = ("pct", "rf", "ri")
 
+# Doc 92: the status pill words. One vocabulary for the card pills, the
+# default pills audit_engine fills in, and the PDF. "Pass", "Not checked"
+# and "Not confirmed" are unchanged and stay literal where they are set.
+PILL_PASS = "Pass"
+PILL_WARN = "Could be stronger"
+PILL_FAIL = "Needs fixing"
+PILL_ABSENT = "Optional, not set up"
+PILL_NOT_APPLICABLE = "Does not apply"
+PILL_NULL_MX = "No mail, by design"
+
 
 # ============================================================
 # What each check is
@@ -115,16 +125,39 @@ WHAT_THIS_IS = {
 }
 
 
+# Doc 92: the card title a reader sees. The plain name comes first and the
+# protocol stays in parentheses, so the term is still there to search for.
+# `name` is unchanged: ids, tests and the frontend key on it.
+PLAIN_NAMES = {
+    "DMARC": "Spoofing policy (DMARC)",
+    "SPF": "Approved senders (SPF)",
+    "DKIM": "Email signatures (DKIM)",
+    "MX Records": "Where your mail arrives (MX)",
+    "Nameservers": "DNS servers (nameservers)",
+    "MTA-STS": "Encryption for incoming mail (MTA-STS)",
+    "TLS-RPT": "Encryption failure reports (TLS-RPT)",
+    "BIMI": "Logo in inboxes (BIMI)",
+    "DNSSEC": "Signed DNS answers (DNSSEC)",
+    "CAA": "Who can issue your web certificates (CAA)",
+    "DANE": "Mail server certificate check (DANE)",
+    "Certificate Transparency": "Certificates issued for your domain (CT logs)",
+}
+
+
 def attach_what_this_is(checks: List[Dict]) -> List[Dict]:
-    """Stamp every card with its WHAT_THIS_IS line, in place.
+    """Stamp every card with its WHAT_THIS_IS line and its plain_name, in place.
 
     Called once on the finished list so no individual transform_* function
-    has to remember to do it. A name the dict does not carry is left alone.
+    has to remember to do it. A name WHAT_THIS_IS does not carry gets no
+    line. Every card gets a plain_name; a name PLAIN_NAMES does not carry
+    falls back to the name itself.
     """
     for check in checks:
-        text = WHAT_THIS_IS.get(check.get("name"))
+        name = check.get("name")
+        text = WHAT_THIS_IS.get(name)
         if text:
             check["what_this_is"] = text
+        check["plain_name"] = PLAIN_NAMES.get(name, name or "")
     return checks
 
 
@@ -399,6 +432,19 @@ def _spoofing_detail(vectors: List[Dict]) -> str:
     return "Every spoofing vector protected"
 
 
+# Doc 92: the attack surface vectors as a reader would name them, for the
+# verdict sentence. The panel keeps its own names.
+_ROUTE_NAMES = {
+    "Direct Domain Spoofing": "your exact domain",
+    "Subdomain Spoofing": "your subdomains",
+    "Non-Existent Subdomain Spoofing": "made-up subdomains",
+}
+
+
+def _route_name(vector_name: str) -> str:
+    return _ROUTE_NAMES.get(vector_name, vector_name.lower())
+
+
 def build_executive_summary(checks: List[Dict], roadmap: Dict,
                             is_no_mail: bool = False) -> Dict:
     """Build the executive summary card shown at the very top of results.
@@ -510,7 +556,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     # (no inbound) and a null SPF record (no outbound), plus p=reject. One of
     # them alone can sit beside working mail in the other direction.
     _statuses = [c.get("status") for c in checks]
-    _null_mx = check_map.get("MX Records", {}).get("pill_label") == "Null MX"
+    _null_mx = check_map.get("MX Records", {}).get("pill_label") == PILL_NULL_MX
     _null_spf = (check_map.get("SPF", {}).get("record") or "").strip().lower() == "v=spf1 -all"
     _defensive_clean = (is_no_mail and _null_mx and _null_spf
                         and _eff_policy == "reject" and "fail" not in _statuses)
@@ -564,12 +610,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     elif dmarc_status == "fail" and dmarc.get("pill_label") == "Missing":
         if spf_check.get("pill_label") == "Missing":
             verdict = (
-                "Your domain publishes neither an SPF record nor a DMARC record. "
-                "Receivers have no way to tell your mail from mail that only claims "
-                "to be yours, and no policy to apply when it fails."
+                "Your domain is missing the two records that let receivers tell your "
+                "real mail from forgeries (SPF and DMARC)."
             )
         else:
-            verdict = "Your domain has no DMARC record. SPF alone cannot prevent email spoofing."
+            verdict = ("Your domain does not tell receivers what to do with mail that "
+                       "pretends to be from you (no DMARC record).")
     elif dmarc_status == "fail" and dmarc.get("multiple_records"):
         # Receivers discard every record when there is more than one, so
         # neither record's p= is the policy and none of the branches below,
@@ -578,8 +624,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             f"Your domain publishes {len(dmarc['multiple_records'])} DMARC records, so "
             "receivers ignore them all and apply no DMARC policy."
         )
-    elif health_status == "monitoring" and _eff_policy in (None, "none"):
-        verdict = "Your domain is monitoring email authentication but not yet enforcing it. This requests no action from receivers, who each decide independently what to do with mail that fails."
+    elif ((health_status == "monitoring" and _eff_policy in (None, "none"))
+          or (health_status == "attention" and _eff_policy == "none")):
+        # p=none with or without rua. Without rua the health verdict is
+        # "attention", and the sentence is the same: nothing is requested.
+        verdict = ("Your domain does not yet ask receivers to block mail that pretends "
+                   "to be from you (DMARC p=none). Each receiver decides on its own.")
     elif _broken_auth and exposed_count == 0:
         # Every branch below this one reads the DMARC policy alone and can
         # call the domain fully or strongly protected, which a broken record
@@ -600,19 +650,32 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # An inherited name's readiness is the parent record's, and the
         # improvements it names are made at the parent, not here.
         if health_status == "ready" or _inherited_from:
-            verdict = "Spoofing of this domain is blocked at every level checked."
+            verdict = ("Receivers are asked to refuse mail that pretends to be from this "
+                       "domain or its subdomains.")
         else:
-            verdict = "Your domain blocks spoofed email across all vectors, with minor improvements available."
+            verdict = ("Receivers are asked to refuse mail that pretends to be from this "
+                       "domain. A few smaller improvements are listed below.")
     elif protected_count >= 3 and exposed_count == 0:
-        verdict = "Your domain has strong email authentication with most attack vectors covered."
+        verdict = ("Receivers are asked to block most forged mail from this domain. "
+                   "One route is only partly covered.")
     elif exposed_count >= 2:
-        verdict = "Several routes to spoofing this domain are open."
+        _open = _join_names([_route_name(v["name"]) for v in vectors
+                             if v.get("status") == "exposed"])
+        verdict = (f"Your settings do not ask receivers to block forged mail sent as "
+                   f"{_open}. Each receiver decides on its own.")
     elif exposed_count == 1:
         weakest = [v for v in vectors if v.get("status") == "exposed"]
-        vec_name = weakest[0]["name"].lower() if weakest else "one vector"
-        verdict = f"Your domain has email authentication, but {vec_name} is still open."
+        _route = _route_name(weakest[0]["name"]) if weakest else "one route"
+        verdict = f"Your settings block most forged mail, but not {_route}."
     elif partial_count > 0:
-        verdict = "Your domain partially blocks spoofed email but enforcement could be stronger."
+        if _eff_policy == "quarantine":
+            verdict = ("Receivers are asked to send forged mail to spam rather than "
+                       "refuse it (p=quarantine).")
+        else:
+            _weak = _join_names([_route_name(v["name"]) for v in vectors
+                                 if v.get("status") == "partial"])
+            verdict = (f"Receivers are asked to block forged mail, but the request is "
+                       f"weaker for {_weak}.")
     else:
         verdict = "Your domain has email authentication configured."
 
@@ -627,7 +690,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         cw = tb.get("config_warnings", [])
         has_no_rua = any(w.get("title") == "No aggregate reporting" for w in cw)
         if has_no_rua:
-            verdict = "Your domain blocks spoofed email but has no visibility into what is being blocked."
+            verdict = ("Receivers are asked to block forged mail, but you get no reports on "
+                       "what they block or whether your own mail passes.")
 
     # ── Part 2: Three key metrics ────────────────────────────
 
@@ -686,18 +750,21 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         "compatible": ("Compatible", "blue"),
         "monitoring": ("In progress", "amber"),
         "attention": ("In progress", "amber"),
-        "misconfigured": ("Action needed", "red"),
+        "misconfigured": ("Edits suggested", "red"),
     }
     if dmarc_unassessed:
-        # "Action needed" would be advice drawn from a record never read.
+        # "Edits suggested" would be advice drawn from a record never read.
         rd_label, rd_color = "Not assessed", "neutral"
     elif health_status and health_status in readiness_map:
         rd_label, rd_color = readiness_map[health_status]
     else:
-        rd_label, rd_color = "Action needed", "red"
+        # Doc 92: "Edits suggested" replaced "Action needed". With no record
+        # at all there is nothing to edit, so that case says so.
+        rd_label = "No record" if dmarc.get("pill_label") == "Missing" else "Edits suggested"
+        rd_color = "red"
 
     # Same rule as the spoofing tile: red belongs to a DMARC card that fails.
-    # A published record the card grades amber cannot read "Action needed" in
+    # A published record the card grades amber cannot read "Edits suggested" in
     # red beside it.
     if rd_color == "red" and dmarc_status != "fail":
         rd_label, rd_color = "In progress", "amber"
@@ -793,7 +860,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             biggest_risk = top.get("action") or top.get("impact", "")
             biggest_risk_detail = top.get("impact", "") if top.get("action") else ""
         elif roadmap_items:
-            biggest_risk = "No urgent risks found. The plan below names smaller improvements."
+            biggest_risk = "Nothing urgent. The plan has smaller improvements."
             biggest_risk_detail = ""
         else:
             # An empty roadmap hides the Priorities list, so the sentence above
@@ -801,6 +868,16 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             # so an empty one means nothing that was assessed needs fixing.
             biggest_risk = "Nothing to fix. Every check the audit could assess passed."
             biggest_risk_detail = ""
+
+    # Doc 92: "Do these first", the top of the plan in plain words. Taken in
+    # plan order from rows that are neither optional extras nor low priority,
+    # so it is empty when nothing is urgent.
+    do_first = [
+        {"plain_head": i.get("plain_head", ""), "title": i.get("action", ""),
+         "priority": i.get("priority"), "protocol": i.get("protocol")}
+        for i in roadmap_items
+        if not i.get("optional") and i.get("priority") != "low"
+    ][:3]
 
     # ── Part 4: has_record_builder flag ──────────────────────
     has_record_builder = dmarc.get("record_builder") is not None
@@ -952,6 +1029,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         "biggest_risk": biggest_risk,
         "biggest_risk_detail": biggest_risk_detail,
         "biggest_risk_severity": biggest_risk_severity,
+        "do_first": do_first,
         "has_record_builder": has_record_builder,
         "deliverability_summary": deliverability_summary,
     }
@@ -1049,6 +1127,81 @@ def _pct_kept_note(record: Optional[str]) -> Optional[str]:
             f"leave it out here too.")
 
 
+# ── Doc 92: plain row heads and who makes the change ──────
+# Every plan row carries a plain_head (the consequence, in plain words, shown
+# above the row's action) and a who (the party that would make the change).
+# The action, impact and record fields are unchanged.
+WHO_DNS_HOST = "Your DNS host"
+WHO_EMAIL_PROVIDER = "Your email provider"
+WHO_EMAIL_PLATFORM = "Your email platform"
+WHO_MAIL_SERVER = "Whoever manages your mail server"
+WHO_REPORT_RECEIVER = "The report receiver"
+ROADMAP_WHO = (WHO_DNS_HOST, WHO_EMAIL_PROVIDER, WHO_EMAIL_PLATFORM,
+               WHO_MAIL_SERVER, WHO_REPORT_RECEIVER)
+
+# Who makes the change for a row built from a card's own fix text.
+_ROW_WHO = {
+    "DKIM": WHO_EMAIL_PROVIDER,
+    "MTA-STS": WHO_MAIL_SERVER,
+    "DANE": WHO_MAIL_SERVER,
+}
+
+# The plain head for a row built from a card's own fix text, by card status.
+_FALLBACK_HEADS = {
+    "DMARC": ("Your spoofing policy has a problem that needs fixing.",
+              "Your spoofing policy works but could be stronger."),
+    "SPF": ("Your approved sender list has a problem that needs fixing.",
+            "Your approved sender list works but could be stronger."),
+    "DKIM": ("Your email signatures have a problem that needs fixing.",
+             "Your email signatures work but could be stronger."),
+    "MX Records": ("The records that say where your mail arrives have a problem that needs fixing.",
+                   "The records that say where your mail arrives could be stronger."),
+    "Nameservers": ("Your DNS servers have a fault that can stop your mail and website from being found.",
+                    "Your DNS servers work but could be more resilient."),
+    "MTA-STS": ("Your encryption policy for incoming mail has a problem that needs fixing.",
+                "Your encryption policy for incoming mail could be stronger."),
+    "TLS-RPT": ("Your encryption failure report record has a problem that needs fixing.",
+                "Your encryption failure report record could be stronger."),
+    "BIMI": ("Your logo may not show in inboxes because of a problem with its record.",
+             "Your logo record works but could be stronger."),
+    "DNSSEC": ("The signatures on your DNS answers have a problem that needs fixing.",
+               "The signatures on your DNS answers could be stronger."),
+    "CAA": ("Your list of who can issue your web certificates has a problem that needs fixing.",
+            "Your list of who can issue your web certificates could be stronger."),
+    "DANE": ("Your mail server certificate check has a problem that needs fixing.",
+             "Your mail server certificate check could be stronger."),
+    "Certificate Transparency": ("The certificates issued for your domain need a look.",
+                                 "The certificates issued for your domain are worth a look."),
+}
+
+_NS_TRANSIENT_HEAD = ("Your DNS servers gave different versions of your records. This "
+                      "usually clears within hours. If it lasts a day, ask your DNS host.")
+
+_COUNT_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+                "Nine", "Ten")
+
+
+def _count_word(n: int) -> str:
+    return _COUNT_WORDS[n] if 0 <= n < len(_COUNT_WORDS) else str(n)
+
+
+def _fallback_head(protocol: str, status: Optional[str]) -> str:
+    heads = _FALLBACK_HEADS.get(protocol)
+    if heads:
+        return heads[0] if status == "fail" else heads[1]
+    if status == "fail":
+        return "Something here has a problem that needs fixing."
+    return "Something here could be stronger."
+
+
+def _ns_serial_only(card: Dict) -> bool:
+    """The Nameservers card's only finding is an SOA serial mismatch, which is
+    usually a zone change still propagating."""
+    bad = [d.get("text", "") for d in (card or {}).get("details", [])
+           if d.get("type") in ("error", "warning")]
+    return bool(bad) and all("SOA serial" in t for t in bad)
+
+
 # Health reasons that lower enforcement, restated as something to do.
 _ATTENTION_ROWS = {
     "Test mode weakens reject": (
@@ -1061,7 +1214,7 @@ _ATTENTION_ROWS = {
 
 
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
-                           has_mx: bool = True) -> Dict:
+                           has_mx: bool = True, domain: str = "") -> Dict:
     """Synthesize all check results into a prioritized action plan.
 
     Takes the transformed checks list and returns a roadmap with
@@ -1076,11 +1229,20 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     mta_sts = check_map.get("MTA-STS", {})
     tls_rpt = check_map.get("TLS-RPT", {})
     dane = check_map.get("DANE", {})
+    # The audited domain, for the report address the rua row proposes. A
+    # caller that does not pass it gets it from the record builder's host.
+    if not domain:
+        _deploy_host = ((((dmarc.get("tag_breakdown") or {}).get("record_builder") or {})
+                         .get("deploy") or {}).get("host") or "")
+        if _deploy_host.startswith("_dmarc."):
+            domain = _deploy_host[len("_dmarc."):]
 
     # ── Critical ────────────────────────────────────────────
     if dmarc.get("status") == "fail" and dmarc.get("pill_label") == "Missing":
         items.append({"priority": "critical", "protocol": "DMARC",
                       "action": "Publish a DMARC record",
+                      "plain_head": "Receivers have no instructions for mail that pretends to be from you.",
+                      "who": WHO_DNS_HOST,
                       "impact": "Receivers have no policy for mail that fails authentication, and you get no reports about who is sending as you."})
 
     # More than one DMARC record: receivers ignore them all, so this is the
@@ -1092,6 +1254,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "critical", "protocol": "DMARC",
                       "action": ("Remove the duplicate DMARC record" if _n_multi == 2
                                  else "Remove the duplicate DMARC records"),
+                      "plain_head": ("Your spoofing policy is published more than once, so "
+                                     "receivers ignore all of it."),
+                      "who": WHO_DNS_HOST,
                       "impact": "Receivers ignore every DMARC record when more than one is "
                                 "published, so no DMARC policy applies to this domain.",
                       "what_note": (f"These {_n_multi} records are published: "
@@ -1102,6 +1267,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if spf.get("status") == "fail" and spf.get("pill_label") == "Missing":
         items.append({"priority": "critical", "protocol": "SPF",
                       "action": "Publish an SPF record",
+                      "plain_head": "Receivers cannot check which servers may send mail as you.",
+                      "who": WHO_DNS_HOST,
                       "impact": "No SPF record means receivers cannot verify your authorized mail servers."})
 
     # More than one v=spf1 record is a PermError for every message, so it belongs
@@ -1110,12 +1277,16 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if spf.get("pill_label") == "Multiple records":
         items.append({"priority": "critical", "protocol": "SPF",
                       "action": "Merge the duplicate SPF records into one",
+                      "plain_head": "Your approved sender list is published twice, so receivers ignore both.",
+                      "who": WHO_DNS_HOST,
                       "impact": "Receivers return PermError and evaluate neither record. SPF fails for every message."})
 
     # +all in SPF
     if spf.get("record") and "+all" in (spf.get("record") or ""):
         items.append({"priority": "critical", "protocol": "SPF",
                       "action": "Remove +all from your SPF record",
+                      "plain_head": "Your approved sender list lets any server on the internet send as you.",
+                      "who": WHO_DNS_HOST,
                       "impact": "+all authorizes every server on the internet to send as your domain."})
 
     # No rua at any policy.
@@ -1134,11 +1305,25 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
             # Matched on the title. The warning is advisory at every policy,
             # and the row is high either way.
             if w.get("title") == "No aggregate reporting":
-                items.append({"priority": "high", "protocol": "DMARC",
-                              "action": "Add aggregate reporting (rua=)",
-                              "impact": "You cannot see who is sending as your domain or "
-                                        "whether their mail is passing authentication, so a "
-                                        "legitimate sender that starts failing goes unnoticed."})
+                # Doc 92: the top action had nothing to paste. The record is the
+                # published one with a report address added, at the domain the
+                # record lives at (the parent, for an inherited record).
+                _rua_home = dmarc.get("inherited_from") or domain
+                _rua_addr = f"dmarc-reports@{_rua_home}" if _rua_home else None
+                _rua_row = {"priority": "high", "protocol": "DMARC",
+                            "action": "Add aggregate reporting (rua=)",
+                            "plain_head": "You get no reports on who sends mail as you.",
+                            "who": WHO_DNS_HOST,
+                            "impact": "You cannot see who is sending as your domain or "
+                                      "whether their mail is passing authentication, so a "
+                                      "legitimate sender that starts failing goes unnoticed."}
+                _rua_record = (_edit_dmarc_record(dmarc.get("record"), {"rua": f"mailto:{_rua_addr}"})
+                               if _rua_addr and dmarc.get("status") != "unavailable" else None)
+                if _rua_record:
+                    _rua_row["record"] = _rua_record
+                    _rua_row["host_note"] = (f"Replace {_rua_addr} with the mailbox or report "
+                                             f"service that should receive the reports.")
+                items.append(_rua_row)
                 break
 
     # ── High ────────────────────────────────────────────────
@@ -1148,6 +1333,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
             if w.get("title") == "Missing p= tag (interop hazard)":
                 items.append({"priority": "high", "protocol": "DMARC",
                               "action": "Add explicit p= tag to the DMARC record",
+                              "plain_head": ("Your spoofing policy does not say what receivers "
+                                             "should do, so they read it in different ways."),
+                              "who": WHO_DNS_HOST,
                               "impact": "RFC 7489 receivers ignore this record entirely; RFC 9989 receivers treat as p=none. Receiver behavior is split."})
                 break
 
@@ -1164,6 +1352,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         _own = _auth_host.split("._report._dmarc.", 1)[0]
         items.append({"priority": "high", "protocol": "DMARC",
                       "action": f"Have {_rd} authorize the DMARC reports sent to it",
+                      "plain_head": (f"Reports you asked for are dropped, because {_rd} has "
+                                     "not agreed to receive them."),
+                      "who": WHO_REPORT_RECEIVER,
                       "impact": f"{_rd} has not published the record that accepts this "
                                 f"domain's reports, so receivers drop the reports sent "
                                 f"to {_addrs}.",
@@ -1173,9 +1364,16 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
 
     # p=none with rua (monitoring)
     health = tb.get("health", {}) if tb else {}
-    if health.get("status") == "monitoring":
+    # Doc 92: p=none without rua grades "attention", not "monitoring", and
+    # used to get no row about the policy at all.
+    _p_none = (_parse_record_tags(dmarc.get("record") or "").get("p", "").strip().lower() == "none"
+               if dmarc.get("status") != "unavailable" else False)
+    if (health.get("status") == "monitoring"
+            or (health.get("status") == "attention" and _p_none)):
         items.append({"priority": "high", "protocol": "DMARC",
                       "action": "Progress from p=none to enforcement",
+                      "plain_head": "Your settings do not ask receivers to block forged mail yet.",
+                      "who": WHO_DNS_HOST,
                       "impact": "Nothing is blocked yet, and every receiver is making its own call on mail that fails."})
 
     # DKIM weak keys
@@ -1186,6 +1384,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if dkim_deep and dkim_deep.get("has_invalid"):
         items.append({"priority": "critical", "protocol": "DKIM",
                       "action": "Republish the unparseable DKIM key",
+                      "plain_head": ("One of your email signing keys cannot be read, so mail "
+                                     "signed with it fails the signature check."),
+                      "who": WHO_EMAIL_PROVIDER,
                       "impact": "The published key does not parse, so every message signed with that selector fails DKIM."})
     if dkim_deep and dkim_deep.get("has_weak"):
         # Count the keys the analysis rated weak, so one 1024-bit key is not
@@ -1196,6 +1397,11 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "high", "protocol": "DKIM",
                       "action": ("Rotate the weak DKIM key to 2048-bit" if _weak_n == 1
                                  else f"Rotate {_weak_n} weak DKIM keys to 2048-bit"),
+                      "plain_head": ("One of your email signing keys is shorter than "
+                                     "recommended. It still works." if _weak_n == 1 else
+                                     f"{_count_word(_weak_n)} of your email signing keys are "
+                                     "shorter than recommended. They still work."),
+                      "who": WHO_EMAIL_PROVIDER,
                       "impact": ("This key is below current recommendations and should be rotated."
                                  if _weak_n == 1 else
                                  "These keys are below current recommendations and should be rotated.")})
@@ -1212,10 +1418,17 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if _spf_band == "over":
         items.append({"priority": "critical", "protocol": "SPF",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
+                      "plain_head": ("Your approved sender list is too long for receivers to "
+                                     "finish reading, so some or all of your mail fails this "
+                                     "check. Mail with a valid DKIM signature can still pass."),
+                      "who": WHO_DNS_HOST,
                       "impact": "Past 10 lookups, receivers return PermError. Some or all of your mail fails SPF, depending on the order of the record. For that mail, DMARC relies on DKIM alone."})
     elif _spf_band == "near":
         items.append({"priority": "medium", "protocol": "SPF",
                       "action": f"Free up SPF lookups ({spf_deep['lookup_count']}/10)",
+                      "plain_head": ("Your approved sender list is close to its limit. One "
+                                     "more service could break it."),
+                      "who": WHO_DNS_HOST,
                       "impact": "One more include, a, or mx mechanism would take this past 10. "
                                 "Past 10, receivers return PermError. Some or all of your mail fails SPF, "
                                 "depending on the order of the record. For that mail, DMARC relies on DKIM "
@@ -1228,6 +1441,10 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "high" if ns_card["status"] == "fail" else "medium",
                       "protocol": "Nameservers",
                       "action": _roadmap_fix_text(ns_card) or "Fix the nameserver delegation",
+                      "plain_head": (_NS_TRANSIENT_HEAD if _ns_serial_only(ns_card) else
+                                     "Your DNS servers have a fault that can stop your mail "
+                                     "and website from being found."),
+                      "who": WHO_DNS_HOST,
                       "impact": "Nameservers answer every DNS query for this domain, so a fault "
                                 "here can stop mail and the website from resolving."})
 
@@ -1242,24 +1459,35 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # MTA-STS, TLS-RPT and DANE protect inbound delivery to MX hosts. With no
     # MX there is none, and naming MTA-STS as the biggest risk told a domain
     # that receives no mail its encryption could be stripped.
-    if has_mx and _assessed(mta_sts) and mta_sts.get("pill_label") == "Not configured":
+    if has_mx and _assessed(mta_sts) and mta_sts.get("pill_label") == PILL_ABSENT:
         items.append({"priority": "medium", "protocol": "MTA-STS",
                       "action": "Configure MTA-STS for TLS enforcement",
+                      "plain_head": ("Optional: sending servers are not told to require "
+                                     "encryption when they deliver to you."),
+                      "who": WHO_MAIL_SERVER,
                       "impact": "Without MTA-STS, a sending server that cannot reach your mail server over TLS falls back to plaintext and nothing tells you."})
 
-    if has_mx and _assessed(tls_rpt) and tls_rpt.get("pill_label") == "Not configured":
+    if has_mx and _assessed(tls_rpt) and tls_rpt.get("pill_label") == PILL_ABSENT:
         items.append({"priority": "medium", "protocol": "TLS-RPT",
                       "action": "Configure TLS-RPT for failure visibility",
+                      "plain_head": "Optional: you would not hear about failed encrypted deliveries to you.",
+                      "who": WHO_DNS_HOST,
                       "impact": "You get no report when a sending server fails to reach your mail server over TLS."})
     elif has_mx and _assessed(tls_rpt) and tls_rpt.get("status") == "fail":
         # Published but broken: the row says what to fix, not "configure".
         items.append({"priority": "medium", "protocol": "TLS-RPT",
                       "action": _roadmap_fix_text(tls_rpt) or "Fix the TLS-RPT record",
+                      "plain_head": ("Your encryption failure report record is broken, so "
+                                     "no failure reports are sent."),
+                      "who": WHO_DNS_HOST,
                       "impact": "While the record is broken, sending servers send no TLS failure reports."})
 
-    if has_mx and _assessed(dane) and dane.get("pill_label") == "Not configured":
+    if has_mx and _assessed(dane) and dane.get("pill_label") == PILL_ABSENT:
         items.append({"priority": "medium", "protocol": "DANE",
                       "action": "Consider DANE TLSA records",
+                      "plain_head": ("Optional: sending servers cannot check your mail "
+                                     "server's certificate against your DNS."),
+                      "who": WHO_MAIL_SERVER,
                       "impact": "Without DANE, a sending server has no way to check your mail server's certificate against DNS; it trusts whichever certificate authority issued it."})
 
     # RFC 9989 readiness gaps. The reason strings are written for the health
@@ -1293,12 +1521,18 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                     _impact = (_impact[:-1] + ", and pct never gave predictable control.")
                 items.append({"priority": "medium", "protocol": "DMARC",
                               "action": f"Remove the {_noun} RFC 9989 retired: {', '.join(_tags)}",
+                              "plain_head": ("Tidy-up: your DMARC record has settings the new "
+                                             "standard dropped. Receivers ignore them."),
+                              "who": WHO_DNS_HOST,
                               "impact": _impact,
                               "record": _edit_dmarc_record(_cur, remove=_tags)})
             elif reason in _ATTENTION_ROWS:
                 action, impact = _ATTENTION_ROWS[reason]
                 items.append({"priority": "medium", "protocol": "DMARC",
                               "action": action, "impact": impact,
+                              "plain_head": ("Test mode is on, so receivers apply a weaker "
+                                             "policy than the one you set."),
+                              "who": WHO_DNS_HOST,
                               "record": _edit_dmarc_record(_cur, remove=["t"])})
             # The weaker sp and np reasons get their rows below, from the
             # record, with the policy values in them.
@@ -1316,6 +1550,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         action = _roadmap_fix_text(bimi) or "Review your BIMI configuration"
         items.append({"priority": "low", "protocol": "BIMI",
                       "action": action,
+                      "plain_head": "Your logo may not show in inboxes because of a problem with its record.",
+                      "who": WHO_DNS_HOST,
                       "impact": "An issue with your existing BIMI setup may prevent your logo from displaying."})
 
     # np= at an enforcing policy. Not a gap: an absent np inherits from p=,
@@ -1350,6 +1586,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 )
             items.append({"priority": "high", "protocol": "DMARC",
                           "action": f"Bring the subdomain policy up to p={_p_val}",
+                          "plain_head": "Your subdomains get a weaker policy than your main domain.",
+                          "who": WHO_DNS_HOST,
                           "impact": _sp_impact,
                           "record": _edit_dmarc_record(dmarc["record"], {"sp": _p_val})})
         _np_val = _dmarc_tags.get("np", "").lower()
@@ -1357,6 +1595,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 and _pol_rank[_np_val] < _pol_rank[_p_val]):
             items.append({"priority": "high", "protocol": "DMARC",
                           "action": f"Set np={_p_val} to match the domain's policy",
+                          "plain_head": "Made-up subdomains get a weaker policy than your main domain.",
+                          "who": WHO_DNS_HOST,
                           "record": _edit_dmarc_record(dmarc["record"], {"np": _p_val}),
                           "impact": (
                               f"np={_np_val} gives subdomains that do not exist, the kind "
@@ -1368,6 +1608,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
             _np_inherited = _sp_val if _sp_val in _pol_rank else _p_val
             items.append({"priority": "low", "protocol": "DMARC",
                           "action": "Consider adding an explicit np= tag",
+                          "plain_head": "Optional: subdomains already get your policy.",
+                          "who": WHO_DNS_HOST,
                           "record": _edit_dmarc_record(dmarc["record"], {"np": _np_inherited}),
                           "impact": "Purely optional. Subdomains already inherit your enforcing policy without it."})
 
@@ -1392,7 +1634,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         fix = _roadmap_fix_text(card)
         if fix:
             items.append({"priority": "high" if card["status"] == "fail" else "low",
-                          "protocol": name, "action": fix, "impact": ""})
+                          "protocol": name, "action": fix, "impact": "",
+                          "plain_head": _fallback_head(name, card["status"]),
+                          "who": _ROW_WHO.get(name, WHO_DNS_HOST)})
             continue
         # No fix text. "Review the X findings" with nothing under "Why it
         # matters" is a row that asks the reader to go and work it out, and
@@ -1409,7 +1653,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # why it matters, so it is not the impact. A second finding is.
         items.append({"priority": "high" if card["status"] == "fail" else "low",
                       "protocol": name, "action": bad[0],
-                      "impact": bad[1] if len(bad) > 1 else ""})
+                      "impact": bad[1] if len(bad) > 1 else "",
+                      "plain_head": _fallback_head(name, card["status"]),
+                      "who": _ROW_WHO.get(name, WHO_DNS_HOST)})
 
     # An inherited subdomain has no DMARC record of its own. Every row above
     # was worded from the organizational domain's record, and the plan offered
@@ -1427,14 +1673,20 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
             items = [i for i in items if i["protocol"] != "DMARC"]
             items.append({"priority": "low", "protocol": "DMARC",
                           "action": f"The policy is inherited from {_inh_from}, and changes are made there",
+                          "plain_head": (f"Your policy comes from {_inh_from}, and it already asks "
+                                         "receivers to refuse forged mail."),
+                          "who": WHO_DNS_HOST,
                           "impact": "",
                           "what_note": f"This name already gets reject from the record at {_parent_host}."})
         else:
             for i in _dmarc_rows:
                 i["host"] = _parent_host
-                i["host_note"] = (f"This record is at {_inh_from}, the organizational domain, "
-                                  f"so the change is made there. It applies to every subdomain "
-                                  f"that inherits it.")
+                _inh_note = (f"This record is at {_inh_from}, the organizational domain, "
+                             f"so the change is made there. It applies to every subdomain "
+                             f"that inherits it.")
+                # A row's own note (the rua row's address) is kept after it.
+                i["host_note"] = (f"{_inh_note} {i['host_note']}" if i.get("host_note")
+                                  else _inh_note)
                 if not i.get("record"):
                     i["what_note"] = i["host_note"]
 
@@ -1466,11 +1718,23 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     def _transient_ns(item):
         if item["protocol"] != "Nameservers" or item["status"] != "warn":
             return False
-        bad = [d.get("text", "") for d in check_map["Nameservers"].get("details", [])
-               if d.get("type") in ("error", "warning")]
-        return bool(bad) and all("SOA serial" in t for t in bad)
-    items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), i["status"] == "absent",
-                              _transient_ns(i)))
+        return _ns_serial_only(check_map["Nameservers"])
+    # Doc 92: within a tier, rows about something broken come first, then
+    # something weak, then a recommendation on a passing card, then an
+    # optional protocol not set up.
+    _status_rank = {"fail": 0, "warn": 1, "info": 2, "absent": 3}
+    items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), _transient_ns(i),
+                              _status_rank.get(i["status"], 2)))
+
+    for item in items:
+        # Every row has both fields, whichever rule above built it.
+        if not item.get("plain_head"):
+            item["plain_head"] = _fallback_head(item["protocol"], item["status"])
+        if item.get("who") not in ROADMAP_WHO:
+            item["who"] = _ROW_WHO.get(item["protocol"], WHO_DNS_HOST)
+        # An optional protocol that is not set up. The plan groups these
+        # under "Optional extras", and they never reach do_first.
+        item["optional"] = item["status"] == "absent"
 
     # Count by tier
     tiers = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -2955,6 +3219,22 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             "record_builder": record_builder,
             "why_dmarcbis": why_dmarcbis,
         }
+
+    # Doc 92: "Misconfigured: This record has critical issues" belongs to a
+    # DMARC card that fails. Under an amber card (p=reject; sp=none is a
+    # critical config warning, and a valid record) it contradicted the card
+    # beside it, so the breakdown says "Needs Attention" there instead.
+    _health = (tag_breakdown or {}).get("health") or {}
+    if _health.get("status") == "misconfigured" and status != "fail":
+        _worst = next((w for w in (tag_breakdown.get("config_warnings") or [])
+                       if w.get("level") == "critical"), None)
+        _first = (_worst["text"].split(".")[0] + ".") if _worst and _worst.get("text") else ""
+        _health.update({
+            "status": "attention",
+            "label": "Needs Attention",
+            "color": "amber",
+            "summary": f"This record works but needs attention. {_first}".strip(),
+        })
 
     # Record builder for "no record" case (tag_breakdown is None)
     _domain = raw.get("domain", "")
@@ -5657,7 +5937,7 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
             return {
                 "name": "DKIM",
                 "status": "pass",
-                "pill_label": "N/A",
+                "pill_label": PILL_NOT_APPLICABLE,
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
                 "configured": False,
@@ -6360,7 +6640,7 @@ def transform_mx(raw: Dict) -> Dict:
         return {
             "name": "MX Records",
             "status": "pass",
-            "pill_label": "Null MX",
+            "pill_label": PILL_NULL_MX,
             "verdict": "Domain does not accept email (RFC 7505)",
             "record": "0 .",
             "explanation": (
@@ -6602,7 +6882,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             return {
                 "name": "MTA-STS",
                 "status": "absent",
-                "pill_label": "Not applicable",
+                "pill_label": PILL_NOT_APPLICABLE,
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
                 "configured": False,
@@ -6627,7 +6907,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             return {
                 "name": "MTA-STS",
                 "status": "absent",
-                "pill_label": "Not applicable",
+                "pill_label": PILL_NOT_APPLICABLE,
                 "verdict": "No MX records, so there is no inbound mail to protect",
                 "record": None,
                 "configured": False,
@@ -6647,7 +6927,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         return {
             "name": "MTA-STS",
             "status": "absent",
-            "pill_label": "Not configured",
+            "pill_label": PILL_ABSENT,
             "verdict": "No MTA-STS record found",
             "record": None,
             "configured": False,
@@ -6764,7 +7044,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             return {
                 "name": "TLS-RPT",
                 "status": "absent",
-                "pill_label": "Not applicable",
+                "pill_label": PILL_NOT_APPLICABLE,
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
                 "configured": False,
@@ -6785,7 +7065,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             return {
                 "name": "TLS-RPT",
                 "status": "absent",
-                "pill_label": "Not applicable",
+                "pill_label": PILL_NOT_APPLICABLE,
                 "verdict": "No MX records, so there is no inbound mail to protect",
                 "record": None,
                 "configured": False,
@@ -6802,7 +7082,7 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         return {
             "name": "TLS-RPT",
             "status": "absent",
-            "pill_label": "Not configured",
+            "pill_label": PILL_ABSENT,
             "verdict": "No TLS-RPT record found",
             "record": None,
             "configured": False,
@@ -6879,7 +7159,7 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
             return {
                 "name": "BIMI",
                 "status": "absent",
-                "pill_label": "N/A",
+                "pill_label": PILL_NOT_APPLICABLE,
                 "verdict": "Not applicable (non-mail domain)",
                 "record": None,
                 "records_found": 0,
@@ -6921,7 +7201,7 @@ def transform_bimi(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
             # be a pass with a "Not configured" pill, which claimed something
             # was correct when nothing was published. Doc 38: absent.
             "status": "absent",
-            "pill_label": "Not configured",
+            "pill_label": PILL_ABSENT,
             "verdict": "No BIMI record at the default selector",
             "record": None,
             "records_found": 0,
@@ -7090,7 +7370,7 @@ def _transform_dnssec_card(raw: Dict, domain: str = "") -> Dict:
         return {
             "name": "DNSSEC",
             "status": "absent",
-            "pill_label": "Not configured",
+            "pill_label": PILL_ABSENT,
             "verdict": "DNSSEC not configured",
             "record": None,
             "configured": False,
@@ -7230,7 +7510,7 @@ def transform_caa(raw: Dict, domain: str) -> Dict:
         return {
             "name": "CAA",
             "status": "absent",
-            "pill_label": "Not configured",
+            "pill_label": PILL_ABSENT,
             "verdict": "No CAA records found",
             "record": None,
             "configured": False,
@@ -7352,7 +7632,7 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
         return {
             "name": "DANE",
             "status": "absent",
-            "pill_label": "Not applicable",
+            "pill_label": PILL_NOT_APPLICABLE,
             "verdict": "No MX records, so there is no inbound mail to protect",
             "record": None,
             "configured": False,
@@ -7497,7 +7777,7 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
         return {
             "name": "DANE",
             "status": "absent",
-            "pill_label": "Not applicable",
+            "pill_label": PILL_NOT_APPLICABLE,
             "verdict": "DANE is not available on Google Workspace",
             "record": None,
             "configured": False,
@@ -7601,7 +7881,7 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
     return {
         "name": "DANE",
         "status": "absent",
-        "pill_label": "Not configured",
+        "pill_label": PILL_ABSENT,
         "verdict": "No DANE TLSA records",
         "record": None,
         "configured": False,

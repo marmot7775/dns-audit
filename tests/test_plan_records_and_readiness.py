@@ -90,7 +90,8 @@ def test_sp_and_np_rows_start_from_the_cleaned_record(audit):
 def test_enforcing_policy_without_rua_is_amber_not_action_needed(audit):
     result = _audit(audit, "v=DMARC1; p=quarantine; fo=1; aspf=s; adkim=s")
     card = _card(result)
-    assert result["executive_summary"]["dmarcbis_readiness"]["label"] != "Action needed"
+    assert result["executive_summary"]["dmarcbis_readiness"]["label"] not in (
+        "Action needed", "Edits suggested")
     assert card["tag_breakdown"]["health"]["status"] != "misconfigured"
     assert card["status"] == "warn"
     assert any(d["type"] == "warning" and "rua" in d["text"] for d in card["details"])

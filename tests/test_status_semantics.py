@@ -97,11 +97,11 @@ def test_essentials_passing_and_nothing_optional_is_no_warning_and_no_issue(audi
     assert _names_with(result, "absent") == OPTIONAL
 
 
-def test_the_six_optional_cards_say_not_configured(audit):
+def test_the_six_optional_cards_say_optional_not_set_up(audit):
     cards = _by_name(audit(_zone(), DOMAIN, dkim_selector="s1"))
     for name in OPTIONAL:
         assert cards[name]["status"] == "absent", name
-        assert cards[name]["pill_label"] == "Not configured", (
+        assert cards[name]["pill_label"] == "Optional, not set up", (
             f"{name} pill reads {cards[name]['pill_label']!r}"
         )
 
@@ -272,7 +272,7 @@ def test_one_exposed_vector_verdict_says_it_is_open():
     ]
     verdict = build_executive_summary(checks, build_security_roadmap(checks))["verdict"]
 
-    assert verdict == "Your domain has email authentication, but subdomain spoofing is still open."
+    assert verdict == "Your settings block most forged mail, but not your subdomains."
 
 
 # ---------------------------------------------------------------
@@ -316,7 +316,7 @@ def _one_fail_one_warn_one_absent():
         {"name": "SPF", "status": "warn", "configured": True,
          "record": "v=spf1 include:a.test include:b.test ~all",
          "spf_deep": {"lookup_count": 9}},
-        {"name": "MTA-STS", "status": "absent", "pill_label": "Not configured",
+        {"name": "MTA-STS", "status": "absent", "pill_label": "Optional, not set up",
          "configured": False},
     ]
 

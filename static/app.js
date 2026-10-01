@@ -57,7 +57,7 @@ const ICON = {
 };
 
 const STATUS_LABELS = {
-    pass: 'Pass', warn: 'Warning', fail: 'Issue', absent: 'Not configured', unavailable: 'Not checked',
+    pass: 'Pass', warn: 'Could be stronger', fail: 'Needs fixing', absent: 'Optional, not set up', unavailable: 'Not checked',
 };
 
 const COLOR_STATE = { green: 'pass', amber: 'warn', red: 'fail' };
