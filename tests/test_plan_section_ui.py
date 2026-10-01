@@ -103,7 +103,7 @@ def test_the_dmarc_row_carries_its_own_record(browser, fixture_result, theme):
         # moved onto it.
         assert "p=none is the right starting point" in rows[0]["why"]
         assert rows[0]["confirm"].startswith("Run this audit again after the change has propagated.")
-        assert "This row disappears when the check passes." in rows[0]["confirm"]
+        assert "This row disappears when the audit no longer finds the problem." in rows[0]["confirm"]
         # A row with its own record shows that record, not the readiness one.
         with_record = [r for r in rows if items[r["action"]].get("record")]
         assert with_record
