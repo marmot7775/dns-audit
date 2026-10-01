@@ -702,7 +702,7 @@ def _executive_summary_page(data, S, number=1):
 def _plan_confirm_line(card):
     """Doc 64's confirm line, with the propagation time when the card has one."""
     text = ("Run this audit again after the change has propagated. "
-            "This item disappears once the change is live.")
+            "This item disappears when the audit no longer finds the problem.")
     ttl = (card or {}).get("ttl_info") or {}
     if ttl.get("ttl"):
         text += (f" The current {card.get('name', 'DNS')} record has a TTL of "

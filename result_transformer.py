@@ -4367,7 +4367,7 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
             "This scale measures the record against RFC 9989, the current DMARC standard, plus "
             "two things this tool asks for that the standard leaves optional: an enforcing policy "
             "and an address for aggregate reports. Ready means it has both and uses the current "
-            "tags. Compatible means it works but leaves protection unused. Anything below that has "
+            "tags. Compatible means it works but does not meet every readiness criterion. Anything below that has "
             "gaps worth closing. "
             f"This record is currently rated '{health_status}'."
         ),

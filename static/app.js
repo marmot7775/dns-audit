@@ -3108,7 +3108,7 @@ function _planWhat(item, card, anchor) {
 
 function _planConfirm(card, hasPropagation) {
     let text = 'Run this audit again after the change has propagated. '
-        + 'This row disappears once the change is live.';
+        + 'This row disappears when the audit no longer finds the problem.';
     if (card && card.ttl_info && !hasPropagation) {
         text += ` The current ${card.name} record has a TTL of ${card.ttl_info.ttl}s `
             + `(${card.ttl_info.human}), so allow that long for resolvers to pick up the change.`;
