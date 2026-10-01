@@ -4,7 +4,8 @@ note, and in no other tracked file.
 The alias is assembled from pieces so this file does not itself contain it.
 docs/history/doc-41.md is an extra file: the doc is saved verbatim and names
 the alias it asks for. Doc 51 added SECURITY.md as a private reporting
-channel, and docs/history/doc-51.md names it for the same reason.
+channel, and docs/history/doc-51.md names it for the same reason, as does
+docs/history/doc-88.md, which adds a mailbox note to the privacy page.
 """
 import os
 import re
@@ -29,7 +30,12 @@ FOOTER_FILES = [
     "static/articles/index.html",
 ]
 SITE_FILES = FOOTER_FILES + ["static/app.js"]
-OTHER_FILES = ["SECURITY.md", "docs/history/doc-41.md", "docs/history/doc-51.md"]
+OTHER_FILES = [
+    "SECURITY.md",
+    "docs/history/doc-41.md",
+    "docs/history/doc-51.md",
+    "docs/history/doc-88.md",
+]
 
 
 def _read(rel):
