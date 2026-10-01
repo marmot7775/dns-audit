@@ -178,7 +178,7 @@ def test_pdf_cover_with_one_check_one_issue_and_one_step_pluralizes_each():
     assert "1 issues" not in text
     assert "1 checks total" not in text
     assert "1 steps to reach" not in text
-    assert "1 step to reach" in text, text[:2000]
+    assert "1 step from the current record" in text, text[:2000]
 
 
 # ---------------------------------------------------------------------------

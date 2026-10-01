@@ -702,7 +702,7 @@ def _executive_summary_page(data, S, number=1):
 def _plan_confirm_line(card):
     """Doc 64's confirm line, with the propagation time when the card has one."""
     text = ("Run this audit again after the change has propagated. "
-            "This item disappears when the check passes.")
+            "This item disappears once the change is live.")
     ttl = (card or {}).get("ttl_info") or {}
     if ttl.get("ttl"):
         text += (f" The current {card.get('name', 'DNS')} record has a TTL of "
@@ -1707,7 +1707,7 @@ def _migration_page(data, S, number=6):
         return []
 
     els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "Migration path to RFC 9989", S))
+    els.extend(_section_header(str(number), "Path to enforcement", S))
     if dmarc.get("inherited_from"):
         els.append(Paragraph(_safe(_inherited_record_note(dmarc)), S["body_small"]))
 
@@ -1725,7 +1725,7 @@ def _migration_page(data, S, number=6):
 
     total_steps = migration.get("total_steps", len(steps))
     els.append(Paragraph(
-        f"{total_steps} step{'s' if total_steps != 1 else ''} to reach RFC 9989 Ready status:",
+        f"{total_steps} step{'s' if total_steps != 1 else ''} from the current record to an enforcing policy:",
         S["body"]))
     els.append(Spacer(1, SP_MD))
 
@@ -1796,7 +1796,7 @@ def _about_page(data, S, number=7):
         ),
         Spacer(1, SP_XS),
         Paragraph(
-            '<font size="10" color="#2dd4bf">DMARC audited against RFC 9989, 9990, and 9991</font>',
+            '<font size="10" color="#2dd4bf">DMARC audited against RFC 9989 and 9990</font>',
             ParagraphStyle("BR2", fontName=FONTS["sans"], alignment=TA_CENTER, leading=14)
         ),
     ]
@@ -1862,7 +1862,8 @@ def _about_page(data, S, number=7):
     # Methodology
     els.append(Paragraph("Methodology", S["subheading"]))
     els.append(Paragraph(
-        "This report was generated using live DNS queries against published DNS records. "
+        "This report was generated from live DNS queries, plus HTTPS fetches of the MTA-STS policy file, "
+        "the BIMI logo, and certificate records from crt.sh. "
         "DMARC policy discovery implements "
         "the DNS tree walk per RFC 9989 section 4.10. "
         "SPF evaluation tracks lookup counts against the RFC 7208 10-lookup limit including "

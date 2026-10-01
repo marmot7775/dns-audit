@@ -74,7 +74,7 @@
                 "name": "What is the most important DNS record for email security?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "DMARC with a policy of reject is the highest-impact change. Set p=reject only after the aggregate reports stop showing new legitimate senders and every one of them aligns. SPF and DKIM provide the underlying authentication that DMARC enforces."
+                    "text": "DMARC with a policy of reject is the highest-impact change. Move to p=quarantine and then p=reject only after the aggregate reports stop showing new legitimate senders and every one of them aligns, and sign all mail with DKIM first. RFC 9989 says a domain at p=reject must not rely on SPF alone, and that domains whose users post to mailing lists should not publish p=reject. SPF and DKIM provide the underlying authentication that DMARC enforces."
                 }
             }
         ]
@@ -104,7 +104,7 @@
             {
                 "@type": "DefinedTerm",
                 "name": "SPF",
-                "description": "Sender Policy Framework. A DNS record that specifies which mail servers are authorized to send email for a domain, defined in RFC 7208."
+                "description": "Sender Policy Framework. A DNS record that lists the hosts allowed to send mail using a domain in the SMTP MAIL FROM (envelope sender) and HELO identities, defined in RFC 7208."
             },
             {
                 "@type": "DefinedTerm",
