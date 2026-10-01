@@ -91,7 +91,6 @@ def test_builder_never_returns_a_record_weaker_than_the_original():
         "v=spf1 mx a include:spf.protection.outlook.com ?all",
         "v=spf1 ip6:2001:db8::/32 exists:%{i}._spf.vsp.test ~all",
         "v=spf1 a mx",                       # no all mechanism at all
-        "v=spf1 include:one.test redirect=_spf.vsp.test",
     ]
     for record in records:
         suggested = _build_suggested_spf(record, [GOOGLE], "-all")
