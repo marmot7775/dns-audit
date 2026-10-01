@@ -31,12 +31,28 @@ DOMAIN = ui.DOMAIN
 # The section and its rows
 # ---------------------------------------------------------------
 
+_OPTIONAL = {"MTA-STS", "TLS-RPT", "BIMI", "DNSSEC", "CAA", "DANE"}
+
+
+def _is_optional(item):
+    """isOptionalPlanItem in app.js: the row's own flag, else the fallback."""
+    if isinstance(item.get("optional"), bool):
+        return item["optional"]
+    return item.get("priority") == "low" or (
+        item.get("status") == "absent" and item.get("protocol") in _OPTIONAL)
+
+
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_one_row_per_roadmap_item_and_each_row_opens(browser, fixture_result, theme):
     ctx, page, errors = _page(browser, theme, 1280)
     try:
         _render(page, fixture_result)
-        expected = [i["action"] for i in fixture_result["security_roadmap"]["items"]]
+        # Doc 92: optional extras (absent optional protocols and the low
+        # tier, unless the row says) are grouped at the end, closed.
+        items = fixture_result["security_roadmap"]["items"]
+        optional = [_is_optional(i) for i in items]
+        expected = ([i["action"] for i, o in zip(items, optional) if not o]
+                    + [i["action"] for i, o in zip(items, optional) if o])
         assert expected, "the fixture produced no plan rows"
 
         m = page.evaluate("""() => ({
@@ -69,7 +85,12 @@ def test_one_row_per_roadmap_item_and_each_row_opens(browser, fixture_result, th
         }""")
         for row in opened:
             assert row["open"] and row["aria"] == "true", row
-            assert row["parts"][-2:] == ["What to change", "How to confirm"], row
+            # Doc 92: "What to paste" when the row carries a record, then
+            # "Who does this" when the backend names who, then How to confirm.
+            parts = [p for p in row["parts"] if p != "Who does this"]
+            assert parts[-2] in ("What to paste", "What to change"), row
+            assert parts[-1] == "How to confirm", row
+            assert row["parts"][-1] == "How to confirm", row
             assert row["link"].startswith("Open the "), row
         assert errors == []
     finally:

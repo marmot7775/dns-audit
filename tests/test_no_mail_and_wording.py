@@ -34,6 +34,8 @@ _OPEN_ALL_JS = """() => {
     document.querySelectorAll('.result-header').forEach(h => h.click());
     document.querySelectorAll('.cd-body.is-hidden').forEach(b => b.classList.remove('is-hidden'));
     document.querySelectorAll('.priority-body.is-hidden').forEach(b => b.classList.remove('is-hidden'));
+    // Doc 92: optional extras (BIMI among them) sit in a closed group.
+    document.querySelectorAll('.plan-optional-toggle[aria-expanded="false"]').forEach(t => t.click());
 }"""
 
 
