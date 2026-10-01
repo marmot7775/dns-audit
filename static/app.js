@@ -747,9 +747,11 @@ function renderResults(data) {
         .classList.toggle('is-hidden', unavailableCount === 0);
 
     // Prompt 26: quiet contact note. Doc 90 adds a second variant for a clean
-    // audit of a domain that sends mail; a null MX or defensive domain gets none.
+    // audit of a domain that sends mail; a defensive domain, a null MX or a
+    // null SPF record (v=spf1 -all) gets none.
+    const signals = data.defensive_signals || [];
     const sendsMail = !data.defensive_dns &&
-        !(data.defensive_signals || []).includes('null_mx');
+        !signals.includes('null_mx') && !signals.includes('null_spf');
     _renderContactNote(failCount, warnCount, unavailableCount, sendsMail);
 
     document.title = auditTabTitle(counts, data.domain);
