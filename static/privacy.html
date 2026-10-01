@@ -91,6 +91,7 @@
             <h2>Third parties</h2>
             <p>The pages load nothing from anyone else. No analytics, no third-party scripts, no tag managers, no hosted fonts. The two typefaces are served from this domain.</p>
             <p>Cloudflare provides DNS and CDN for the site, so your connection reaches it first and it sees the request the way any network in the path does.</p>
+            <p>Cloudflare also tells browsers that support it, such as Chrome and Edge, to send it a short report when a request to this site fails, whether the connection fails or the server returns an error. The report includes the address that was requested, which can contain the domain you audited, and Cloudflare sees your IP address when it arrives.</p>
             <p>When something on the server breaks, it sends an error report to Sentry, an error tracking service, so the fault can be found and fixed. A report holds the error, where in the code it happened, which part of the site it came from, and the domain being audited. The address you requested, your IP address, your user agent, the page that linked you here, and every other request header are removed before a report leaves the server. Nothing in your browser talks to Sentry.</p>
         </section>
 
