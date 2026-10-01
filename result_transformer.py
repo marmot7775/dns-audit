@@ -29,6 +29,7 @@ from html import escape as _e
 
 from dkim_formatter import analyze_dkim_key_strength
 from spf_recursive import spf_lookup_band
+from dmarc_tree_walk import _psl_org_domain, _tld_extract
 
 # The tags RFC 9989 removed from DMARC (Appendix C.5.2). The one source for
 # every reader: the validator, the readiness verdict, the plan rows, the
@@ -4825,6 +4826,9 @@ def _is_null_spf(record: str) -> bool:
 
 
 def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
+    # Set by run_full_audit when the audited name is a CNAME. No record can
+    # sit beside it, so the null SPF offer has to name the target instead.
+    cname_target = raw.get("cname_target")
     # The apex TXT lookup never completed. "No SPF record published" would
     # be a claim about the domain that this audit did not establish.
     if raw.get("status") == "unavailable":
@@ -4921,6 +4925,15 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             f"This domain publishes a null SPF record (<strong>v=spf1 {_e(all_mech)}</strong>), "
             f"which explicitly declares that no servers are authorized to send email for this domain. "
             f"This is correct configuration for domains that do not send email."
+        )
+    elif not record and not has_mx and cname_target:
+        explanation = (
+            "No SPF record found, and this domain has no MX records. "
+            f"<strong>{_e(raw.get('domain', ''))}</strong> is a CNAME to "
+            f"<strong>{_e(cname_target)}</strong>, and a CNAME cannot share its name with any "
+            "other record (RFC 1034 section 3.6.2, RFC 2181 section 10.1), so no SPF record "
+            "can be published at this name. Receivers checking SPF here follow the CNAME and "
+            "read the TXT records at the target."
         )
     elif not record and not has_mx:
         explanation = (
@@ -5109,6 +5122,13 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     if null_spf:
         # Null SPF is correct, no fix needed
         pass
+    elif not record and not has_mx and cname_target:
+        fix = (
+            f"Publish the null SPF record (<strong>v=spf1 -all</strong>) at "
+            f"<strong>{_e(cname_target)}</strong>, the CNAME target, if that name does not "
+            f"send email either. To publish it at <strong>{_e(raw.get('domain', ''))}</strong> "
+            "instead, replace the CNAME with A or AAAA records first."
+        )
     elif not record and not has_mx:
         fix = (
             "Publish a null SPF record (<strong>v=spf1 -all</strong>) to explicitly declare "
@@ -5146,6 +5166,11 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     fix_records = []
     domain_name = raw.get("domain", "")
     if null_spf:
+        pass
+    elif cname_target:
+        # A record at a CNAME's own name cannot be published (RFC 1034
+        # section 3.6.2), so there is nothing to copy and paste here. The fix
+        # text names the target instead.
         pass
     elif not record and not has_mx:
         fix_records.append({
@@ -6253,6 +6278,39 @@ def transform_mx(raw: Dict) -> Dict:
                 *[_issue_to_detail(i) for i in raw.get("issues", [])],
             ],
             "fix": None,
+            "fix_records": None,
+        }
+
+    cname_target = raw.get("cname_target")
+    if not records and cname_target:
+        # The audited name is a CNAME, and a CNAME cannot share its name with
+        # an MX record (RFC 1034 section 3.6.2, RFC 2181 section 10.1). A null
+        # MX offered at this name could not be published. Mail addressed here
+        # follows the CNAME, so the target is where it would go.
+        _name = _e(raw.get("domain", ""))
+        _target = _e(cname_target)
+        return {
+            "name": "MX Records",
+            "status": "warn",
+            "pill_label": "None",
+            "verdict": "No MX records found",
+            "record": None,
+            "explanation": (
+                f"No MX records exist for this domain. <strong>{_name}</strong> is a CNAME to "
+                f"<strong>{_target}</strong>, so no MX record can be published at this name, and "
+                "mail servers delivering here follow the CNAME and use the MX records of the "
+                "target. If this domain is not intended to receive email, this is expected."
+            ),
+            "details": [
+                {"type": "info", "text": f"{raw.get('domain', '')} is a CNAME to {cname_target}"},
+                *[_issue_to_detail(i) for i in raw.get("issues", [])],
+            ],
+            "fix": (
+                f"To declare that this name does not accept email, publish a null MX record "
+                f"(<strong>0 .</strong>, RFC 7505) at <strong>{_target}</strong>, the CNAME "
+                f"target, if that name does not accept email either. To publish it at "
+                f"<strong>{_name}</strong> instead, replace the CNAME with A or AAAA records first."
+            ),
             "fix_records": None,
         }
 
@@ -7492,12 +7550,32 @@ _TLSA_MATCHING = {
 # Nameservers
 # ============================================================
 
-def _is_subdomain(domain: str) -> bool:
-    """Return True if the domain appears to be a subdomain (3 or more labels)."""
-    if not domain:
+def _is_subdomain(domain: str, raw: Optional[Dict] = None) -> bool:
+    """True when the name is not a zone apex, so its nameservers are the
+    parent zone's.
+
+    The nameserver check records whether the name has its own SOA
+    (``zone_apex``) when its NS query comes back empty, and that answer
+    decides. Without it, the public suffix list does: a name is its own zone
+    at the registrable domain (example.com, example.co.uk), and anything
+    below that, or a public suffix itself such as gouv.fr, is not. Counting
+    labels got both wrong: gouv.fr has two labels and no delegation, and
+    example.co.uk has three and is a registered zone.
+    """
+    apex = (raw or {}).get("zone_apex")
+    if apex is not None:
+        return not apex
+    name = (domain or "").rstrip(".").lower()
+    if not name:
         return False
-    labels = domain.rstrip(".").split(".")
-    return len(labels) >= 3
+    org = _psl_org_domain(name)
+    if org is None:
+        # A listed public suffix (gouv.fr) is not its own registrable zone.
+        # An unrecognized suffix is no evidence of a parent zone, so the
+        # name is treated as its own.
+        ext = _tld_extract(name)
+        return bool(ext.suffix) and not ext.domain
+    return org != name
 
 
 def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
@@ -7517,7 +7595,7 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
     status = _map_status(raw.get("status", "ok"))
 
     if ns_count == 0:
-        if _is_subdomain(domain):
+        if _is_subdomain(domain, raw):
             return {
                 "name": "Nameservers",
                 "status": "pass",
@@ -7525,12 +7603,12 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
                 "verdict": "Nameservers inherited from parent zone",
                 "record": None,
                 "explanation": (
-                    "This is a subdomain, so it uses the nameservers from its parent zone. "
-                    "This is normal. Subdomains do not need their own NS delegation unless "
-                    "they are a separate DNS zone."
+                    "This name is not delegated as its own DNS zone, so it uses the nameservers "
+                    "of its parent zone. This is normal. A name needs its own NS delegation only "
+                    "when it is run as a separate DNS zone."
                 ),
                 "details": [
-                    {"type": "info", "text": "Subdomain: NS records are at the parent zone level"},
+                    {"type": "info", "text": "Not a zone apex: NS records are at the parent zone level"},
                 ],
                 "fix": None,
                 "fix_records": None,

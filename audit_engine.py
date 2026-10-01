@@ -3535,6 +3535,27 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
     try:
         ns_answers = resolver.resolve(domain, "NS")
     except dns.resolver.NoAnswer:
+        # The name exists but has no NS records. That is a finding only at a
+        # zone apex, which always has its own SOA. A name with no SOA of its
+        # own (gouv.fr, an empty non-terminal inside .fr, or any ordinary
+        # subdomain) lives in its parent's zone and uses the parent's
+        # nameservers. None means the SOA query did not complete, and the
+        # transformer falls back to the public suffix list.
+        try:
+            soa = resolver.resolve(domain, "SOA")
+            # A CNAME is followed, so an alias whose target is an apex
+            # answers too. Only an SOA owned by this name makes it an apex.
+            owner = getattr(soa, "canonical_name", None)
+            result["zone_apex"] = (
+                owner is None
+                or str(owner).rstrip(".").lower() == domain.rstrip(".").lower()
+            )
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+            result["zone_apex"] = False
+        except dns.exception.DNSException:
+            result["zone_apex"] = None
+        if result["zone_apex"] is False:
+            return result
         _add_issue(
             "error",
             "No NS records found",
@@ -3679,21 +3700,6 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
 
     result["auth_results"] = auth_results
 
-    # Check SOA serial consistency across nameservers
-    unique_serials = set(soa_serials.values())
-    if len(unique_serials) > 1:
-        serial_detail = ", ".join(f"{h}: {s}" for h, s in sorted(soa_serials.items()))
-        _add_issue(
-            "warning",
-            f"SOA serial mismatch across nameservers ({len(unique_serials)} different serials)",
-            f"Nameservers are returning different SOA serial numbers ({serial_detail}). "
-            "This usually means zone transfers are delayed or failing, so some nameservers "
-            "are serving stale data.",
-            "Check zone transfer (AXFR/IXFR) configuration and ensure all secondaries are in sync.",
-        )
-    result["soa_serials_consistent"] = len(unique_serials) <= 1
-    result["soa_serial"] = next(iter(unique_serials)) if len(unique_serials) == 1 else None
-
     # Detect providers from NS hostnames
     PROVIDER_PATTERNS = {
         "awsdns": "Amazon Route 53",
@@ -3720,6 +3726,40 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
             if pattern in host_lower:
                 detected_providers.add(provider)
                 break
+
+    # Check SOA serial consistency within each DNS provider. Providers that
+    # serve the same zone side by side (github.com on Route 53 and NS1)
+    # usually each keep their own serial: the operator pushes the zone to each
+    # one through its API, and nothing is transferred by AXFR. A difference
+    # across providers says nothing about zone transfers. A difference
+    # between two nameservers of the same provider still does.
+    def _ns_group(host):
+        host_lower = host.lower()
+        for pattern, provider in PROVIDER_PATTERNS.items():
+            if pattern in host_lower:
+                return provider
+        return _get_org_domain(host_lower) or host_lower
+
+    serials_by_group = {}
+    for host, serial in soa_serials.items():
+        serials_by_group.setdefault(_ns_group(host), {})[host] = serial
+    mismatched = {g: hs for g, hs in serials_by_group.items()
+                  if len(set(hs.values())) > 1}
+    unique_serials = set(soa_serials.values())
+    if mismatched:
+        mismatched_serials = {h: s for hs in mismatched.values() for h, s in hs.items()}
+        n_serials = len(set(mismatched_serials.values()))
+        serial_detail = ", ".join(f"{h}: {s}" for h, s in sorted(mismatched_serials.items()))
+        _add_issue(
+            "warning",
+            f"SOA serial mismatch across nameservers ({n_serials} different serials)",
+            f"Nameservers are returning different SOA serial numbers ({serial_detail}). "
+            "This usually means zone transfers are delayed or failing, so some nameservers "
+            "are serving stale data.",
+            "Check zone transfer (AXFR/IXFR) configuration and ensure all secondaries are in sync.",
+        )
+    result["soa_serials_consistent"] = not mismatched
+    result["soa_serial"] = next(iter(unique_serials)) if len(unique_serials) == 1 else None
 
     result["providers"] = sorted(detected_providers)
 
@@ -4671,6 +4711,25 @@ def _build_suggested_spf(current_spf: str, missing_includes: List[str],
     return suggested
 
 
+def _cname_target(domain: str) -> Optional[str]:
+    """The CNAME target published at domain, or None.
+
+    MX and TXT queries follow a CNAME, so the checks that read them cannot
+    tell an alias from a name that publishes nothing. The difference matters
+    only when a card would offer a record at this name: nothing can sit
+    beside a CNAME (RFC 1034 section 3.6.2), so a null MX or null SPF there
+    could not be published. Any failed lookup reads as "not a CNAME", which
+    leaves the cards as they were before this was asked.
+    """
+    try:
+        answers = _get_resolver(timeout=3.0).resolve(domain, "CNAME")
+    except dns.exception.DNSException:
+        return None
+    for rdata in answers:
+        return str(rdata.target).rstrip(".")
+    return None
+
+
 def _spf_tree_names(current_spf: str, spf_recursive: Optional[Dict]) -> set:
     """Every include and redirect target in the resolved SPF tree.
 
@@ -4855,11 +4914,23 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 checks.append(_error_card("DMARC", e))
         _notify("DMARC")
 
+    # Asked at most once, and only when a card is about to offer a null
+    # record at this name. See _cname_target.
+    _cname_memo = {}
+
+    def _domain_cname():
+        if "target" not in _cname_memo:
+            _cname_memo["target"] = _cname_target(domain)
+        return _cname_memo["target"]
+
     # --- 2. MX Records (transformed before SPF so has_mx is known) ---
     if "mx" in _phase1:
         try:
             raw_mx = _await("mx")
             raw_results["mx"] = raw_mx
+            if (not raw_mx.get("records") and not raw_mx.get("has_null_mx")
+                    and raw_mx.get("status") != "unavailable"):
+                raw_mx["cname_target"] = _domain_cname()
             if _should_include("mx", scope_set):
                 checks.append(transform_mx(raw_mx))
         except FuturesTimeoutError:
@@ -4882,6 +4953,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             raw_spf = _await("spf")
             raw_results["spf"] = raw_spf
             spf_record = raw_spf.get("record")
+            if (not spf_record and not has_mx and raw_spf.get("status") != "unavailable"
+                    and not raw_spf.get("malformed_record") and not raw_spf.get("multiple_records")):
+                raw_spf["cname_target"] = _domain_cname()
             if _should_include("spf", scope_set):
                 checks.append(transform_spf(raw_spf, has_mx=has_mx))
         except FuturesTimeoutError:
