@@ -69,7 +69,7 @@ def test_null_spf_is_not_a_path_to_dmarc_pass(no_mail):
 
 def test_resilience_dkim_is_not_applicable_like_the_card(no_mail):
     dkim_card = next(c for c in no_mail["checks"] if c["name"] == "DKIM")
-    assert dkim_card["pill_label"] == "N/A"
+    assert dkim_card["pill_label"] == "Does not apply"
     mech = no_mail["resilience"]["mechanisms"]["dkim"]
     assert mech["status"] == "not_applicable"
     assert "may well be configured" not in mech["note"]

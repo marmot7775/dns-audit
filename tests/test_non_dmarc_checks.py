@@ -193,7 +193,7 @@ def test_an_all_google_mx_list_still_gets_the_provider_card(audit):
     card = _card(_run(audit, zone), "DANE")
 
     assert card["verdict"] == "DANE is not available on Google Workspace"
-    assert card["pill_label"] == "Not applicable"
+    assert card["pill_label"] == "Does not apply"
 
 
 # ---------------------------------------------------------------
@@ -209,7 +209,7 @@ def test_a_domain_with_no_mx_gets_no_transport_rows(audit):
     for name in ("MTA-STS", "TLS-RPT", "DANE"):
         card = _card(result, name)
         assert (card["status"], card["pill_label"], card["verdict"]) == (
-            "absent", "Not applicable", NO_MX_VERDICT), (name, card["pill_label"], card["verdict"])
+            "absent", "Does not apply", NO_MX_VERDICT), (name, card["pill_label"], card["verdict"])
     protocols = {i["protocol"] for i in result["security_roadmap"]["items"]}
     assert not protocols & {"MTA-STS", "TLS-RPT", "DANE"}, protocols
     assert "encryption" not in result["executive_summary"]["biggest_risk"]

@@ -67,7 +67,7 @@ def test_three_passing_cards_keep_the_all_clear():
 
 def _dmarc_only(record):
     return [{"name": "DMARC", "status": "warn", "configured": True,
-             "pill_label": "Warning", "record": record}]
+             "pill_label": "Could be stronger", "record": record}]
 
 
 def test_sp_none_under_p_reject_gets_a_high_row_and_no_np_row():
@@ -211,7 +211,7 @@ def test_a_no_mail_domain_without_rua_passes_and_is_not_counted_as_a_warning(aud
     card = next(c for c in result["checks"] if c["name"] == "DMARC")
 
     assert card["status"] == "pass", card["verdict"]
-    assert card["pill_label"] != "Warning"
+    assert card["pill_label"] != "Could be stronger"
     assert [d["type"] for d in card["details"] if d["type"] in ("error", "warning")] == []
     assert sum(1 for c in result["checks"] if c["status"] == "warn") == 0
 

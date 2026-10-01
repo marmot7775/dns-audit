@@ -128,7 +128,7 @@ def test_no_dmarc_with_spf_present_but_failing_is_not_no_authentication():
         f"SPF publishes a (badly configured) record and the verdict still "
         f"claims no email authentication exists: {verdict!r}"
     )
-    assert "publishes neither" not in verdict.lower(), (
+    assert "missing the two records" not in verdict.lower(), (
         f"SPF exists, so the neither-record verdict is also wrong here: {verdict!r}"
     )
 
@@ -140,7 +140,8 @@ def test_no_dmarc_and_no_spf_reports_neither_record():
         _DKIM_ASSESSED,
     ]
     verdict = _es(checks)["verdict"].lower()
-    assert "publishes neither an spf record nor a dmarc record" in verdict
+    assert verdict == ("your domain is missing the two records that let receivers tell "
+                       "your real mail from forgeries (spf and dmarc).")
     assert "anyone on the internet can send email pretending to be you" not in verdict, (
         "the old sentence predicted spoofing with no supporting evidence"
     )
@@ -162,11 +163,12 @@ def test_every_vector_protected_gets_the_all_vectors_verdict():
         _DKIM_ASSESSED,
     ]
     verdict = _es(checks)["verdict"]
-    assert "all vectors" in verdict.lower() or "all attack vectors" in verdict.lower(), (
+    assert verdict.startswith("Receivers are asked to refuse mail that pretends to be "
+                              "from this domain"), (
         f"every vector is protected but the verdict says something short of "
         f"that: {verdict!r}"
     )
-    assert "most attack vectors" not in verdict.lower()
+    assert "most forged mail" not in verdict.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -198,8 +200,8 @@ def _pdf_text(audit_result: dict) -> str:
 
 SCOPED_DOMAIN = "doc28-scoped.test"
 _SCOPED_ZONE = {
-    # No MX: DANE (which dns_infra does run) then reports pill "N/A" rather
-    # than "Not configured", so the roadmap stays empty and this test is
+    # No MX: DANE (which dns_infra does run) then reports pill "Does not apply" rather
+    # than "Optional, not set up", so the roadmap stays empty and this test is
     # actually exercising an empty roadmap rather than one DANE item.
     # Two nameservers: since Doc 48 a red Nameservers card (one NS is a
     # single point of failure) puts a row on the roadmap too.
@@ -236,7 +238,7 @@ def test_real_all_clear_still_reaches_the_pdf():
         {"name": "MTA-STS", "status": "pass", "record": "v=STSv1; id=1"},
         {"name": "TLS-RPT", "status": "pass", "record": "v=TLSRPTv1; rua=mailto:a@example.com"},
         {"name": "DANE", "status": "pass"},
-        {"name": "BIMI", "status": "pass", "pill_label": "Not configured", "record": None},
+        {"name": "BIMI", "status": "pass", "pill_label": "Optional, not set up", "record": None},
     ]
     roadmap = build_security_roadmap(checks)
     assert roadmap["items"] == []

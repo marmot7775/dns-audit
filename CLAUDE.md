@@ -31,8 +31,11 @@
   softfail/hardfail choice is the operator's. The DMARC attack surface block
   goes red only when the card fails. pass, green: published and correct. absent, grey: an optional
   protocol (MTA-STS, TLS-RPT, DNSSEC, CAA, DANE, BIMI) is not published; its
-  pill says "Not configured", it has its own counter, and it is never counted
-  as a warning. unavailable, grey with its own icon and "Not checked": the
+  pill says "Optional, not set up" (Doc 92; it said "Not configured"), it has
+  its own counter, and it is never counted as a warning. The other default
+  pills (Doc 92, PILL_* in result_transformer.py): pass "Pass", warn "Could
+  be stronger", fail "Needs fixing", not applicable "Does not apply", null MX
+  "No mail, by design". unavailable, grey with its own icon and "Not checked": the
   lookup did not complete. The neutral state adds no colour: on the web it
   uses the existing --text-tertiary (text and icons) and --border (tag
   background) tokens, and in the PDF NEUTRAL_CLR (#5a6678, --text-tertiary

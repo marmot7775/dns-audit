@@ -158,8 +158,8 @@ PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
 
 STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
 STATUS_BG  = {"pass": PASS_BG,  "warn": WARN_BG,  "fail": FAIL_BG,  "absent": NEUTRAL_BG}
-STATUS_LBL = {"pass": "Pass",   "warn": "Warning", "fail": "Issue",
-              "absent": "Not configured", "unavailable": "Not checked"}
+STATUS_LBL = {"pass": "Pass", "warn": "Could be stronger", "fail": "Needs fixing",
+              "absent": "Optional, not set up", "unavailable": "Not checked"}
 # Colours deliberately not mapped for "unavailable": every lookup falls
 # back to TEXT_SEC, which is the neutral grey this state should carry.
 # Helvetica has no glyph for U+26A0 (warning sign), so it rendered as a

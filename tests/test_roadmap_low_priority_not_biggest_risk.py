@@ -7,7 +7,7 @@ low-priority item became roadmap_items[0], and the executive summary
 showed "YOUR BIGGEST RISK RIGHT NOW: Purely optional. Subdomains already
 inherit your enforcing policy without it." -- a risk box calling its own
 contents optional. An empty roadmap already had the honest fallback
-("No urgent risks found"); a roadmap containing only low-priority items
+("Nothing urgent", once "No urgent risks found"); a roadmap containing only low-priority items
 needs the same fallback, not whichever item happens to be first.
 """
 import os
@@ -29,7 +29,7 @@ def test_low_priority_only_roadmap_does_not_become_biggest_risk():
 
     summary = result_transformer.build_executive_summary(checks, roadmap)
     assert "purely optional" not in summary["biggest_risk"].lower()
-    assert "no urgent risks found" in summary["biggest_risk"].lower()
+    assert summary["biggest_risk"] == "Nothing urgent. The plan has smaller improvements."
     assert summary["biggest_risk_severity"] == "none"
 
 
@@ -37,7 +37,7 @@ def test_medium_priority_item_still_wins_over_low():
     checks = [
         {"name": "DMARC", "status": "pass", "pill_label": "Pass",
          "record": "v=DMARC1; p=reject; rua=mailto:a@example.com"},
-        {"name": "MTA-STS", "status": "warn", "pill_label": "Not configured"},
+        {"name": "MTA-STS", "status": "warn", "pill_label": "Optional, not set up"},
     ]
     roadmap = result_transformer.build_security_roadmap(checks)
     summary = result_transformer.build_executive_summary(checks, roadmap)

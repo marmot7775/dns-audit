@@ -157,6 +157,11 @@ from dns_tools import (
 from result_transformer import (
     attach_reject_dkim_note,
     attach_what_this_is,
+    PILL_ABSENT,
+    PILL_FAIL,
+    PILL_NOT_APPLICABLE,
+    PILL_PASS,
+    PILL_WARN,
     transform_dmarc,
     transform_spf,
     transform_dkim,
@@ -5328,7 +5333,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 # DKIM is essential, so its waiver stays a pass. The optional
                 # protocols are absent, the same as their own non-mail cards.
                 check["status"] = "pass" if check["name"] == "DKIM" else "absent"
-                check["pill_label"] = "N/A"
+                check["pill_label"] = PILL_NOT_APPLICABLE
                 check["verdict"] = "Not applicable (non-mail domain)"
                 check["fix"] = None
                 check["fix_records"] = None
@@ -5701,7 +5706,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         resilience_result = None
 
     # --- Ensure every check has pill_label ---
-    _DEFAULT_PILLS = {"pass": "Pass", "warn": "Warning", "fail": "Fail"}
+    _DEFAULT_PILLS = {"pass": PILL_PASS, "warn": PILL_WARN, "fail": PILL_FAIL,
+                      "absent": PILL_ABSENT, "unavailable": "Not checked"}
     for check in checks:
         if not check.get("pill_label"):
             check["pill_label"] = _DEFAULT_PILLS.get(check.get("status"), check.get("status", ""))
@@ -5813,7 +5819,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # --- Assemble final response ---
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-    _roadmap = build_security_roadmap(checks, is_no_mail=is_defensive, has_mx=has_mx)
+    _roadmap = build_security_roadmap(checks, is_no_mail=is_defensive, has_mx=has_mx,
+                                      domain=domain)
 
     return {
         "domain": domain,
