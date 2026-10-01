@@ -89,10 +89,9 @@ def _index():
 def test_index_carries_the_sept9_title_and_sentence():
     html = _index()
     assert '<h1 class="audit-title">DNS &amp; Email Security Audit</h1>' in html
+    # Doc 90 replaced the RFC 9989 link with the record to paste.
     assert ('<p class="audit-subtitle">Most DNS tools show you your records. This one tells '
-            'you what is wrong with them. Includes <a href="/articles/dmarcbis" '
-            'class="audit-subtitle-link">RFC 9989 readiness</a>, DNSSEC validation, and '
-            'more.</p>') in html
+            'you what is wrong with them and gives you the record to paste.</p>') in html
 
 
 def test_domain_input_is_autofocused():

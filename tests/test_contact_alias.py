@@ -35,6 +35,7 @@ OTHER_FILES = [
     "docs/history/doc-41.md",
     "docs/history/doc-51.md",
     "docs/history/doc-88.md",
+    "docs/history/doc-90.md",
 ]
 
 
@@ -60,9 +61,12 @@ def test_alias_is_in_every_footer():
 
 def test_alias_is_in_the_results_note_beside_linkedin():
     src = _read("static/app.js")
-    start = src.index("function _renderContactNote(failCount, warnCount)")
+    start = src.index("function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail)")
     body = src[start:src.index("\n}\n", start)]
     assert "if (failCount > 0 || warnCount > 0)" in body
+    # Doc 90: a clean audit of a domain that sends mail gets its own note.
+    assert "} else if (sendsMail && !unavailableCount) {" in body
+    assert "Everything here checks out." in body
     assert f'<a href="mailto:{ALIAS}">Email {ALIAS}</a> or ' in body
     assert f'<a href="{LINKEDIN}" target="_blank" rel="noopener">message me on LinkedIn</a>.' in body
 
