@@ -5542,8 +5542,15 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     if _time_up():
                         count_unknown = True
                         break
+                    # count_spf_lookups walks a whole tree synchronously, so
+                    # it runs inside the audit's remaining budget; a timeout
+                    # makes the count unknown and suppresses the suggestion.
+                    budget = CHECK_TIMEOUT
+                    if deadline is not None:
+                        budget = min(budget, max(deadline - time.monotonic(), 0.1))
                     try:
-                        cost, inc_unknown = _spf_include_cost(inc)
+                        cost, inc_unknown = _run_with_timeout(
+                            _spf_include_cost, inc, timeout=budget)
                     except Exception:
                         log.debug("Could not count lookups for %s", inc, exc_info=True)
                         count_unknown = True
