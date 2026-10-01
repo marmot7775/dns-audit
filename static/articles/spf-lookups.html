@@ -37,7 +37,7 @@
         "image": "https://dns-audit.com/static/og-image.png",
         "isPartOf": { "@id": "https://dns-audit.com/#website" },
         "datePublished": "2026-09-29",
-        "dateModified": "2026-09-29"
+        "dateModified": "2026-10-01"
     }
     </script>
     <script type="application/ld+json">
@@ -89,6 +89,7 @@
         <article class="dbis-article">
             <h1 class="dbis-article-title">SPF permerror from too many lookups: how to get back under 10</h1>
             <p class="dbis-article-sub">The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough.</p>
+            <p class="article-card-meta">Published <time datetime="2026-09-29">September 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
             <p class="dbis-lede">SPF gives a receiver 10 lookups per check. Go past that and some of your legitimate mail stops passing SPF. Which mail depends on the order of your record, so the failure is easy to miss and easy to misread.</p>
             <section class="dbis-section">
                 <p>RFC 7208 sets the limit and says what counts. Every <code>include</code>, <code>a</code>, <code>mx</code>, <code>ptr</code>, and <code>exists</code> mechanism costs one lookup, and so does a <code>redirect</code>. <code>ip4</code>, <code>ip6</code>, and <code>all</code> cost nothing. Includes nest, and the nested ones don't show up when you read your own record. As of September 2026, <code>include:sendgrid.net</code> costs two, because SendGrid's record pulls in one more include. <code>_spf.google.com</code> costs one. For years it pulled in three more, so the old advice that Google costs four is out of date. Mailgun costs five.</p>
@@ -98,13 +99,13 @@
                 <p>A receiver reads your record left to right and stops at the first mechanism that matches the sending server. It counts lookups as it goes, so it only counts the ones it spent getting to the match. A sender listed early passes. Senders listed late reach the 11th lookup and get permerror. Take this record, which a lot of domains would recognize:</p>
                 <pre><code>v=spf1 a mx ptr include:_spf.google.com include:sendgrid.net
 include:mailgun.org include:mail.zendesk.com ~all</code></pre>
-                <p>Count it. <code>a</code>, <code>mx</code>, and <code>ptr</code> are three. Google is one, four so far. SendGrid is two, six. Mailgun is five, eleven. Zendesk is one, twelve. Mail from Google Workspace passes on the fourth lookup and mail from SendGrid on the sixth. Mail from Mailgun's US servers passes on the ninth and tenth. Mail from its EU servers trips the limit inside Mailgun's own tree and gets permerror, and Zendesk never gets checked at all. Nobody at the company sees a problem in their own inbox, because Google is the sender that passes.</p>
+                <p>Count it. <code>a</code>, <code>mx</code>, and <code>ptr</code> are three. Google is one, four so far. SendGrid is two, six. Mailgun is five, eleven. Zendesk is one, twelve. Mail from Google Workspace passes on the fourth lookup and most SendGrid mail passes on the fifth. Mail from Mailgun's US servers passes on the ninth and tenth. Mail from its EU servers trips the limit inside Mailgun's own tree and gets permerror, and Zendesk never gets checked at all. Nobody at the company sees a problem in their own inbox, because Google is the sender that passes.</p>
                 <p>The number to fix is still the worst case, every counted term in the tree, because you don't choose which sender a receiver checks last. Order is damage control while you fix it. It isn't the fix.</p>
             </section>
             <section class="dbis-section">
                 <h2>permerror isn't a warning</h2>
                 <p>A message that gets permerror can't pass SPF. DMARC can still pass on an aligned DKIM signature, and most platforms sign with your domain when you let them, so the first question is which of your senders don't. Mail with no aligned DKIM pass fails DMARC. <a href="/articles/p-reject">Receivers honoring <code>p=quarantine</code> or <code>p=reject</code> then send it to spam or refuse it</a>.</p>
-                <p>An include that points at a domain with no SPF record is worse than a wasted lookup. Any check that reaches it returns permerror on its own. A vendor you stopped paying can pull its record down years after you added the include, and nothing on your side changes. There's a second cap on top of the 10. RFC 7208 tells receivers to allow two lookups that come back empty, meaning the name doesn't exist or has no record of that type, and to return permerror on the third. An <code>a</code> or <code>mx</code> term naming a host that no longer exists spends one of those.</p>
+                <p>An include that points at a domain with no SPF record is worse than a wasted lookup. Any check that reaches it returns permerror on its own. A vendor you stopped paying can pull its record down years after you added the include, and nothing on your side changes. There's a second cap on top of the 10. RFC 7208 tells receivers to allow two lookups that come back empty, meaning the name doesn't exist or has no record of that type, and to return permerror on the third. An <code>a</code> or <code>mx</code> term naming a host that no longer exists spends one of those, and so can an <code>a</code> term on a name with no IPv6 address when mail arrives over IPv6.</p>
             </section>
             <section class="dbis-section">
                 <h2>Check where you stand</h2>
@@ -114,17 +115,17 @@ include:mailgun.org include:mail.zendesk.com ~all</code></pre>
                 <h2>Find out which includes matter</h2>
                 <ol class="dbis-steps">
                     <li><div>Pull a message from each platform that sends as you and open the headers. In Gmail that's Show original.</div></li>
-                    <li><div>Find the <code>Authentication-Results</code> header and look for <code>smtp.mailfrom</code>. That's the envelope domain the receiver checked SPF against. It's more reliable than <code>Return-Path</code>, which forwarders rewrite.</div></li>
+                    <li><div>Find the <code>Authentication-Results</code> header and look for <code>smtp.mailfrom</code>. That's the envelope domain the receiver checked SPF against. It's the better field to read because it sits beside the SPF result it produced, in the receiver's own header.</div></li>
                     <li><div>If <code>smtp.mailfrom</code> is the platform's own domain, that platform's include in your record isn't doing anything for that mail. SPF is passing on their name, not yours, and it never counted toward DMARC either. Removing the include costs you nothing at the DMARC level.</div></li>
-                    <li><div>If it's a subdomain of yours that the platform had you point at them with a CNAME, the record being checked is theirs, and the include is idle for the same reason.</div></li>
+                    <li><div>If it's a subdomain of yours that the platform had you point at them with a CNAME, the receiver checks that subdomain's record, so the include in your main record is idle. Here the SPF pass still counts toward DMARC, because the subdomain aligns with your domain.</div></li>
                     <li><div>Before you remove anything, confirm with the vendor's setup docs. Some platforms use your domain for part of their mail and their own for the rest.</div></li>
                 </ol>
-                <p>Now the DKIM question from earlier. A sender that already passes aligned DKIM is the one whose include you can afford to demote or move out, because DMARC holds on DKIM alone for that mail. The exception is bulk. Google, Yahoo and Microsoft ask bulk senders for both SPF and DKIM, so the room is with low volume transactional platforms, not your marketing tool.</p>
+                <p>Now the DKIM question from earlier. A sender that already passes aligned DKIM is the one whose include you can afford to demote or move out, because DMARC holds on DKIM alone for that mail. Google, Yahoo and Microsoft require bulk mail to pass SPF as well as DKIM. That pass can come from the platform's own domain or from a subdomain, so the requirement does not by itself keep a bulk sender's include in your main record.</p>
                 <p>Then the includes for services you've stopped using. Your aggregate reports show which sources still send. A source that has been quiet for months is a candidate, but ask whoever owns it first. Some systems send a few times a year, and the annual renewal notice is the one nobody remembers until it bounces.</p>
             </section>
             <section class="dbis-section">
                 <h2>Look hard at <code>a</code>, <code>mx</code>, and <code>ptr</code></h2>
-                <p>They're usually left over from a template someone pasted in a decade ago. <code>a</code> authorizes whatever your domain name resolves to. On most domains today that's a CDN edge or a shared web host, so the lookup buys SPF pass for thousands of strangers on the same address and nothing for you, unless your web server sends mail as your domain. <code>mx</code> authorizes your inbound mail hosts, which on a hosted filter means the filter vendor's whole pool. It costs one lookup however many MX hosts you have, though a domain with more than 10 MX names gets permerror from that term alone. If those machines don't send as you, removing both terms is the rare cleanup that improves your count and closes a hole at the same time.</p>
+                <p>They're usually left over from a template someone pasted in a decade ago. <code>a</code> authorizes whatever your domain name resolves to. On many domains that's a shared web host, where other customers on the same server can send mail that passes as yours, or a CDN edge that sends no mail at all. <code>mx</code> authorizes your inbound mail hosts, which on a hosted filter means the filter vendor's whole pool. It costs one lookup however many MX hosts you have, though a domain with more than 10 MX names gets permerror from that term alone. If those machines don't send as you, removing both terms is the rare cleanup that improves your count and closes a hole at the same time.</p>
                 <p>If your record has <code>ptr</code>, remove it. RFC 7208 says not to publish it. It costs you a lookup and the receiver a slow one.</p>
             </section>
             <section class="dbis-section">
@@ -134,7 +135,7 @@ include:mailgun.org include:mail.zendesk.com ~all</code></pre>
             </section>
             <section class="dbis-section">
                 <h2>Move bulk senders to a subdomain</h2>
-                <p>If your marketing platform supports a custom return path, point it at <code>news.example.com</code> instead of <code>example.com</code>. SPF then checks the subdomain's record, with its own budget of 10, and it still aligns for DMARC under relaxed alignment, the default, because both names share an organizational domain. The subdomain's SPF record is usually the vendor's, reached through a CNAME, so you don't maintain it.</p>
+                <p>If your marketing platform supports a custom return path, point it at <code>news.example.com</code> instead of <code>example.com</code>. SPF then checks the subdomain's record, with its own budget of 10, and it still aligns for DMARC under relaxed alignment, the default, because both names share an organizational domain. Some vendors have you point the subdomain at their record with a CNAME, so they maintain it. Others, Mailgun among them, have you publish a TXT record there yourself, which spends its own 10.</p>
                 <p>For a lot of domains, that's the whole fix. The record from earlier looks like this after cleanup, with Mailgun on a custom return path and the three template terms gone. The <code>ip4</code> is an invoicing server that sends directly.</p>
                 <pre><code>v=spf1 ip4:203.0.113.25 include:_spf.google.com
 include:sendgrid.net include:mail.zendesk.com ~all</code></pre>
@@ -151,7 +152,7 @@ include:sendgrid.net include:mail.zendesk.com ~all</code></pre>
             <section class="dbis-section">
                 <h2>Hosted SPF with monitoring</h2>
                 <p>If you still need more than 10 after cleaning up, have a DMARC provider host your SPF. Several offer it, and so do some services that only manage SPF. Your record points at theirs, and they update it when your vendors change what they publish. Some skip the rewriting and use SPF macros, so the check looks up the sending address directly and there's no snapshot to go stale. Salesforce's own include already works this way, one <code>exists</code> term with a macro in it. It's flattening with someone on watch, and it's the better route when cleanup isn't enough.</p>
-                <p>Know what changes when you do. A macro record has no tree. The published record is one term, and no checker can expand it, because the answer depends on the sending address at check time. dns-audit.com will count it as one lookup and tell you nothing about coverage, and so will every other tool. Verification moves entirely to <code>Authentication-Results</code> and your aggregate reports.</p>
+                <p>Know what changes when you do. A macro record has no tree. The published record is one term, and no checker can expand it, because the answer depends on the sending address at check time. dns-audit.com will count it as one lookup and tell you nothing about coverage, and so does any checker that doesn't know the sending address. Verification moves entirely to <code>Authentication-Results</code> and your aggregate reports.</p>
                 <p>If you'd rather keep it in house, open source flatteners exist that resolve your includes again on a schedule and push the result through your DNS provider's API. The watching is the part that matters, not who does it.</p>
                 <p>There's a cost to the hosted route. Part of your SPF now depends on that provider, and after the switch their record is the only place your sender inventory lives. Keep your own list of vendor includes somewhere you control, and work out how you'll take the record back before you ever cancel.</p>
             </section>

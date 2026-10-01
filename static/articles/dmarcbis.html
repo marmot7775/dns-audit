@@ -37,7 +37,7 @@
         "image": "https://dns-audit.com/static/og-image.png",
         "isPartOf": { "@id": "https://dns-audit.com/#website" },
         "datePublished": "2026-05-20",
-        "dateModified": "2026-09-16"
+        "dateModified": "2026-10-01"
     }
     </script>
     <script type="application/ld+json">
@@ -89,7 +89,7 @@
         <article class="dbis-article">
             <h1 class="dbis-article-title">What RFC 9989 changes for your DMARC record</h1>
             <p class="dbis-article-sub">DMARC is on the Standards Track. The Public Suffix List is out, the DNS tree walk is in, and your record needs a few small edits.</p>
-            <p class="article-card-meta">Updated <time datetime="2026-09">September 2026</time></p>
+            <p class="article-card-meta">Published <time datetime="2026-05-20">May 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
             <p class="dbis-lede">For most of its life, DMARC has depended on a text file. Before a receiver can check your policy it has to work out your organizational domain, and for that it consulted the Public Suffix List, a catalogue of every registry-controlled suffix on the internet, maintained by volunteers. RFC 9989 replaces that list with a DNS lookup. This article covers what changed, why, and the handful of edits your own record needs.</p>
             <section class="dbis-section">
                 <p>DMARC policy lives at the organizational domain, and alignment is judged against it. So before a receiver can do anything with a message from <code>mail.example.co.uk</code>, it has to decide whether the organizational domain is <code>example.co.uk</code> or <code>co.uk</code>. RFC 7489 answered that with the Public Suffix List: find the longest public suffix, add one label, and that is your organizational domain. The list began as a Mozilla project in 2007 for scoping browser cookies, and DMARC borrowed it because nothing better existed.</p>
@@ -154,7 +154,7 @@
             <section class="dbis-section">
                 <h2>The tree walk replaces the list</h2>
                 <p>Under RFC 9989 the receiver asks DNS directly. For the policy, it queries <code>_dmarc</code> at the From domain first and uses that record if one exists. To find the organizational domain, which relaxed alignment needs, it moves up one label at a time, querying <code>_dmarc</code> at each parent, capped at eight queries so a domain with fifty labels cannot tie a receiver up. The walk stops early only at a record carrying <code>psd=y</code> or <code>psd=n</code>. Otherwise it runs to the top, and the record with the fewest labels marks the organizational domain.</p>
-                <p>The walk finds the organizational domain, not the policy. A receiver still uses the From domain's own record when there is one, and falls back to the organizational domain's record only when there is not.</p>
+                <p>A receiver uses the From domain's own record when there is one. When there is not, the same walk supplies the policy from the organizational domain or, failing that, the public suffix.</p>
                 <figure class="dbis-compare" aria-labelledby="dbis-compare-caption">
                     <p class="dbis-compare-kicker">How DMARC finds your organizational domain</p>
                     <div class="dbis-compare-grid">
@@ -250,16 +250,16 @@
                             </ol>
                         </section>
                     </div>
-                    <figcaption id="dbis-compare-caption" class="dbis-compare-caption">Same input, same result. The old path needed an external list; the new one needs only DNS.</figcaption>
+                    <figcaption id="dbis-compare-caption" class="dbis-compare-caption">For most domains, same input, same result. The old path needed an external list; the new one needs only DNS.</figcaption>
                 </figure>
                 <p>That removes the download, the cache, and the question of whose copy of the list is current. It also fixes things operators had reported for years: inconsistent handling of the list, the unreliable <code>pct</code> tag, and spoofing of subdomains that do not exist, which the <code>np</code> tag now covers.</p>
-                <p>Publication is not deployment. Most receivers still evaluate DMARC the RFC 7489 way, and tree walk support will arrive one receiver at a time over a long period. Your existing record keeps working throughout. There is no deadline and nothing to rush. There are a few edits worth making so the record reads cleanly under both specs.</p>
+                <p>Publication is not deployment. Most receivers still evaluate DMARC the RFC 7489 way, and tree walk support will arrive one receiver at a time over a long period. For most domains the record keeps working unchanged. If you publish records at more than one level, or send from a domain on the private part of the Public Suffix List, the old and new methods can disagree. Publishing a record at every From domain removes that risk. There is no deadline and nothing to rush. There are a few edits worth making so the record reads cleanly under both specs.</p>
             </section>
             <section class="dbis-section">
                 <h2>What to change in your record</h2>
-                <p>The heavy lifting is on the receiver side. On yours, it is five edits you can make in one sitting.</p>
+                <p>Most of the work falls on receivers. On yours, it is five checks, three of them edits, and all fit in one sitting.</p>
                 <ol class="dbis-steps">
-                    <li><div><strong>Remove the retired tags.</strong> RFC 9989 removes <code>pct</code>, <code>rf</code>, and <code>ri</code>. Receivers on the new spec ignore them, and they clutter the record. If you were using <code>pct</code> to ramp enforcement in stages, there is no replacement: the new <code>t</code> tag is on or off, <code>t=y</code> for testing and <code>t=n</code> for enforcement. That is less of a loss than it sounds. Receivers applied percentage sampling inconsistently, so <code>pct</code> never gave the control it promised. <a href="/articles/p-reject">Stay at <code>p=none</code> until your aggregate reports show every legitimate sender aligning</a>, and use <code>sp</code> to enforce on subdomains ahead of the organizational domain if you want a staged path.</div></li>
+                    <li><div><strong>Remove the retired tags.</strong> RFC 9989 removes <code>pct</code>, <code>rf</code>, and <code>ri</code>. Receivers on the new spec ignore them, and they clutter the record. If you were using <code>pct</code> to ramp enforcement in stages, there is no replacement. The new <code>t</code> tag has two values. With <code>t=y</code>, receivers apply one level below your policy, so reject is treated as quarantine and quarantine as none. With <code>t=n</code>, the default, they apply the policy as written. That is less of a loss than it sounds. Receivers applied percentage sampling inconsistently, so <code>pct</code> never gave the control it promised. <a href="/articles/p-reject">Stay at <code>p=none</code> until your aggregate reports show every legitimate sender passing with aligned DKIM, not SPF alone</a>, and use <code>sp</code> to enforce on subdomains ahead of the organizational domain if you want a staged path.</div></li>
                     <li><div><strong>Drop the report size suffix.</strong> If a <code>rua</code> or <code>ruf</code> address carries a size limit such as <code>mailto:dmarc@example.com!10m</code>, remove the <code>!10m</code>. RFC 9989 Appendix C.4 removes that syntax, and receivers on the new spec ignore it. The address itself is unchanged.</div></li>
                     <li><div><strong>Leave <code>psd</code> alone unless you run a public suffix.</strong> The tag has three values: <code>y</code> for a public suffix domain, <code>n</code> for an organizational domain, and <code>u</code> for unknown, which is also the default when the tag is absent and lets the tree walk decide. Registries and public suffix operators declare <code>psd=y</code>. Everyone else can omit it.</div></li>
                     <li><div><strong>Consider <code>np=reject</code> while you are still below full enforcement.</strong> Under RFC 9989 a subdomain that does not exist inherits <code>sp</code> if you publish it, otherwise <code>p</code>, so a domain at <code>p=reject</code> already covers them. If you are still working through your senders at <code>p=none</code> or <code>p=quarantine</code>, <code>np=reject</code> tells receivers that support it to reject mail from subdomains that are not in DNS, at no risk to real mail, because no real mail comes from a subdomain that does not exist.</div></li>
