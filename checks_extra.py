@@ -1148,6 +1148,25 @@ def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_o
                     stream=True,
                     headers={"Accept": "image/svg+xml, */*"},
                 )
+            except HostResolutionError as e:
+                # The host has no address (or the lookup did not finish), which
+                # is not the private-address case below. Either way the logo
+                # cannot be fetched: the same grade as an HTTP error.
+                host = urlparse(result["logo_url"]).hostname or result["logo_url"]
+                if e.transient:
+                    result["issues"].append(_make_issue(
+                        "warning", f"Could not resolve {host}",
+                        f"The address lookup for {host} did not complete, so the logo was not checked.",
+                        "", "Run the audit again. If this repeats, check the DNS for the logo host.",
+                    ))
+                else:
+                    result["issues"].append(_make_issue(
+                        "warning", f"Logo host {host} does not resolve",
+                        f"{host} has no address, so mailbox providers cannot fetch the logo.",
+                        "Logo is not accessible.",
+                        f"Publish an A or AAAA record for {host}, or point l= at a host that serves the logo.",
+                    ))
+                resp = None
             except ValueError as e:
                 result["issues"].append(_make_issue(
                     "warning", "BIMI logo URL resolves to a private/reserved IP",
