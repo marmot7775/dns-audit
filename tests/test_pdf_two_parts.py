@@ -1,7 +1,7 @@
 """Doc 65: the PDF has the same shape as the results page.
 
-Part 1 is the report: summary, what to do, checks. Part 2 is the appendix,
-lettered, holding the evidence. A PDF cannot collapse, so the hierarchy is
+Part 1 is the report: the short answer, the plan, checks (Doc 92 renamed
+the first two). Part 2 is the appendix, lettered, holding the evidence. A PDF cannot collapse, so the hierarchy is
 order plus a divider page, and every plan item carries the record to
 publish rather than a table row with a business impact column.
 """
@@ -85,7 +85,7 @@ def test_the_pdf_builds_for_a_complete_run(complete):
 def test_the_pdf_builds_for_a_scoped_run(key_record):
     pages = _pages(_run(_zone(key_record), scope="dmarc"))
     text = _flat(pages)
-    assert "1. Summary" in text and "3. Checks" in text
+    assert "1. The short answer" in text and "3. Checks" in text
 
 
 def test_the_pdf_builds_for_a_domain_with_no_dmarc_record(key_record):
@@ -101,11 +101,16 @@ def test_the_pdf_builds_for_a_domain_with_no_dmarc_record(key_record):
 # ---------------------------------------------------------------
 
 def test_the_contents_page_lists_both_parts_in_order(complete):
-    cover = _pages(complete)[0]
-    expected = ["1. Summary", "2. What to do", "3. Checks",
+    # Doc 92 moved the contents from the cover to the start of Part 2.
+    pages = _pages(complete)
+    cover = pages[_divider_index(pages)]
+    expected = ["1. The short answer", "2. The plan", "3. Checks",
                 "Part 2", "A. DMARC in depth", "B. Attack surface and subdomains",
                 "C. SPF and DKIM in depth", "D. Migration path", "E. About this report"]
-    positions = [cover.find(e) for e in expected]
+    # The contents follow the Part 2 heading on the same page (Doc 92).
+    start = cover.find("Part 1: The report")
+    assert start >= 0
+    positions = [cover.find(e, start) for e in expected]
 
     assert all(p >= 0 for p in positions), list(zip(expected, positions))
     assert positions == sorted(positions)
@@ -115,7 +120,8 @@ def test_the_contents_page_lists_both_parts_in_order(complete):
 def test_a_section_that_did_not_render_gets_no_contents_line(key_record):
     # dns_infra runs no DMARC, SPF or DKIM card, so Appendix A, B, C and D
     # have nothing to build and the letters close up.
-    cover = _pages(_run(_zone(key_record), scope="dns_infra", selector=None))[0]
+    pages = _pages(_run(_zone(key_record), scope="dns_infra", selector=None))
+    cover = pages[_divider_index(pages)]
 
     assert "A. What each check means" in cover
     assert "B. About this report" in cover

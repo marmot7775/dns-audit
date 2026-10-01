@@ -177,8 +177,8 @@ def test_scoped_pdf_toc_lists_only_the_sections_it_contains(audit, zone):
     # that produces no DMARC card gets neither Appendix A nor B, so the
     # letters close up behind them.
     text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN, scope="dns_infra"))
-    assert "1. Summary" in text
-    assert "2. What to do" in text
+    assert "1. The short answer" in text
+    assert "2. The plan" in text
     assert "3. Checks" in text
     assert "A. What each check means" in text
     assert "B. About this report" in text
@@ -189,11 +189,14 @@ def test_scoped_pdf_toc_lists_only_the_sections_it_contains(audit, zone):
 
 def test_complete_pdf_toc_lists_both_parts_in_order(audit, zone):
     text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN))
-    expected = ["1. Summary", "2. What to do", "3. Checks",
+    expected = ["1. The short answer", "2. The plan", "3. Checks",
                 "Part 2: Appendix", "A. DMARC in depth",
                 "B. Attack surface and subdomains", "C. SPF and DKIM in depth",
                 "D. Migration path", "E. About this report"]
-    positions = [text.find(e) for e in expected]
+    # The contents follow the Part 2 heading on the same page (Doc 92).
+    start = text.find("Part 1: The report")
+    assert start >= 0
+    positions = [text.find(e, start) for e in expected]
     assert all(p >= 0 for p in positions), list(zip(expected, positions))
     assert positions == sorted(positions)
     assert "Part 1 is the report. Part 2 holds the detail behind it." in text

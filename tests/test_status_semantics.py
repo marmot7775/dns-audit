@@ -212,7 +212,7 @@ process.stdout.write(JSON.stringify({
 
 def _cover_count(text, label):
     m = re.search(r"(\d+)\s*%s" % label, text)
-    assert m, f"PDF cover has no {label!r} figure: {text[:400]!r}"
+    assert m, f"PDF tally has no {label!r} figure: {text[:400]!r}"
     return int(m.group(1))
 
 
@@ -230,7 +230,13 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
     assert pdf_report._tally(result["checks"]) == (
         counts["pass"], counts["warn"], counts["fail"], counts["absent"], counts["unavailable"])
 
-    cover = PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages[0].extract_text()
+    # Doc 92: the tally is one line on the plan page, page 2, and is
+    # printed nowhere else.
+    pages = [p.extract_text() or "" for p in
+             PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages]
+    cover = " ".join(pages[1].split())
+    assert "Across 12 checks:" in cover, cover[:400]
+    assert sum(" ".join(p.split()).count("Across 12 checks:") for p in pages) == 1
     assert _cover_count(cover, r"issues?\b") == counts["fail"]
     assert _cover_count(cover, r"warnings?\b") == counts["warn"]
     assert _cover_count(cover, r"not configured") == counts["absent"]
@@ -410,7 +416,7 @@ def test_complete_pdf_has_priorities_and_no_priority_fixes(audit):
     text = "\n".join(p.extract_text() or "" for p in
                      PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages)
 
-    assert "2. What to do" in text
+    assert "2. The plan" in text
     assert "Priority Fixes" not in text
     assert "Email Security Roadmap" not in text
     assert "priority_fixes" not in result, "Doc 49 removed the field after its last release"
