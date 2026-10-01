@@ -74,8 +74,8 @@ _DANE_SOURCES = {
     "wrote the obituary in 2015":
         "https://www.imperialviolet.org/2015/01/17/notdane.html",
     "RFC 7672": "https://datatracker.ietf.org/doc/html/rfc7672",
-    "September 2025 sample of the 10,000 domains most often emailed by "
-    "Zivver's Dutch customers":
+    # Doc 89 reworded the Zivver anchor to match the source's figures.
+    "September 2025 scan of the 10,000 domains Zivver's customers email most":
         "https://www.zivver.com/blog/use-of-email-security-standards-in-the-"
         "netherlands-september-2025-only-14-dane-6-mta-sts",
     "October 2024":
@@ -124,10 +124,11 @@ def test_spf_lookups_article_links_only_rfc_7208():
 
 
 # Doc 81: the p=reject article links only the three providers' own sender
+# (Doc 89 moved Google's to /mail/answer/81126)
 # requirements pages, each checked at build time to say p=none is accepted,
 # and names only the RFCs its sources section lists.
 _P_REJECT_LINKS = [
-    ("https://support.google.com/a/answer/81126", "Google"),
+    ("https://support.google.com/mail/answer/81126", "Google"),
     ("https://senders.yahooinc.com/best-practices/", "Yahoo"),
     ("https://support.microsoft.com/en-us/outlook/fix-ndr-error-550-5-7-515-in-outlook-com",
      "Microsoft"),
@@ -140,11 +141,10 @@ def test_p_reject_article_links_only_the_provider_requirement_pages():
     article = content[content.index("<article"):content.index("</article>")]
     anchors = _anchors(article)
     assert [a for a in anchors if not a[0].startswith("/")] == _P_REJECT_LINKS
-    # Doc 84: the two links to the other articles, on the words given.
+    # Doc 84 linked two other articles; Doc 89 removed the SPF lookups one,
+    # because that article is not about DKIM signing.
     assert [a for a in anchors if a[0].startswith("/")] == [
         ("/articles/dmarcbis", "RFC 9989"),
-        ("/articles/spf-lookups",
-         "a platform that was added to the SPF record when it was set up"),
     ]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989", "7960", "7505",
                                                          "8617", "7489"}
