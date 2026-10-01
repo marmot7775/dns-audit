@@ -541,6 +541,14 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             )
         else:
             verdict = "Your domain has no DMARC record. SPF alone cannot prevent email spoofing."
+    elif dmarc_status == "fail" and dmarc.get("multiple_records"):
+        # Receivers discard every record when there is more than one, so
+        # neither record's p= is the policy and none of the branches below,
+        # which read the policy, may describe it.
+        verdict = (
+            f"Your domain publishes {len(dmarc['multiple_records'])} DMARC records, so "
+            "receivers ignore them all and apply no DMARC policy."
+        )
     elif health_status == "monitoring" and _eff_policy in (None, "none"):
         verdict = "Your domain is monitoring email authentication but not yet enforcing it. This requests no action from receivers, who each decide independently what to do with mail that fails."
     elif _vector_total and protected_count == _vector_total:
@@ -746,6 +754,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     deliverability_issues = []
     if dmarc_status == "fail" and dmarc.get("pill_label") == "Missing":
         deliverability_issues.append("no DMARC record")
+    elif dmarc_status == "fail" and dmarc.get("multiple_records"):
+        deliverability_issues.append("more than one DMARC record")
     elif health_status == "monitoring":
         deliverability_issues.append("DMARC is in monitoring mode (p=none)")
 
@@ -785,6 +795,11 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
                 "Google, Yahoo, and Microsoft (Outlook.com) require DMARC of bulk senders "
                 "(Google and Microsoft set the line at 5,000 messages a day); below that it is optional but "
                 "still the only way to see what is being sent in your name."
+            )
+        elif "more than one DMARC" in top_issue:
+            deliverability_summary = (
+                "Your domain publishes more than one DMARC record, so receivers apply no "
+                "DMARC policy and send you no reports until only one remains."
             )
         elif "p=none" in top_issue:
             deliverability_summary = "Your DMARC policy is monitoring only (p=none). It provides visibility, not protection, until you move to p=quarantine or p=reject."
@@ -923,11 +938,20 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
 
     A tag being set that is not in the record goes after p= and sp=, where
     np sits in the canonical order.
+
+    pct below 100 is the exception. RFC 7489 receivers still honor it, so a
+    row about np, sp or t that dropped pct=5 raised enforcement from 5% to
+    all failing mail there, which the row never said (new.org). It stays
+    unless this edit is the one that removes it, and _dmarc_pct_kept says so
+    beside the record.
     """
     if not record:
         return None
     set_tags = dict(set_tags or {})
-    drop = {t.lower() for t in remove} | set(RFC9989_RETIRED_TAGS)
+    removing = {t.lower() for t in remove}
+    drop = removing | set(RFC9989_RETIRED_TAGS)
+    if "pct" not in removing and _dmarc_pct_kept(record):
+        drop.discard("pct")
     parts = []
     for part in record.split(";"):
         part = part.strip()
@@ -944,6 +968,25 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
         after = max((i for i, (t, _) in enumerate(parts) if t in ("v", "p", "sp")), default=0)
         parts.insert(after + 1, (k, v))
     return "; ".join(f"{k}={v}" for k, v in parts)
+
+
+def _dmarc_pct_kept(record: Optional[str]) -> Optional[int]:
+    """The record's pct when it is below 100, else None. A proposed record
+    keeps that value, and the row says so with _pct_kept_note."""
+    try:
+        pct = int(_parse_record_tags(record or "").get("pct", ""))
+    except ValueError:
+        return None
+    return pct if 0 <= pct < 100 else None
+
+
+def _pct_kept_note(record: Optional[str]) -> Optional[str]:
+    pct = _dmarc_pct_kept(record)
+    if pct is None:
+        return None
+    return (f"This record keeps pct={pct} as published, so the policy still applies "
+            f"to the same share of failing mail. If you have already removed pct, "
+            f"leave it out here too.")
 
 
 # Health reasons that lower enforcement, restated as something to do.
@@ -979,6 +1022,22 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "critical", "protocol": "DMARC",
                       "action": "Publish a DMARC record",
                       "impact": "Receivers have no policy for mail that fails authentication, and you get no reports about who is sending as you."})
+
+    # More than one DMARC record: receivers ignore them all, so this is the
+    # same tier as having none, and no row below may read either record as
+    # the policy (the card carries no single record for them to read).
+    _dmarc_multi = dmarc.get("multiple_records") if dmarc.get("status") == "fail" else None
+    if _dmarc_multi:
+        _n_multi = len(_dmarc_multi)
+        items.append({"priority": "critical", "protocol": "DMARC",
+                      "action": ("Remove the duplicate DMARC record" if _n_multi == 2
+                                 else "Remove the duplicate DMARC records"),
+                      "impact": "Receivers ignore every DMARC record when more than one is "
+                                "published, so no DMARC policy applies to this domain.",
+                      "what_note": (f"These {_n_multi} records are published: "
+                                    + _join_names([f'"{r}"' for r in _dmarc_multi])
+                                    + ". Delete all but one, keeping the one with the "
+                                      "policy and reporting address you want.")})
 
     if spf.get("status") == "fail" and spf.get("pill_label") == "Missing":
         items.append({"priority": "critical", "protocol": "SPF",
@@ -1031,6 +1090,26 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                               "action": "Add explicit p= tag to the DMARC record",
                               "impact": "RFC 7489 receivers ignore this record entirely; RFC 9989 receivers treat as p=none. Receiver behavior is split."})
                 break
+
+    # A report destination outside the domain that has not published its
+    # authorization record. The card fails for it, and the fallback below
+    # skips any protocol that already has a row, so without this the plan
+    # never said how to fix it. One row per receiving domain.
+    _unauth_by_domain: Dict[str, List[Dict]] = {}
+    for _d in dmarc.get("unauthorized_reports") or []:
+        _unauth_by_domain.setdefault(_d["domain"], []).append(_d)
+    for _rd, _dests in _unauth_by_domain.items():
+        _addrs = _join_names(sorted({d["address"] for d in _dests}))
+        _auth_host = _dests[0]["auth_host"]
+        _own = _auth_host.split("._report._dmarc.", 1)[0]
+        items.append({"priority": "high", "protocol": "DMARC",
+                      "action": f"Have {_rd} authorize the DMARC reports sent to it",
+                      "impact": f"{_rd} has not published the record that accepts this "
+                                f"domain's reports, so receivers drop the reports sent "
+                                f"to {_addrs}.",
+                      "what_note": f"Ask the administrator of {_rd} to publish a TXT record at "
+                                   f"{_auth_host} with the value v=DMARC1 (RFC 9990 section 4). "
+                                   f"Or point rua= at an address at {_own} instead."})
 
     # p=none with rua (monitoring)
     health = tb.get("health", {}) if tb else {}
@@ -1293,6 +1372,13 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                   f"that inherits it.")
                 if not i.get("record"):
                     i["what_note"] = i["host_note"]
+
+    # A record that keeps pct below 100 says so beside it, under the record
+    # where the host note goes on the web and in the PDF.
+    for i in items:
+        _note = _pct_kept_note(i.get("record")) if i["protocol"] == "DMARC" else None
+        if _note:
+            i["host_note"] = f"{i['host_note']} {_note}" if i.get("host_note") else _note
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -2163,6 +2249,63 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             f"starting with exactly <strong>v=DMARC1;</strong>.",
         )
 
+    # More than one v=DMARC1 record at _dmarc. Receivers discard them all and
+    # apply no DMARC policy (RFC 9989), so no record here is the
+    # policy. The engine leaves the first one in "record", and every branch
+    # below reads that as the published policy: capital.net's summary said
+    # p=none was monitoring, the plan said to move it to enforcement, and the
+    # card said rua was missing because no tags were parsed. Like SPF, the
+    # card carries no single record, no tag breakdown and no attack surface.
+    _multiple = raw.get("multiple_records")
+    if _multiple:
+        _n = len(_multiple)
+        _host = f"_dmarc.{raw.get('domain', '')}"
+        _details = [{"type": "error",
+                     "text": f"{_n} v=DMARC1 records published at {_host}"}]
+        for _rec in _multiple:
+            _details.append({"type": "info", "text": _rec})
+        for _issue in raw.get("issues", []):
+            _details.append(_issue_to_detail(_issue))
+        return {
+            "name": "DMARC",
+            "status": "fail",
+            "pill_label": "Multiple records",
+            "verdict": f"{_n} DMARC records published, so no DMARC policy applies",
+            "record": None,
+            "multiple_records": list(_multiple),
+            "configured": True,
+            "explanation": (
+                f"This domain publishes <strong>{_n}</strong> DMARC records at "
+                f"<strong>{_e(_host)}</strong>. "
+                "<a href=\"https://www.rfc-editor.org/rfc/rfc9989.html\" target=\"_blank\" rel=\"noopener\">RFC 9989</a> "
+                "allows exactly one. A receiver that finds more than one ignores them all "
+                "and treats the domain as having no DMARC policy, so no policy in either "
+                "record applies and no aggregate reports are sent."
+            ),
+            "details": _details,
+            "fix": (
+                f"Delete all but one of the DMARC records at <strong>{_e(_host)}</strong>. "
+                "Keep the one with the policy and reporting address you want."
+            ),
+            "fix_records": None,
+            "strict_validation": _build_strict_validation(raw.get("strict_validation")),
+            "legacy_validation": _build_strict_validation(raw.get("legacy_validation")),
+            "spec_comparison": _build_spec_comparison(
+                raw.get("strict_validation"), raw.get("legacy_validation")
+            ),
+            "effective_policy": None,
+            "inherited_from": None,
+            "attack_surface": None,
+            "tag_breakdown": None,
+            "record_builder": None,
+            "dmarcbis_readiness": None,
+            "ttl_info": format_ttl(raw.get("ttl")),
+            "deliverability": (
+                "Receivers apply no DMARC policy to this domain while more than one "
+                "record is published."
+            ),
+        }
+
     if not raw.get("record") and raw.get("inheritance_lookup_failed"):
         return _lookup_unavailable_card(
             "DMARC",
@@ -2459,6 +2602,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
 
     # Details
     details = []
+    _unauth_reports = []
     if inherited:
         applied_tag = tw.get("applied_tag", "p")
         if inherited_policy == "reject":
@@ -2493,6 +2637,14 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             details.append({"type": "warning", "text": "Policy p=none: monitoring only, no enforcement requested"})
 
         report_dests = raw.get("report_destinations")
+        # Destinations that have not authorized this domain's reports, for the
+        # plan row that says how to fix it (RFC 9990 section 4).
+        _unauth_reports = [
+            {"address": d["address"], "domain": d["domain"],
+             "auth_host": f"{raw.get('domain', '')}._report._dmarc.{d['domain']}"}
+            for d in (report_dests or [])
+            if d.get("authorized") is False
+        ]
         if report_dests and raw.get("rua"):
             rua_dests = [d for d in report_dests if d["type"] == "rua"]
             unauthorized = [d for d in rua_dests if d.get("authorized") is False]
@@ -2624,8 +2776,14 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 f"(reports arrive as compressed XML) or a DMARC reporting service that provides a dashboard."
             )
     elif raw.get("syntax_errors") or any(i.get("severity") == "error" for i in raw.get("issues", [])):
-        # Prioritize syntax/error fixes over generic policy advice
-        fix = _first_fix(raw.get("syntax_errors", [])) or _first_fix(raw.get("issues", []))
+        # Prioritize syntax/error fixes over generic policy advice, and an
+        # error over a warning: the fix names what fails the card. A pct
+        # warning used to win over an unauthorized rua on knoxville.org, so a
+        # red card's fix said "Remove the pct tag".
+        _errors = [i for i in raw.get("syntax_errors", []) + raw.get("issues", [])
+                   if i.get("severity") == "error"]
+        fix = (_first_fix(_errors) or _first_fix(raw.get("syntax_errors", []))
+               or _first_fix(raw.get("issues", [])))
     elif policy == "none":
         if is_no_mail:
             fix = (
@@ -2782,6 +2940,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         ),
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": _deliverability,
+        "unauthorized_reports": _unauth_reports,
     }
 
 

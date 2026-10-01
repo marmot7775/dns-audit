@@ -601,7 +601,8 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
                 ),
                 "fix": (
                     f"Ask the administrator of {dest_domain} to add a TXT record at "
-                    f"{auth_fqdn} with value: v=DMARC1"
+                    f"{auth_fqdn} with value: v=DMARC1, or send reports to an "
+                    f"address at {domain} instead."
                 ),
             })
         elif dest.get("authorization_check_failed"):
@@ -1055,6 +1056,11 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
             business_risk_key="DMARC_MULTIPLE_RECORDS",
         )
         result["record"] = dmarc_records[0]
+        # Every record, so the card and the plan can name them all. The tags
+        # of none of them are parsed: no record here is the policy, and
+        # reading the first as one put "p=none, monitoring" in the summary of
+        # a domain that has no DMARC policy at all.
+        result["multiple_records"] = list(dmarc_records)
         result["strict_validation"] = _validate_dmarc_strict(
             dmarc_records[0], dmarc_records_count=len(dmarc_records)
         )

@@ -39,8 +39,11 @@ def test_a_policy_row_record_sets_the_tag_it_names(audit, dmarc, action, tag, wa
     assert tags[tag] == want, row["record"]
     # Nothing else in the record moved, except the tags RFC 9989 retired:
     # every proposed record starts from the record without them (Doc 77).
+    # pct below 100 is kept: dropping it raises enforcement at RFC 7489
+    # receivers, which a row about sp or np does not set out to do.
     before = {k: v for k, v in _parse_record_tags(dmarc).items()
-              if k not in RFC9989_RETIRED_TAGS}
+              if k not in RFC9989_RETIRED_TAGS
+              or (k == "pct" and int(v) < 100)}
     assert {k: v for k, v in tags.items() if k != tag} == \
         {k: v for k, v in before.items() if k != tag}
 
