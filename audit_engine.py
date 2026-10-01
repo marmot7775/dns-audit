@@ -5645,8 +5645,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                         f"in this SPF record, and the record has no lookup budget left. "
                         f"Adding {_e(' '.join(missing_includes))} would take it to "
                         f"{projected} DNS lookups, past the limit of 10 (RFC 7208 section "
-                        f"4.6.4), and every message would fail SPF with a PermError. Free "
-                        f"up lookups before adding it. " + ARTICLE_SPF_LOOKUPS
+                        f"4.6.4). Receivers would return PermError, and some or all of your mail would fail SPF, "
+                        f"depending on the order of the record. Free up lookups before adding it. " + ARTICLE_SPF_LOOKUPS
                     )
                 elif not count_unknown:
                     # Build suggested record from the operator's own terms, so
