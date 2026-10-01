@@ -29,6 +29,7 @@ from html import escape as _e
 
 from dkim_formatter import analyze_dkim_key_strength
 from spf_recursive import spf_lookup_band
+from dmarc_tree_walk import _psl_org_domain, _tld_extract
 
 # The tags RFC 9989 removed from DMARC (Appendix C.5.2). The one source for
 # every reader: the validator, the readiness verdict, the plan rows, the
@@ -541,6 +542,14 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             )
         else:
             verdict = "Your domain has no DMARC record. SPF alone cannot prevent email spoofing."
+    elif dmarc_status == "fail" and dmarc.get("multiple_records"):
+        # Receivers discard every record when there is more than one, so
+        # neither record's p= is the policy and none of the branches below,
+        # which read the policy, may describe it.
+        verdict = (
+            f"Your domain publishes {len(dmarc['multiple_records'])} DMARC records, so "
+            "receivers ignore them all and apply no DMARC policy."
+        )
     elif health_status == "monitoring" and _eff_policy in (None, "none"):
         verdict = "Your domain is monitoring email authentication but not yet enforcing it. This requests no action from receivers, who each decide independently what to do with mail that fails."
     elif _vector_total and protected_count == _vector_total:
@@ -746,6 +755,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     deliverability_issues = []
     if dmarc_status == "fail" and dmarc.get("pill_label") == "Missing":
         deliverability_issues.append("no DMARC record")
+    elif dmarc_status == "fail" and dmarc.get("multiple_records"):
+        deliverability_issues.append("more than one DMARC record")
     elif health_status == "monitoring":
         deliverability_issues.append("DMARC is in monitoring mode (p=none)")
 
@@ -785,6 +796,11 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
                 "Google, Yahoo, and Microsoft (Outlook.com) require DMARC of bulk senders "
                 "(Google and Microsoft set the line at 5,000 messages a day); below that it is optional but "
                 "still the only way to see what is being sent in your name."
+            )
+        elif "more than one DMARC" in top_issue:
+            deliverability_summary = (
+                "Your domain publishes more than one DMARC record, so receivers apply no "
+                "DMARC policy and send you no reports until only one remains."
             )
         elif "p=none" in top_issue:
             deliverability_summary = "Your DMARC policy is monitoring only (p=none). It provides visibility, not protection, until you move to p=quarantine or p=reject."
@@ -923,11 +939,21 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
 
     A tag being set that is not in the record goes after p= and sp=, where
     np sits in the canonical order.
+
+    pct below 100 is the exception. RFC 7489 receivers still honor it, so a
+    row about np, sp or t that dropped pct=5 raised enforcement from 5% to
+    all failing mail there, which the row never said (new.org). It stays
+    unless this edit is the one that removes it, and _dmarc_pct_kept says so
+    beside the record.
     """
     if not record:
         return None
     set_tags = dict(set_tags or {})
-    drop = {t.lower() for t in remove} | set(RFC9989_RETIRED_TAGS)
+    removing = {t.lower() for t in remove}
+    drop = removing | set(RFC9989_RETIRED_TAGS)
+    kept_pct = None if "pct" in removing else _dmarc_pct_kept(record)
+    if kept_pct is not None:
+        drop.discard("pct")
     parts = []
     for part in record.split(";"):
         part = part.strip()
@@ -939,11 +965,33 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
             continue
         if k in set_tags:
             v = set_tags.pop(k)
+        elif k == "pct" and kept_pct is not None:
+            v = str(kept_pct)  # pct=05 is kept as pct=5
         parts.append((k, v.strip()))
     for k, v in set_tags.items():
         after = max((i for i, (t, _) in enumerate(parts) if t in ("v", "p", "sp")), default=0)
         parts.insert(after + 1, (k, v))
     return "; ".join(f"{k}={v}" for k, v in parts)
+
+
+def _dmarc_pct_kept(record: Optional[str]) -> Optional[int]:
+    """The record's pct when it is below 100, else None. A proposed record
+    keeps that value, and the row says so with _pct_kept_note."""
+    raw = (_parse_record_tags(record or "").get("pct") or "").strip()
+    # Digits only: "+5" or "5%" is malformed, and the validator says so.
+    if not raw.isdigit():
+        return None
+    pct = int(raw)
+    return pct if pct < 100 else None
+
+
+def _pct_kept_note(record: Optional[str]) -> Optional[str]:
+    pct = _dmarc_pct_kept(record)
+    if pct is None:
+        return None
+    return (f"This record keeps pct={pct} as published, so the policy still applies "
+            f"to the same share of failing mail. If you have already removed pct, "
+            f"leave it out here too.")
 
 
 # Health reasons that lower enforcement, restated as something to do.
@@ -979,6 +1027,22 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "critical", "protocol": "DMARC",
                       "action": "Publish a DMARC record",
                       "impact": "Receivers have no policy for mail that fails authentication, and you get no reports about who is sending as you."})
+
+    # More than one DMARC record: receivers ignore them all, so this is the
+    # same tier as having none, and no row below may read either record as
+    # the policy (the card carries no single record for them to read).
+    _dmarc_multi = dmarc.get("multiple_records") if dmarc.get("status") == "fail" else None
+    if _dmarc_multi:
+        _n_multi = len(_dmarc_multi)
+        items.append({"priority": "critical", "protocol": "DMARC",
+                      "action": ("Remove the duplicate DMARC record" if _n_multi == 2
+                                 else "Remove the duplicate DMARC records"),
+                      "impact": "Receivers ignore every DMARC record when more than one is "
+                                "published, so no DMARC policy applies to this domain.",
+                      "what_note": (f"These {_n_multi} records are published: "
+                                    + _join_names([f'"{r}"' for r in _dmarc_multi])
+                                    + ". Delete all but one, keeping the one with the "
+                                      "policy and reporting address you want.")})
 
     if spf.get("status") == "fail" and spf.get("pill_label") == "Missing":
         items.append({"priority": "critical", "protocol": "SPF",
@@ -1032,6 +1096,26 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                               "impact": "RFC 7489 receivers ignore this record entirely; RFC 9989 receivers treat as p=none. Receiver behavior is split."})
                 break
 
+    # A report destination outside the domain that has not published its
+    # authorization record. The card fails for it, and the fallback below
+    # skips any protocol that already has a row, so without this the plan
+    # never said how to fix it. One row per receiving domain.
+    _unauth_by_domain: Dict[str, List[Dict]] = {}
+    for _d in dmarc.get("unauthorized_reports") or []:
+        _unauth_by_domain.setdefault(_d["domain"], []).append(_d)
+    for _rd, _dests in _unauth_by_domain.items():
+        _addrs = _join_names(sorted({d["address"] for d in _dests}))
+        _auth_host = _dests[0]["auth_host"]
+        _own = _auth_host.split("._report._dmarc.", 1)[0]
+        items.append({"priority": "high", "protocol": "DMARC",
+                      "action": f"Have {_rd} authorize the DMARC reports sent to it",
+                      "impact": f"{_rd} has not published the record that accepts this "
+                                f"domain's reports, so receivers drop the reports sent "
+                                f"to {_addrs}.",
+                      "what_note": f"Ask the administrator of {_rd} to publish a TXT record at "
+                                   f"{_auth_host} with the value v=DMARC1 (RFC 9990 section 4). "
+                                   f"Or point rua= at an address at {_own} instead."})
+
     # p=none with rua (monitoring)
     health = tb.get("health", {}) if tb else {}
     if health.get("status") == "monitoring":
@@ -1064,10 +1148,14 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # SPF lookup count. The band is the same one the card, the deliverability
     # summary and the optimization list read, so this row cannot call a count
     # high priority that the card calls well within the limit.
+    #
+    # Over the limit is critical, the same tier as a duplicate SPF record: both
+    # are a PermError for every message. At high it sorted behind a weak DKIM
+    # key added earlier in the same tier and lost the biggest-risk slot to it.
     spf_deep = spf.get("spf_deep") or {}
     _spf_band = _spf_card_band(spf)
     if _spf_band == "over":
-        items.append({"priority": "high", "protocol": "SPF",
+        items.append({"priority": "critical", "protocol": "SPF",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
                       "impact": "Past 10 lookups, receivers return PermError. None of the mail passes SPF, and DMARC relies on DKIM alone."})
     elif _spf_band == "near":
@@ -1293,6 +1381,13 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                   f"that inherits it.")
                 if not i.get("record"):
                     i["what_note"] = i["host_note"]
+
+    # A record that keeps pct below 100 says so beside it, under the record
+    # where the host note goes on the web and in the PDF.
+    for i in items:
+        _note = _pct_kept_note(i.get("record")) if i["protocol"] == "DMARC" else None
+        if _note:
+            i["host_note"] = f"{i['host_note']} {_note}" if i.get("host_note") else _note
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -2163,6 +2258,63 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             f"starting with exactly <strong>v=DMARC1;</strong>.",
         )
 
+    # More than one v=DMARC1 record at _dmarc. Receivers discard them all and
+    # apply no DMARC policy (RFC 9989), so no record here is the
+    # policy. The engine leaves the first one in "record", and every branch
+    # below reads that as the published policy: capital.net's summary said
+    # p=none was monitoring, the plan said to move it to enforcement, and the
+    # card said rua was missing because no tags were parsed. Like SPF, the
+    # card carries no single record, no tag breakdown and no attack surface.
+    _multiple = raw.get("multiple_records")
+    if _multiple:
+        _n = len(_multiple)
+        _host = f"_dmarc.{raw.get('domain', '')}"
+        _details = [{"type": "error",
+                     "text": f"{_n} v=DMARC1 records published at {_host}"}]
+        for _rec in _multiple:
+            _details.append({"type": "info", "text": _rec})
+        for _issue in raw.get("issues", []):
+            _details.append(_issue_to_detail(_issue))
+        return {
+            "name": "DMARC",
+            "status": "fail",
+            "pill_label": "Multiple records",
+            "verdict": f"{_n} DMARC records published, so no DMARC policy applies",
+            "record": None,
+            "multiple_records": list(_multiple),
+            "configured": True,
+            "explanation": (
+                f"This domain publishes <strong>{_n}</strong> DMARC records at "
+                f"<strong>{_e(_host)}</strong>. "
+                "<a href=\"https://www.rfc-editor.org/rfc/rfc9989.html\" target=\"_blank\" rel=\"noopener\">RFC 9989</a> "
+                "allows exactly one. A receiver that finds more than one ignores them all "
+                "and treats the domain as having no DMARC policy, so no policy in either "
+                "record applies and no aggregate reports are sent."
+            ),
+            "details": _details,
+            "fix": (
+                f"Delete all but one of the DMARC records at <strong>{_e(_host)}</strong>. "
+                "Keep the one with the policy and reporting address you want."
+            ),
+            "fix_records": None,
+            "strict_validation": _build_strict_validation(raw.get("strict_validation")),
+            "legacy_validation": _build_strict_validation(raw.get("legacy_validation")),
+            "spec_comparison": _build_spec_comparison(
+                raw.get("strict_validation"), raw.get("legacy_validation")
+            ),
+            "effective_policy": None,
+            "inherited_from": None,
+            "attack_surface": None,
+            "tag_breakdown": None,
+            "record_builder": None,
+            "dmarcbis_readiness": None,
+            "ttl_info": format_ttl(raw.get("ttl")),
+            "deliverability": (
+                "Receivers apply no DMARC policy to this domain while more than one "
+                "record is published."
+            ),
+        }
+
     if not raw.get("record") and raw.get("inheritance_lookup_failed"):
         return _lookup_unavailable_card(
             "DMARC",
@@ -2459,6 +2611,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
 
     # Details
     details = []
+    _unauth_reports = []
     if inherited:
         applied_tag = tw.get("applied_tag", "p")
         if inherited_policy == "reject":
@@ -2493,6 +2646,14 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             details.append({"type": "warning", "text": "Policy p=none: monitoring only, no enforcement requested"})
 
         report_dests = raw.get("report_destinations")
+        # Destinations that have not authorized this domain's reports, for the
+        # plan row that says how to fix it (RFC 9990 section 4).
+        _unauth_reports = [
+            {"address": d["address"], "domain": d["domain"],
+             "auth_host": f"{raw.get('domain', '')}._report._dmarc.{d['domain']}"}
+            for d in (report_dests or [])
+            if d.get("authorized") is False
+        ]
         if report_dests and raw.get("rua"):
             rua_dests = [d for d in report_dests if d["type"] == "rua"]
             unauthorized = [d for d in rua_dests if d.get("authorized") is False]
@@ -2624,8 +2785,14 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 f"(reports arrive as compressed XML) or a DMARC reporting service that provides a dashboard."
             )
     elif raw.get("syntax_errors") or any(i.get("severity") == "error" for i in raw.get("issues", [])):
-        # Prioritize syntax/error fixes over generic policy advice
-        fix = _first_fix(raw.get("syntax_errors", [])) or _first_fix(raw.get("issues", []))
+        # Prioritize syntax/error fixes over generic policy advice, and an
+        # error over a warning: the fix names what fails the card. A pct
+        # warning used to win over an unauthorized rua on knoxville.org, so a
+        # red card's fix said "Remove the pct tag".
+        _errors = [i for i in raw.get("syntax_errors", []) + raw.get("issues", [])
+                   if i.get("severity") == "error"]
+        fix = (_first_fix(_errors) or _first_fix(raw.get("syntax_errors", []))
+               or _first_fix(raw.get("issues", [])))
     elif policy == "none":
         if is_no_mail:
             fix = (
@@ -2782,6 +2949,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         ),
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": _deliverability,
+        "unauthorized_reports": _unauth_reports,
     }
 
 
@@ -4660,6 +4828,9 @@ def _is_null_spf(record: str) -> bool:
 
 
 def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
+    # Set by run_full_audit when the audited name is a CNAME. No record can
+    # sit beside it, so the null SPF offer has to name the target instead.
+    cname_target = raw.get("cname_target")
     # The apex TXT lookup never completed. "No SPF record published" would
     # be a claim about the domain that this audit did not establish.
     if raw.get("status") == "unavailable":
@@ -4756,6 +4927,15 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             f"This domain publishes a null SPF record (<strong>v=spf1 {_e(all_mech)}</strong>), "
             f"which explicitly declares that no servers are authorized to send email for this domain. "
             f"This is correct configuration for domains that do not send email."
+        )
+    elif not record and not has_mx and cname_target:
+        explanation = (
+            "No SPF record found, and this domain has no MX records. "
+            f"<strong>{_e(raw.get('domain', ''))}</strong> is a CNAME to "
+            f"<strong>{_e(cname_target)}</strong>, and a CNAME cannot share its name with any "
+            "other record (RFC 1034 section 3.6.2, RFC 2181 section 10.1), so no SPF record "
+            "can be published at this name. Receivers checking SPF here follow the CNAME and "
+            "read the TXT records at the target."
         )
     elif not record and not has_mx:
         explanation = (
@@ -4924,13 +5104,19 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             # At least one lookup in the chain never answered, so the lookup
             # count is a floor rather than a total. Do not certify the record.
             status = "warn"
-        elif all_mech in ("-all", "~all") and lookups <= 10 and not has_engine_errors:
+        elif ((all_mech in ("-all", "~all") or (not all_mech and raw.get("has_redirect")))
+              and lookups <= 10 and not has_engine_errors):
             # ~all and -all both pass: DMARC is the policy layer, so the
             # choice between softfail and hardfail is the operator's.
             # Lenient parser recovered a valid record with a proper all mechanism
             # and within lookup limits.  Syntax warnings (e.g. missing spaces)
             # should not downgrade the card to "warn" -- show "pass" with the
             # warning details visible in the card body.
+            #
+            # A record ending in redirect= gets the same rule. It used to fall
+            # through to the engine status, so 10 lookups was warn on a
+            # redirect record and pass on a -all one. The lookup band shows
+            # in the card details either way.
             status = "pass"
 
     # Fix
@@ -4938,6 +5124,13 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     if null_spf:
         # Null SPF is correct, no fix needed
         pass
+    elif not record and not has_mx and cname_target:
+        fix = (
+            f"Publish the null SPF record (<strong>v=spf1 -all</strong>) at "
+            f"<strong>{_e(cname_target)}</strong>, the CNAME target, if that name does not "
+            f"send email either. To publish it at <strong>{_e(raw.get('domain', ''))}</strong> "
+            "instead, replace the CNAME with A or AAAA records first."
+        )
     elif not record and not has_mx:
         fix = (
             "Publish a null SPF record (<strong>v=spf1 -all</strong>) to explicitly declare "
@@ -4975,6 +5168,11 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     fix_records = []
     domain_name = raw.get("domain", "")
     if null_spf:
+        pass
+    elif cname_target:
+        # A record at a CNAME's own name cannot be published (RFC 1034
+        # section 3.6.2), so there is nothing to copy and paste here. The fix
+        # text names the target instead.
         pass
     elif not record and not has_mx:
         fix_records.append({
@@ -6082,6 +6280,39 @@ def transform_mx(raw: Dict) -> Dict:
                 *[_issue_to_detail(i) for i in raw.get("issues", [])],
             ],
             "fix": None,
+            "fix_records": None,
+        }
+
+    cname_target = raw.get("cname_target")
+    if not records and cname_target:
+        # The audited name is a CNAME, and a CNAME cannot share its name with
+        # an MX record (RFC 1034 section 3.6.2, RFC 2181 section 10.1). A null
+        # MX offered at this name could not be published. Mail addressed here
+        # follows the CNAME, so the target is where it would go.
+        _name = _e(raw.get("domain", ""))
+        _target = _e(cname_target)
+        return {
+            "name": "MX Records",
+            "status": "warn",
+            "pill_label": "None",
+            "verdict": "No MX records found",
+            "record": None,
+            "explanation": (
+                f"No MX records exist for this domain. <strong>{_name}</strong> is a CNAME to "
+                f"<strong>{_target}</strong>, so no MX record can be published at this name, and "
+                "mail servers delivering here follow the CNAME and use the MX records of the "
+                "target. If this domain is not intended to receive email, this is expected."
+            ),
+            "details": [
+                {"type": "info", "text": f"{raw.get('domain', '')} is a CNAME to {cname_target}"},
+                *[_issue_to_detail(i) for i in raw.get("issues", [])],
+            ],
+            "fix": (
+                f"To declare that this name does not accept email, publish a null MX record "
+                f"(<strong>0 .</strong>, RFC 7505) at <strong>{_target}</strong>, the CNAME "
+                f"target, if that name does not accept email either. To publish it at "
+                f"<strong>{_name}</strong> instead, replace the CNAME with A or AAAA records first."
+            ),
             "fix_records": None,
         }
 
@@ -7321,12 +7552,32 @@ _TLSA_MATCHING = {
 # Nameservers
 # ============================================================
 
-def _is_subdomain(domain: str) -> bool:
-    """Return True if the domain appears to be a subdomain (3 or more labels)."""
-    if not domain:
+def _is_subdomain(domain: str, raw: Optional[Dict] = None) -> bool:
+    """True when the name is not a zone apex, so its nameservers are the
+    parent zone's.
+
+    The nameserver check records whether the name has its own SOA
+    (``zone_apex``) when its NS query comes back empty, and that answer
+    decides. Without it, the public suffix list does: a name is its own zone
+    at the registrable domain (example.com, example.co.uk), and anything
+    below that, or a public suffix itself such as gouv.fr, is not. Counting
+    labels got both wrong: gouv.fr has two labels and no delegation, and
+    example.co.uk has three and is a registered zone.
+    """
+    apex = (raw or {}).get("zone_apex")
+    if apex is not None:
+        return not apex
+    name = (domain or "").rstrip(".").lower()
+    if not name:
         return False
-    labels = domain.rstrip(".").split(".")
-    return len(labels) >= 3
+    org = _psl_org_domain(name)
+    if org is None:
+        # A listed public suffix (gouv.fr) is not its own registrable zone.
+        # An unrecognized suffix is no evidence of a parent zone, so the
+        # name is treated as its own.
+        ext = _tld_extract(name)
+        return bool(ext.suffix) and not ext.domain
+    return org != name
 
 
 def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
@@ -7346,7 +7597,7 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
     status = _map_status(raw.get("status", "ok"))
 
     if ns_count == 0:
-        if _is_subdomain(domain):
+        if _is_subdomain(domain, raw):
             return {
                 "name": "Nameservers",
                 "status": "pass",
@@ -7354,12 +7605,12 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
                 "verdict": "Nameservers inherited from parent zone",
                 "record": None,
                 "explanation": (
-                    "This is a subdomain, so it uses the nameservers from its parent zone. "
-                    "This is normal. Subdomains do not need their own NS delegation unless "
-                    "they are a separate DNS zone."
+                    "This name is not delegated as its own DNS zone, so it uses the nameservers "
+                    "of its parent zone. This is normal. A name needs its own NS delegation only "
+                    "when it is run as a separate DNS zone."
                 ),
                 "details": [
-                    {"type": "info", "text": "Subdomain: NS records are at the parent zone level"},
+                    {"type": "info", "text": "Not a zone apex: NS records are at the parent zone level"},
                 ],
                 "fix": None,
                 "fix_records": None,
