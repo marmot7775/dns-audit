@@ -8,6 +8,7 @@ uvicorn's own access log (stdout, which journald and syslog keep), and the
 app's INFO lines. The nginx error log does carry "client: <ip>", and the
 page says so.
 """
+import ast
 import os
 import re
 
@@ -51,8 +52,18 @@ def test_uvicorn_access_log_is_off():
 
 
 def test_no_app_log_line_carries_the_client_ip():
-    src = _read("server.py")
-    calls = re.findall(r"\blog\.\w+\((.*)\)", src)
+    tree = ast.parse(_read("server.py"))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in ("log", "logger", "logging")
+    ]
+    assert calls
     for call in calls:
-        assert "ip=" not in call, call
-        assert "client_ip" not in call, call
+        for sub in ast.walk(call):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                assert "ip=" not in sub.value, ast.unparse(call)
+            if isinstance(sub, ast.Name):
+                assert sub.id != "client_ip", ast.unparse(call)
