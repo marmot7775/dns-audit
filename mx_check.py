@@ -29,7 +29,7 @@ from dns_tools import get_resolver as _get_resolver, make_issue as _make_issue
 
 MX_PROVIDERS = [
     (r"\.mail\.protection\.outlook\.com$", "Microsoft 365"),
-    (r"\.olc\.protection\.outlook\.com$", "Microsoft 365 (GCC)"),
+    (r"\.olc\.protection\.outlook\.com$", "Outlook.com (consumer)"),
     (r"\.google\.com$", "Google Workspace"),
     (r"\.googlemail\.com$", "Google Workspace"),
     (r"aspmx\.l\.google\.com$", "Google Workspace"),

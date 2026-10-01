@@ -39,25 +39,50 @@ def _is_blocked_ip(ip: ipaddress._BaseAddress) -> bool:
     return False
 
 
+class HostResolutionError(ValueError):
+    """The hostname did not resolve, as opposed to resolving somewhere blocked.
+
+    A ValueError subclass so callers that only care that the fetch was
+    refused keep working. Callers that report on the host need the
+    difference: "does not resolve" and "resolves to a private address" are
+    different findings with different fixes. ``transient`` is True when the
+    resolver could not complete the lookup (EAI_AGAIN and the like), so
+    nothing was learned about the name.
+    """
+
+    def __init__(self, message: str, transient: bool = False):
+        super().__init__(message)
+        self.transient = transient
+
+
+# getaddrinfo codes that mean the name has no address. EAI_NODATA is not
+# defined on every platform.
+_GAI_NO_ADDRESS = {socket.EAI_NONAME, getattr(socket, "EAI_NODATA", socket.EAI_NONAME)}
+
+
 def _resolve_and_validate(hostname: str) -> str:
     """Resolve hostname to IP, reject private/internal addresses.
     Returns the first resolved IP (the one _safe_fetch will pin to).
-    Raises ValueError if ANY resolved IP is blocked or resolution fails.
+    Raises ValueError if ANY resolved IP is blocked, and HostResolutionError
+    (a ValueError) if resolution fails.
 
     Checking every result (not just results[0]) prevents DNS rebinding /
     multi-record SSRF: if a hostname resolves to both public and private
     addresses, the connection is refused outright."""
     try:
         results = socket.getaddrinfo(hostname, 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        if not results:
-            raise ValueError(f"DNS resolution failed for {hostname}")
-        for res in results:
-            ip_str = res[4][0]
-            if _is_blocked_ip(ipaddress.ip_address(ip_str)):
-                raise ValueError(f"Resolved IP {ip_str} is not a public address")
-        return results[0][4][0]
     except socket.gaierror as e:
-        raise ValueError(f"DNS resolution failed for {hostname}: {e}")
+        raise HostResolutionError(
+            f"DNS resolution failed for {hostname}: {e}",
+            transient=e.errno not in _GAI_NO_ADDRESS,
+        )
+    if not results:
+        raise HostResolutionError(f"DNS resolution failed for {hostname}")
+    for res in results:
+        ip_str = res[4][0]
+        if _is_blocked_ip(ipaddress.ip_address(ip_str)):
+            raise ValueError(f"Resolved IP {ip_str} is not a public address")
+    return results[0][4][0]
 
 
 if REQUESTS_AVAILABLE:
@@ -582,6 +607,28 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
         try:
             try:
                 resp = _safe_fetch(policy_url, timeout=10, stream=True)
+            except HostResolutionError as e:
+                if e.transient:
+                    # The lookup did not complete, so this audit learned
+                    # nothing about the host. Same grade as a fetch timeout.
+                    result["issues"].append(_make_issue(
+                        "warning", f"Could not resolve mta-sts.{domain}",
+                        f"The address lookup for mta-sts.{domain} did not complete, "
+                        "so the policy file was not checked.", "",
+                        f"Run the audit again. If this repeats, check the DNS for mta-sts.{domain}.",
+                    ))
+                else:
+                    # RFC 8461 section 3.3: senders fetch the policy over
+                    # HTTPS from this host. With no address there is no
+                    # policy, the same outcome as a 404.
+                    result["issues"].append(_make_issue(
+                        "error", f"mta-sts.{domain} does not resolve",
+                        f"mta-sts.{domain} does not resolve, so senders cannot fetch the policy.",
+                        "MTA-STS will not function.",
+                        f"Publish an A or AAAA record for mta-sts.{domain} pointing at the "
+                        "server that serves /.well-known/mta-sts.txt.",
+                    ))
+                resp = None
             except ValueError as e:
                 result["issues"].append(_make_issue(
                     "warning", "MTA-STS host resolves to a private/reserved IP",
@@ -591,7 +638,9 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
                 ))
                 result["status"] = "warning"
                 return result
-            if resp.status_code == 200:
+            if resp is None:
+                pass
+            elif resp.status_code == 200:
                 content_type = resp.headers.get("Content-Type", "")
                 if "text/plain" not in content_type and content_type:
                     result["issues"].append(_make_issue(
