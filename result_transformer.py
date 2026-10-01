@@ -1064,10 +1064,14 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # SPF lookup count. The band is the same one the card, the deliverability
     # summary and the optimization list read, so this row cannot call a count
     # high priority that the card calls well within the limit.
+    #
+    # Over the limit is critical, the same tier as a duplicate SPF record: both
+    # are a PermError for every message. At high it sorted behind a weak DKIM
+    # key added earlier in the same tier and lost the biggest-risk slot to it.
     spf_deep = spf.get("spf_deep") or {}
     _spf_band = _spf_card_band(spf)
     if _spf_band == "over":
-        items.append({"priority": "high", "protocol": "SPF",
+        items.append({"priority": "critical", "protocol": "SPF",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
                       "impact": "Past 10 lookups, receivers return PermError. None of the mail passes SPF, and DMARC relies on DKIM alone."})
     elif _spf_band == "near":
@@ -4922,13 +4926,19 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             # At least one lookup in the chain never answered, so the lookup
             # count is a floor rather than a total. Do not certify the record.
             status = "warn"
-        elif all_mech in ("-all", "~all") and lookups <= 10 and not has_engine_errors:
+        elif ((all_mech in ("-all", "~all") or (not all_mech and raw.get("has_redirect")))
+              and lookups <= 10 and not has_engine_errors):
             # ~all and -all both pass: DMARC is the policy layer, so the
             # choice between softfail and hardfail is the operator's.
             # Lenient parser recovered a valid record with a proper all mechanism
             # and within lookup limits.  Syntax warnings (e.g. missing spaces)
             # should not downgrade the card to "warn" -- show "pass" with the
             # warning details visible in the card body.
+            #
+            # A record ending in redirect= gets the same rule. It used to fall
+            # through to the engine status, so 10 lookups was warn on a
+            # redirect record and pass on a -all one. The lookup band shows
+            # in the card details either way.
             status = "pass"
 
     # Fix
