@@ -141,3 +141,31 @@ def test_redirect_record_with_headroom_points_at_the_target(audit):
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" not in fix, fix
     assert "<strong>_spf.redir.test</strong> with redirect=" in fix, fix
+
+
+def test_a_slow_include_count_runs_inside_the_audit_budget(audit, monkeypatch):
+    """Counting a missing vendor's lookups walks a whole SPF tree. It runs
+    through _run_with_timeout with the audit's remaining budget, so a slow
+    tree cannot outlast the audit, and a timeout means no suggested record
+    rather than a guess. six.test gets a suggestion when the count works."""
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+    import audit_engine as ae
+
+    calls = []
+    real_run = ae._run_with_timeout
+
+    def spy(func, *args, **kwargs):
+        if func is ae._spf_include_cost:
+            calls.append(kwargs.get("timeout"))
+            raise FuturesTimeoutError()
+        return real_run(func, *args, **kwargs)
+
+    monkeypatch.setattr(ae, "_run_with_timeout", spy)
+    domain = "six.test"
+    result = audit(
+        _zone(domain, f"v=spf1 {_a_terms(domain, 6)} -all", GOOGLE_MX, GOOGLE_SPF, 6),
+        domain, scope="email_full")
+    assert calls and all(t is not None and t <= ae.CHECK_TIMEOUT for t in calls), calls
+    fix = _spf_card(result).get("fix") or ""
+    assert "Suggested SPF record" not in fix, fix
