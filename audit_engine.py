@@ -3527,8 +3527,14 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
         # nameservers. None means the SOA query did not complete, and the
         # transformer falls back to the public suffix list.
         try:
-            resolver.resolve(domain, "SOA")
-            result["zone_apex"] = True
+            soa = resolver.resolve(domain, "SOA")
+            # A CNAME is followed, so an alias whose target is an apex
+            # answers too. Only an SOA owned by this name makes it an apex.
+            owner = getattr(soa, "canonical_name", None)
+            result["zone_apex"] = (
+                owner is None
+                or str(owner).rstrip(".").lower() == domain.rstrip(".").lower()
+            )
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             result["zone_apex"] = False
         except dns.exception.DNSException:

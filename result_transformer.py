@@ -29,7 +29,7 @@ from html import escape as _e
 
 from dkim_formatter import analyze_dkim_key_strength
 from spf_recursive import spf_lookup_band
-from dmarc_tree_walk import _psl_org_domain
+from dmarc_tree_walk import _psl_org_domain, _tld_extract
 
 # The tags RFC 9989 removed from DMARC (Appendix C.5.2). The one source for
 # every reader: the validator, the readiness verdict, the plan rows, the
@@ -7395,7 +7395,14 @@ def _is_subdomain(domain: str, raw: Optional[Dict] = None) -> bool:
     name = (domain or "").rstrip(".").lower()
     if not name:
         return False
-    return _psl_org_domain(name) != name
+    org = _psl_org_domain(name)
+    if org is None:
+        # A listed public suffix (gouv.fr) is not its own registrable zone.
+        # An unrecognized suffix is no evidence of a parent zone, so the
+        # name is treated as its own.
+        ext = _tld_extract(name)
+        return bool(ext.suffix) and not ext.domain
+    return org != name
 
 
 def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
