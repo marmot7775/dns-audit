@@ -79,3 +79,12 @@ def test_without_the_soa_answer_the_public_suffix_list_decides():
     assert registered["status"] == "fail"
     assert registered["fix"] == REGISTRAR
     assert transform_nameservers(raw, "example.com")["status"] == "fail"
+
+
+def test_an_unrecognized_suffix_is_not_called_a_subdomain():
+    """No PSL answer for broken.example is no evidence of a parent zone; a
+    listed public suffix such as gouv.fr is still not its own zone."""
+    from result_transformer import _is_subdomain
+    assert _is_subdomain("broken.example") is False
+    assert _is_subdomain("gouv.fr") is True
+    assert _is_subdomain("example.co.uk") is False
