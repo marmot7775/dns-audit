@@ -120,7 +120,7 @@ def _is_private_ip(ip_str: str) -> bool:
 
 from checks_extra import check_mta_sts, check_tls_rpt, check_bimi
 from mx_check import check_mx
-from spf_recursive import count_spf_lookups, repair_spf_missing_spaces
+from spf_recursive import SPF_LOOKUP_LIMIT, count_spf_lookups, repair_spf_missing_spaces
 from advanced_fingerprinting import AdvancedVendorFingerprinter
 from dkim_formatter import analyze_dkim_key_strength
 from anomaly_detector import detect_anomalies
@@ -176,6 +176,7 @@ from result_transformer import (
     build_consistency_findings,
     _build_provider_intelligence,
     _lookup_unavailable_card,
+    ARTICLE_SPF_LOOKUPS,
     RFC9989_RETIRED_TAGS,
 )
 from dns_snapshots import store_audit_snapshots, get_all_history, purge_old_snapshots
@@ -207,6 +208,14 @@ VENDOR_SPF_INCLUDES = {
     "Mimecast": "include:_netblocks.mimecast.com",
     "Barracuda": "include:spf.barracudanetworks.com",
     "Omnivery/Mailkit": "include:spf.mailkit.eu",
+}
+
+# Hosted SPF services publish a vendor's ranges under their own zone instead
+# of through the vendor's usual include. A name in one of these zones anywhere
+# in the SPF tree means the vendor is already covered. Mimecast's hosted SPF
+# (servicenow.com redirects to a mim.ec name) is the case seen in the wild.
+VENDOR_SPF_HOSTED_ZONES = {
+    "Mimecast": ("mim.ec",),
 }
 
 
@@ -4609,6 +4618,9 @@ def _build_suggested_spf(current_spf: str, missing_includes: List[str],
     None when the result would authorize fewer sources than the record it
     replaces: a lossy suggestion stops the sender's own hosts from passing
     SPF the moment it is pasted, so no suggestion is better than that one.
+    Also returns None for a record with a redirect= modifier, which defers
+    to the record at another name. The lookup budget is checked by the
+    caller, which has the resolved lookup counts.
     """
     current = (current_spf or "").strip()
     if not current:
@@ -4621,6 +4633,12 @@ def _build_suggested_spf(current_spf: str, missing_includes: List[str],
     published = {t.lower() for t in terms}
     new_includes = [inc for inc in missing_includes if inc.lower() not in published]
     if not new_includes:
+        return None
+
+    # A redirect= record hands evaluation to the record at another name, so
+    # the vendor belongs in that record. Tacking an include onto this one
+    # changes a record the operator manages somewhere else.
+    if any(t.lower().startswith("redirect=") for t in terms):
         return None
 
     all_index = next(
@@ -4645,6 +4663,44 @@ def _build_suggested_spf(current_spf: str, missing_includes: List[str],
         )
         return None
     return suggested
+
+
+def _spf_tree_names(current_spf: str, spf_recursive: Optional[Dict]) -> set:
+    """Every include and redirect target in the resolved SPF tree.
+
+    The chain from spf_recursive covers names nested inside includes and
+    redirects. The top-level terms are added as well, so a target the
+    recursive walk did not reach (a macro, a term after all) still counts.
+    """
+    names = set()
+    # chain[0] is the audited domain itself, not an include target.
+    for entry in ((spf_recursive or {}).get("chain") or [])[1:]:
+        name = (entry.get("domain") or "").lower().rstrip(".")
+        if name:
+            names.add(name)
+    for term in _spf_terms(current_spf):
+        bare = term.lstrip(_SPF_QUALIFIERS).lower()
+        for prefix in ("include:", "redirect="):
+            if bare.startswith(prefix):
+                names.add(bare[len(prefix):].rstrip("."))
+    return names
+
+
+def _vendor_in_spf_tree(vendor: str, spf_inc: str, tree_names: set) -> bool:
+    """True when the vendor's include, a name under it, or the vendor's
+    hosted SPF zone appears anywhere in the SPF tree."""
+    target = spf_inc.split(":", 1)[1].lower().rstrip(".")
+    zones = (target,) + VENDOR_SPF_HOSTED_ZONES.get(vendor, ())
+    return any(n == z or n.endswith("." + z) for n in tree_names for z in zones)
+
+
+def _spf_include_cost(spf_inc: str):
+    """Lookups an include adds: one for the include itself plus everything
+    its own record resolves to. Second value is True when part of that tree
+    did not answer, so the cost is only a floor."""
+    target = spf_inc.split(":", 1)[1]
+    resolved = count_spf_lookups(target)
+    return 1 + (resolved.get("total_lookups") or 0), bool(resolved.get("indeterminate"))
 
 
 def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
@@ -5456,32 +5512,80 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # from-scratch record, which would be a lossy replacement for whatever
     # the domain actually publishes.
     if vendors and raw_results.get("spf", {}).get("status") != "unavailable":
-        current_spf = raw_results.get("spf", {}).get("record", "") or ""
+        raw_spf = raw_results.get("spf", {})
+        current_spf = raw_spf.get("record", "") or ""
+        # A vendor counts as present when its include appears anywhere in
+        # the resolved tree, not only in the top-level record. A substring
+        # test on the top level missed vendors covered inside an include or
+        # a redirect target and suggested adding them a second time.
+        tree_names = _spf_tree_names(current_spf, raw_spf.get("spf_recursive"))
         missing_includes = []
         matched_vendors = []
         for v in vendors:
             spf_inc = VENDOR_SPF_INCLUDES.get(v["name"])
-            if spf_inc and spf_inc not in current_spf:
+            if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
                 missing_includes.append(spf_inc)
                 matched_vendors.append(v["name"])
         if missing_includes:
             for check in checks:
                 if check.get("name") != "SPF":
                     continue
-                # Build suggested record from the operator's own terms, so
-                # ip4, a, mx and exists survive alongside the new includes.
-                suggested = _build_suggested_spf(
-                    current_spf,
-                    missing_includes,
-                    raw_results.get("spf", {}).get("all_mechanism"),
-                )
                 vendor_list = ", ".join(matched_vendors)
                 vendor_hint = f"<strong>Detected services:</strong> {_e(vendor_list)}"
-                if suggested:
+
+                # RFC 7208 section 4.6.4: past 10 lookups every message fails
+                # SPF with a PermError. Count what the record would cost with
+                # the new includes and never suggest one past the limit.
+                projected = raw_spf.get("lookup_count") or 0
+                count_unknown = bool(raw_spf.get("spf_indeterminate"))
+                for inc in missing_includes:
+                    if _time_up():
+                        count_unknown = True
+                        break
+                    try:
+                        cost, inc_unknown = _spf_include_cost(inc)
+                    except Exception:
+                        log.debug("Could not count lookups for %s", inc, exc_info=True)
+                        count_unknown = True
+                        break
+                    projected += cost
+                    count_unknown = count_unknown or inc_unknown
+
+                if projected > SPF_LOOKUP_LIMIT:
                     vendor_hint += (
-                        f"<br><br><strong>Suggested SPF record:</strong><br>"
-                        f"<code>{_e(suggested)}</code>"
+                        f"<br><br>{_e(vendor_list)} "
+                        f"{'is' if len(matched_vendors) == 1 else 'are'} not authorized "
+                        f"in this SPF record, and the record has no lookup budget left. "
+                        f"Adding {_e(' '.join(missing_includes))} would take it to "
+                        f"{projected} DNS lookups, past the limit of 10 (RFC 7208 section "
+                        f"4.6.4), and every message would fail SPF with a PermError. Free "
+                        f"up lookups before adding it. " + ARTICLE_SPF_LOOKUPS
                     )
+                elif not count_unknown:
+                    # Build suggested record from the operator's own terms, so
+                    # ip4, a, mx and exists survive alongside the new includes.
+                    suggested = _build_suggested_spf(
+                        current_spf,
+                        missing_includes,
+                        raw_spf.get("all_mechanism"),
+                    )
+                    redirect_target = next(
+                        (t.split("=", 1)[1] for t in _spf_terms(current_spf)
+                         if t.lower().startswith("redirect=")),
+                        None,
+                    )
+                    if suggested:
+                        vendor_hint += (
+                            f"<br><br><strong>Suggested SPF record:</strong><br>"
+                            f"<code>{_e(suggested)}</code>"
+                        )
+                    elif redirect_target:
+                        vendor_hint += (
+                            f"<br><br>This record hands SPF evaluation to "
+                            f"<strong>{_e(redirect_target)}</strong> with redirect=, so "
+                            f"add {_e(' '.join(missing_includes))} to the record published "
+                            f"there rather than to this one."
+                        )
                 if check.get("fix"):
                     check["fix"] = vendor_hint + "<br><br>" + check["fix"]
                 else:
