@@ -55,3 +55,17 @@ def test_pct_100_is_still_dropped_without_a_note(audit):
     np_row = rows["Consider adding an explicit np= tag"]
     assert "pct" not in _parse_record_tags(np_row["record"])
     assert not np_row.get("host_note")
+
+
+def test_pct_zero_and_padded_pct_are_kept_in_canonical_form():
+    """pct=0 is a real setting (apply the policy to no failing mail); dropping
+    it would take enforcement to 100%. pct=05 is kept, written as pct=5, and a
+    malformed +5 is not carried into a suggested record."""
+    from result_transformer import _edit_dmarc_record
+    rec = "v=DMARC1; p=quarantine; pct=0; rua=mailto:d@zero.test"
+    assert "pct=0" in _edit_dmarc_record(rec, {"np": "quarantine"})
+    rec = "v=DMARC1; p=quarantine; pct=05; rua=mailto:d@pad.test"
+    out = _edit_dmarc_record(rec, {"np": "quarantine"})
+    assert "pct=5;" in out and "pct=05" not in out, out
+    rec = "v=DMARC1; p=quarantine; pct=+5; rua=mailto:d@plus.test"
+    assert "pct" not in _edit_dmarc_record(rec, {"np": "quarantine"})

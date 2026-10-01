@@ -950,7 +950,8 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
     set_tags = dict(set_tags or {})
     removing = {t.lower() for t in remove}
     drop = removing | set(RFC9989_RETIRED_TAGS)
-    if "pct" not in removing and _dmarc_pct_kept(record):
+    kept_pct = None if "pct" in removing else _dmarc_pct_kept(record)
+    if kept_pct is not None:
         drop.discard("pct")
     parts = []
     for part in record.split(";"):
@@ -963,6 +964,8 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
             continue
         if k in set_tags:
             v = set_tags.pop(k)
+        elif k == "pct" and kept_pct is not None:
+            v = str(kept_pct)  # pct=05 is kept as pct=5
         parts.append((k, v.strip()))
     for k, v in set_tags.items():
         after = max((i for i, (t, _) in enumerate(parts) if t in ("v", "p", "sp")), default=0)
@@ -973,11 +976,12 @@ def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]]
 def _dmarc_pct_kept(record: Optional[str]) -> Optional[int]:
     """The record's pct when it is below 100, else None. A proposed record
     keeps that value, and the row says so with _pct_kept_note."""
-    try:
-        pct = int(_parse_record_tags(record or "").get("pct", ""))
-    except ValueError:
+    raw = (_parse_record_tags(record or "").get("pct") or "").strip()
+    # Digits only: "+5" or "5%" is malformed, and the validator says so.
+    if not raw.isdigit():
         return None
-    return pct if 0 <= pct < 100 else None
+    pct = int(raw)
+    return pct if pct < 100 else None
 
 
 def _pct_kept_note(record: Optional[str]) -> Optional[str]:
