@@ -119,11 +119,13 @@ own or its supervisor's command line, and logs an error naming everything
 that breaks. A comment protects a reader; the warning protects the person who
 did not read.
 
-Related: uvicorn runs without `--proxy-headers` on purpose. That is what keeps
-`request.client.host` equal to nginx's loopback address, which is the whole
-basis of the `X-Real-IP` trust check in `_get_client_ip`. Turning the flag on
-would let a client supply its own peer address and walk past the rate
-limiter. Read the docstring on `_get_client_ip` before touching it.
+Related: uvicorn runs WITH proxy headers, trusting only 127.0.0.1 (its
+default, named explicitly in the unit file). This file used to say the
+opposite; it was wrong from the start. uvicorn takes the rightmost
+X-Forwarded-For address that nginx appended, so a client cannot spoof its
+way past the rate limiter, and the flag keeps Starlette's trailing-slash
+redirects on https. Read the docstring on `_get_client_ip` before touching
+it; tests/test_proxy_headers_trust.py pins the behavior.
 
 ## Deploy
 DROPLET_HOST and DEPLOY_USER are placeholders. The real values live in
