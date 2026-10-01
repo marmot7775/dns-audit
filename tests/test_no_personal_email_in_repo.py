@@ -33,6 +33,8 @@ _FIXTURE = "user" + "@" + "gmail" + ".com"
 # Doc 41: the public contact alias, allowed only in the ten page footers,
 # the results note in app.js, and the doc that asked for it. Doc 51 added
 # SECURITY.md as a private reporting channel, and its own doc names it.
+# Doc 88 added a mailbox note under Accounts on the privacy page (a file
+# already listed), and its doc names it.
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
 ALIAS_FILES = (
     "static/index.html",
@@ -48,6 +50,7 @@ ALIAS_FILES = (
     "static/app.js",
     "docs/history/doc-41.md",
     "docs/history/doc-51.md",
+    "docs/history/doc-88.md",
     "SECURITY.md",
 )
 

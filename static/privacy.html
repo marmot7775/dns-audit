@@ -60,13 +60,16 @@
                 <li>the hostname of the page that linked you here, if your browser sent one. The path and query string are dropped, so a link from a private forum thread records the forum, not the thread.</li>
             </ul>
             <p>The domain you type is the whole point of the tool, so it is recorded. If a domain's existence is itself something you would rather keep private, audit it from a copy you run yourself.</p>
+            <p>Once a week a copy of this log is downloaded to my own computer and summarized into a private usage report that only I see. It is not published or shared.</p>
         </section>
 
         <section class="dbis-section">
             <h2>Your IP address</h2>
-            <p>Your IP address is not written to the audit log or to any other file. It is used two ways, both of them in memory.</p>
+            <p>Your IP address is not written to the audit log, and the application does not write it to any other file. It is used two ways, both of them in memory.</p>
             <p>Rate limiting counts recent requests per IP so that one client cannot flood the service. Each address holds only the timestamps from the last 60 seconds, and the entry is dropped once that window empties.</p>
             <p>The daily visitor token is a truncated SHA-256 hash of your IP address, your user agent, today's date, and a random value the server generates when it starts. That random value is not written anywhere and does not survive a restart, so the token cannot be turned back into an address. Because the date is part of the hash, the same visitor hashes to something different tomorrow. It exists so usage counts can tell one heavy user from twenty light ones inside a single day, and it deliberately cannot follow anyone across days.</p>
+            <p>The web server in front of the application keeps an access log of each page and audit request: the time, the method, the path, the status code, the size of the response, and how long it took. It leaves out your IP address and your user agent.</p>
+            <p>When the web server hits an error on a request, such as a file that does not exist, it writes a line to its error log that includes your IP address after the word <code>client</code>, and those lines are kept for 14 days.</p>
         </section>
 
         <section class="dbis-section">
@@ -81,19 +84,30 @@
 
         <section class="dbis-section">
             <h2>DNS snapshots</h2>
-            <p>The server keeps a small database of DNS records it has looked up, so it can tell you when one of your records changed. Each row is a domain, a record type, the record's value, and when it was seen. All of it is public DNS data that anyone can query for themselves. Rows older than 90 days are deleted, and that cleanup runs on every audit.</p>
+            <p>The server keeps a small database of DNS records it has looked up, so it can tell you when one of your records changed. Each row is a domain, a record type, the record's value, and when it was seen. All of it is public DNS data that anyone can query for themselves.</p>
         </section>
 
         <section class="dbis-section">
             <h2>Third parties</h2>
             <p>The pages load nothing from anyone else. No analytics, no third-party scripts, no tag managers, no hosted fonts. The two typefaces are served from this domain.</p>
-            <p>Cloudflare provides DNS and CDN for the site, so your connection reaches it first and it sees the request the way any network in the path does. The web server in front of the application keeps its own connection logs.</p>
+            <p>Cloudflare provides DNS and CDN for the site, so your connection reaches it first and it sees the request the way any network in the path does.</p>
             <p>When something on the server breaks, it sends an error report to Sentry, an error tracking service, so the fault can be found and fixed. A report holds the error, where in the code it happened, which part of the site it came from, and the domain being audited. The address you requested, your IP address, your user agent, the page that linked you here, and every other request header are removed before a report leaves the server. Nothing in your browser talks to Sentry.</p>
+        </section>
+
+        <section class="dbis-section">
+            <h2>How long it is kept</h2>
+            <ul>
+                <li>The audit log is limited by size, not by date: eleven files of 10 MB each, with the oldest file deleted when a new one starts. The oldest line in it today is from April 2026, when the log began. At current traffic, about 4 KB a day, it would take decades to fill, so nothing has been deleted from it yet.</li>
+                <li>The web server's access log and error log are rotated daily and kept for 14 days.</li>
+                <li>DNS snapshots older than 90 days are deleted, and that cleanup runs on every audit.</li>
+                <li>Recent audits in your browser stay until you clear them.</li>
+            </ul>
         </section>
 
         <section class="dbis-section">
             <h2>Accounts</h2>
             <p>There are no accounts. Nothing to sign up for, nothing to log in to, no email address to hand over, and no payment. If that changes, this page gets a section saying what an account holds.</p>
+            <p>If you email dns@dns-audit.com, your message and address are kept in my mailbox like any other email.</p>
         </section>
 
         <section class="dbis-section">
@@ -104,7 +118,7 @@
         <section class="dbis-section">
             <h2>Changes</h2>
             <p>This page describes the tool as it works today. When the tool changes, this page changes with it.</p>
-            <p><strong>Last updated:</strong> 30 September 2026</p>
+            <p><strong>Last updated:</strong> 1 October 2026</p>
         </section>
     </main>
     <footer class="site-footer">
