@@ -580,8 +580,11 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
         try:
             resolver.resolve(dest["domain"], "MX")
             dest["has_mx"] = True
-        except dns.exception.DNSException:
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             dest["has_mx"] = False
+        except dns.exception.DNSException:
+            # A timeout or SERVFAIL says nothing about the MX record.
+            dest["has_mx"] = None
 
     if destinations:
         # _probe_executor, not _shared_executor. This function is itself

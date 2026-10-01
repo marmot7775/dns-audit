@@ -789,7 +789,8 @@ def _validate_tls_rpt_record(record: str, domain: str = "") -> Tuple[Dict[str, s
             uri_lower = uri.lower()
             if uri_lower.startswith("mailto:"):
                 email = uri[7:]
-                if "@" not in email:
+                local, _, host = email.partition("@")
+                if not local or not host or "@" in host:
                     issues.append(_make_issue("error", f"Invalid email in rua: '{uri}'",
                         "Must contain a valid email.", "", "Fix the email format."))
             elif uri_lower.startswith("https:"):
