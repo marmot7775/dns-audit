@@ -1898,6 +1898,19 @@ def _about_page(data, S, number=7):
     ]))
     els.append(retest)
 
+    # Who to ask. LinkedIn and the About page only: the PDF carries no email
+    # address, by the same rule that keeps the alias to the page footers.
+    els.append(Spacer(1, SP_MD))
+    _link = f'color="{BLUE_ACCENT.hexval().replace("0x", "#")}"'
+    els.append(Paragraph(
+        "Questions about this report? Neil Anuskiewicz built dns-audit.com and does "
+        "this work as a consultant. Reach him on LinkedIn at "
+        f'<a href="https://www.linkedin.com/in/neilanuskiewicz/" {_link}>'
+        "linkedin.com/in/neilanuskiewicz</a> or through "
+        f'<a href="https://dns-audit.com/about" {_link}>dns-audit.com/about</a>.',
+        S["body_small"]
+    ))
+
     return els
 
 

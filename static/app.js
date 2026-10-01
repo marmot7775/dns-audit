@@ -746,8 +746,13 @@ function renderResults(data) {
     document.getElementById('summary-unavailable-card')
         .classList.toggle('is-hidden', unavailableCount === 0);
 
-    // Prompt 26: quiet contact note, shown only when there is something to hand off.
-    _renderContactNote(failCount, warnCount);
+    // Prompt 26: quiet contact note. Doc 90 adds a second variant for a clean
+    // audit of a domain that sends mail; a defensive domain, a null MX or a
+    // null SPF record (v=spf1 -all) gets none.
+    const signals = data.defensive_signals || [];
+    const sendsMail = !data.defensive_dns &&
+        !signals.includes('null_mx') && !signals.includes('null_spf');
+    _renderContactNote(failCount, warnCount, unavailableCount, sendsMail);
 
     document.title = auditTabTitle(counts, data.domain);
 
@@ -4264,14 +4269,20 @@ function _renderCacheBadge(data) {
 // Contact note (Prompt 26)
 // ============================================================
 
-function _renderContactNote(failCount, warnCount) {
+function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
     const note = document.getElementById('results-contact-note');
     if (!note) return;
+    const contact = '<a href="mailto:dns@dns-audit.com">Email dns@dns-audit.com</a> or ' +
+        '<a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener">message me on LinkedIn</a>.';
     if (failCount > 0 || warnCount > 0) {
         note.innerHTML = 'Some of these are a five-minute DNS change. Some are not. ' +
             'If you want a second opinion on which is which, this is what I do for a living. ' +
-            '<a href="mailto:dns@dns-audit.com">Email dns@dns-audit.com</a> or ' +
-            '<a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener">message me on LinkedIn</a>.';
+            contact;
+        note.classList.remove('is-hidden');
+    } else if (sendsMail && !unavailableCount) {
+        note.innerHTML = 'Everything here checks out. If mail from this domain still lands in ' +
+            "spam, the cause is somewhere DNS can't show, such as sender reputation or " +
+            "sending practices. That's the other half of what I do. " + contact;
         note.classList.remove('is-hidden');
     } else {
         note.innerHTML = '';

@@ -132,7 +132,10 @@ def test_footer_attribution_says_what_neil_does():
 def test_the_only_mailto_is_the_footer_alias(path):
     html = _read(path)
     rel = os.path.relpath(path, STATIC)
-    assert html.count('href="mailto:') == 1, rel
+    # Doc 90 added one more on About, in "If your audit turned up something".
+    expected = 2 if rel == "about.html" else 1
+    assert html.count('href="mailto:') == expected, rel
+    assert set(re.findall(r'href="mailto:([^"]+)"', html)) == {ALIAS}, rel
     assert f'href="mailto:{ALIAS}"' in _attribution(path), rel
 
 
@@ -141,7 +144,7 @@ def test_results_contact_note_offers_email_and_linkedin():
     index = _read(os.path.join(STATIC, "index.html"))
     assert '<p class="results-contact-note is-hidden" id="results-contact-note"></p>' in index
     app_js = _read(os.path.join(STATIC, "app.js"))
-    assert "function _renderContactNote(failCount, warnCount)" in app_js
+    assert "function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail)" in app_js
     assert f"'<a href=\"mailto:{ALIAS}\">Email {ALIAS}</a> or ' +" in app_js
     assert "message me on LinkedIn</a>." in app_js
     assert app_js.count('href="mailto:') == 1
