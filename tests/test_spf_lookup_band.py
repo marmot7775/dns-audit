@@ -125,7 +125,7 @@ def test_11_lookups_is_over(run):
     assert card["status"] == "fail"
     rows = _lookup_rows(result)
     assert len(rows) == 1, rows
-    assert rows[0]["priority"] == "high"
+    assert rows[0]["priority"] == "critical"
     assert rows[0]["impact"].startswith("Past 10 lookups, receivers return PermError.")
     assert _lookup_anomalies(result) == []
     summary = result["executive_summary"]["deliverability_summary"]
@@ -144,7 +144,7 @@ def test_no_two_surfaces_disagree(run, lookups):
                  else "near" if "warning" in detail_types else "ok")
 
     rows = _lookup_rows(result)
-    plan_band = ("over" if rows and rows[0]["priority"] == "high"
+    plan_band = ("over" if rows and rows[0]["priority"] == "critical"
                  else "near" if rows else "ok")
 
     summary = result["executive_summary"]["deliverability_summary"]
