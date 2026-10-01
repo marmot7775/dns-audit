@@ -67,6 +67,10 @@ def test_alias_is_in_the_results_note_beside_linkedin():
     # Doc 90: a clean audit of a domain that sends mail gets its own note.
     assert "} else if (sendsMail && !unavailableCount) {" in body
     assert "Everything here checks out." in body
+    # A domain that declares it sends no mail never gets the clean note.
+    caller = src[src.index("const sendsMail"):src.index("_renderContactNote(failCount, warnCount, unavailableCount, sendsMail);")]
+    for signal in ("defensive_dns", "'null_mx'", "'null_spf'"):
+        assert signal in caller, signal
     assert f'<a href="mailto:{ALIAS}">Email {ALIAS}</a> or ' in body
     assert f'<a href="{LINKEDIN}" target="_blank" rel="noopener">message me on LinkedIn</a>.' in body
 
