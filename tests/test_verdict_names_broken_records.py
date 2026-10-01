@@ -138,3 +138,12 @@ def test_a_no_mail_domain_with_a_red_card_keeps_the_existing_logic(audit):
     verdict = result["executive_summary"]["verdict"]
     assert "Nothing to fix" not in verdict
     assert "send and receive no email" not in verdict
+
+
+def test_a_domain_that_still_receives_mail_is_not_called_no_mail(audit):
+    """Null SPF plus p=reject marks the domain defensive even with a working
+    MX, but it still receives mail, so the no-mail sentence does not apply."""
+    zone = _zone("v=DMARC1;p=reject;sp=reject;adkim=s;aspf=s", "v=spf1 -all",
+                 domain=NO_MAIL, null_mx=False)
+    result = audit(zone, NO_MAIL)
+    assert "send and receive no email" not in result["executive_summary"]["verdict"]

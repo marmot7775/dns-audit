@@ -505,11 +505,15 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     # improvements available" beside a red SPF card.
     _broken_auth = [n for n in ("DMARC", "SPF", "DKIM")
                     if check_map.get(n, {}).get("status") == "fail"]
-    # A domain that sends and receives no mail (null MX or null SPF, with
-    # p=reject) has nothing to protect beyond refusing mail in its name.
+    # A domain that sends and receives no mail has nothing to protect beyond
+    # refusing mail in its name. That needs both directions closed: a null MX
+    # (no inbound) and a null SPF record (no outbound), plus p=reject. One of
+    # them alone can sit beside working mail in the other direction.
     _statuses = [c.get("status") for c in checks]
-    _defensive_clean = (is_no_mail and _eff_policy == "reject"
-                        and "fail" not in _statuses)
+    _null_mx = check_map.get("MX Records", {}).get("pill_label") == "Null MX"
+    _null_spf = (check_map.get("SPF", {}).get("record") or "").strip().lower() == "v=spf1 -all"
+    _defensive_clean = (is_no_mail and _null_mx and _null_spf
+                        and _eff_policy == "reject" and "fail" not in _statuses)
     # Set when a branch below names a broken record or a domain with no mail,
     # so the no-reporting sentence further down does not replace it.
     _verdict_final = False
