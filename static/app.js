@@ -825,7 +825,7 @@ function renderResults(data) {
         defensiveCard.className = 'defensive-dns-card';
         defensiveCard.innerHTML = `
             <div class="defensive-header">Defensive DNS Detected</div>
-            <div class="defensive-body">This domain is configured to not send or receive email. The DNS records explicitly reject all email activity, which is a security best practice for non-mail domains.</div>
+            <div class="defensive-body">This domain publishes records that say it does not handle email. The signals below show which directions are closed. Publishing them is a security best practice for non-mail domains.</div>
             <div class="defensive-signals">${signalHtml}</div>
         `;
         resultsList.parentNode.insertBefore(defensiveCard, resultsList);
@@ -1447,7 +1447,7 @@ function _treeWalkSummary(tw) {
 
 function _dmarcEvalSummary(ev) {
     if (!ev) return '';
-    if (ev.spf_aligned && ev.dkim_aligned) return 'SPF and DKIM aligned';
+    if (ev.spf_aligned && ev.dkim_aligned) return 'SPF and DKIM can both align';
     return ev.explanation || '';
 }
 
@@ -1457,7 +1457,7 @@ function _reportChainSummary(rc) {
     const unauthorized = dests.filter(d => d.authorized === false).length;
     return unauthorized > 0
         ? `${_count(dests.length, 'destination')}, ${unauthorized} not authorized`
-        : `${_count(dests.length, 'destination')}, all authorized`;
+        : `${_count(dests.length, 'destination')}, no authorization failures`;
 }
 
 function _spfExecutionSummary(exec) {
@@ -2024,7 +2024,7 @@ function renderSubdomainAudit(sa) {
                 <td class="sua-cell-status">${icon} ${escapeHtml(s.status_label)}</td>
                 <td class="sua-cell-action">
                     <button class="sua-audit-btn" data-domain="${escapeHtml(s.subdomain)}"
-                            title="Run full audit on ${escapeHtml(s.subdomain)}">Audit ${ICON['arrow-right']}</button>
+                            title="Audit ${escapeHtml(s.subdomain)} with the scope selected above">Audit ${ICON['arrow-right']}</button>
                 </td>
             </tr>`;
     });
@@ -2299,7 +2299,7 @@ function renderDmarcTagBreakdown(bd) {
         migrationHtml = `
             <div class="mw-block">
                 <div class="mw-header">
-                    <h4 class="mw-title">Migration path to RFC 9989</h4>
+                    <h4 class="mw-title">Path to enforcement</h4>
                     <span class="mw-progress">${bd.migration.total_steps} step${bd.migration.total_steps === 1 ? '' : 's'}</span>
                 </div>
                 <div class="mw-steps">${stepsHtml}</div>
@@ -2710,7 +2710,7 @@ function renderTreeWalkFull(tw) {
         const walkQueries = tw.query_count != null ? tw.query_count : (tw.steps.length - 1);
         html += `<div class="tw-meta-row">
             <span class="tw-meta-label">Walk Queries</span>
-            <span class="tw-meta-value">${walkQueries} of 8 max</span>
+            <span class="tw-meta-value">${walkQueries} of 7 max, after the lookup at the domain itself</span>
         </div>`;
 
         html += `</div>`;
@@ -2718,7 +2718,7 @@ function renderTreeWalkFull(tw) {
         // Note for inherited policies
         if (tw.is_subdomain) {
             html += `<div class="tw-footnote" data-anim-delay="${metaDelay}s">
-                This subdomain inherits its DMARC policy from the organizational domain.
+                This subdomain has no DMARC record of its own, so receivers apply the policy found at the domain named above.
             </div>`;
         }
     } else {
@@ -3108,7 +3108,7 @@ function _planWhat(item, card, anchor) {
 
 function _planConfirm(card, hasPropagation) {
     let text = 'Run this audit again after the change has propagated. '
-        + 'This row disappears when the check passes.';
+        + 'This row disappears when the audit no longer finds the problem.';
     if (card && card.ttl_info && !hasPropagation) {
         text += ` The current ${card.name} record has a TTL of ${card.ttl_info.ttl}s `
             + `(${card.ttl_info.human}), so allow that long for resolvers to pick up the change.`;
@@ -3263,7 +3263,7 @@ function renderSpfExecution(exec) {
     // Intro
     if (exec.over_limit) {
         html += `<div class="se-intro">This domain's SPF record requires <strong>${exec.total_lookups} DNS lookups</strong>,
-            exceeding the RFC 7208 limit of 10. Receivers that enforce this limit will return a permanent error.</div>`;
+            exceeding the RFC 7208 limit of 10. RFC 7208 requires a receiver to return a permanent error (permerror) when evaluation reaches the eleventh lookup.</div>`;
     }
 
     // Timeline steps
@@ -3409,7 +3409,7 @@ function renderReportChain(rc) {
     const introClass = hasUnauthorized ? 'rc-intro rc-intro-warn' : 'rc-intro';
     const introText = hasUnauthorized
         ? 'One or more external report destinations are not authorized. Reports to those addresses will be silently dropped.'
-        : 'All report destinations are properly configured to receive DMARC reports.';
+        : 'No report destination failed the RFC 9990 authorization check.';
 
     let html = `
         <div class="report-chain rc-animated">
@@ -3430,15 +3430,17 @@ function renderReportChain(rc) {
             authHtml = `<span class="rc-auth rc-authorized">${ICON.pass} External authorization verified</span>`;
         } else if (dest.authorized === false) {
             authHtml = `<span class="rc-auth rc-unauthorized">${ICON.fail} Not authorized (reports will be dropped)</span>`;
+        } else if (dest.authorization_check_failed) {
+            authHtml = `<span class="rc-auth rc-same-domain">Authorization not confirmed (lookup failed)</span>`;
         } else {
-            authHtml = `<span class="rc-auth rc-same-domain">${ICON.pass} Same domain (no external authorization needed)</span>`;
+            authHtml = `<span class="rc-auth rc-same-domain">${ICON.pass} Same organizational domain (no external authorization needed)</span>`;
         }
 
         let mxHtml = '';
         if (dest.has_mx === true) {
             mxHtml = `<span class="rc-mx-ok">Can receive mail ${ICON.pass}</span>`;
         } else if (dest.has_mx === false && dest.is_external) {
-            mxHtml = '<span class="rc-mx-fail">Cannot receive mail (no MX)</span>';
+            mxHtml = '<span class="rc-mx-fail">No MX record found</span>';
         }
 
         let serviceHtml = '';
@@ -4251,7 +4253,7 @@ function _renderCacheBadge(data) {
         badge.className = 'tag';
         badge.innerHTML = `
             <span>Cached result</span>
-            <button class="cache-rerun-btn" type="button" title="Force a fresh audit">Re-run</button>
+            <button class="cache-rerun-btn" type="button" title="Run again. Results are cached for five minutes, so a re-run inside that window returns this same result.">Re-run</button>
         `;
         badge.style.display = 'inline-flex';
         badge.querySelector('.cache-rerun-btn').addEventListener('click', () => {
