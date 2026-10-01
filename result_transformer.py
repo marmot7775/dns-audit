@@ -499,6 +499,21 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     exposed_count = sum(1 for v in vectors if v.get("status") == "exposed")
     partial_count = sum(1 for v in vectors if v.get("status") == "partial")
 
+    # A red DMARC, SPF or DKIM card is a broken record. The vector count reads
+    # only the DMARC policy, so gitlab.com (p=reject, SPF at 13 lookups and a
+    # PermError) read "blocks spoofed email across all vectors, with minor
+    # improvements available" beside a red SPF card.
+    _broken_auth = [n for n in ("DMARC", "SPF", "DKIM")
+                    if check_map.get(n, {}).get("status") == "fail"]
+    # A domain that sends and receives no mail (null MX or null SPF, with
+    # p=reject) has nothing to protect beyond refusing mail in its name.
+    _statuses = [c.get("status") for c in checks]
+    _defensive_clean = (is_no_mail and _eff_policy == "reject"
+                        and "fail" not in _statuses)
+    # Set when a branch below names a broken record or a domain with no mail,
+    # so the no-reporting sentence further down does not replace it.
+    _verdict_final = False
+
     # Ahead of every other branch: if a lookup never completed, this report
     # cannot say the domain is healthy or that a record is absent. Saying
     # either would be a claim the audit did not establish.
@@ -533,6 +548,15 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             verdict = _scoped_sentence
         else:
             verdict = _failed_sentence
+    elif _defensive_clean:
+        # example.com: null MX, v=spf1 -all, p=reject. "Blocks spoofed email
+        # across all vectors, with minor improvements available" described a
+        # sending domain with work left to do.
+        verdict = ("This domain is set up to send and receive no email, and asks "
+                   "receivers to refuse any mail that uses its name.")
+        if "warn" not in _statuses:
+            verdict += " Nothing to fix."
+        _verdict_final = True
     elif dmarc_status == "fail" and dmarc.get("pill_label") == "Missing":
         if spf_check.get("pill_label") == "Missing":
             verdict = (
@@ -552,6 +576,22 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         )
     elif health_status == "monitoring" and _eff_policy in (None, "none"):
         verdict = "Your domain is monitoring email authentication but not yet enforcing it. This requests no action from receivers, who each decide independently what to do with mail that fails."
+    elif _broken_auth and exposed_count == 0:
+        # Every branch below this one reads the DMARC policy alone and can
+        # call the domain fully or strongly protected, which a broken record
+        # contradicts. An exposed vector already gets an honest sentence there.
+        _n_broken = len(_broken_auth)
+        _records = ("one record is broken" if _n_broken == 1
+                    else f"{('two', 'three')[_n_broken - 2]} records are broken")
+        _names = _join_names(_broken_auth)
+        if dmarc_status == "fail":
+            verdict = (f"Receivers may not apply this domain's DMARC policy, because "
+                       f"{_records}: {_names}.")
+        elif _eff_policy == "reject":
+            verdict = f"Receivers are asked to refuse forged mail, but {_records}: {_names}."
+        else:
+            verdict = f"Receivers are asked to send forged mail to spam, but {_records}: {_names}."
+        _verdict_final = True
     elif _vector_total and protected_count == _vector_total:
         # An inherited name's readiness is the parent record's, and the
         # improvements it names are made at the parent, not here.
@@ -574,7 +614,11 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
 
     # Check if enforcement exists but no reporting. Skipped when something
     # went unread, so this cannot overwrite the verdict set above.
-    if not auth_unassessed and health_status in ("ready", "compatible", "attention"):
+    # Only an enforcing policy blocks anything: a p=none record without rua
+    # grades "attention" and must not read "blocks spoofed email".
+    if (not auth_unassessed and not _verdict_final
+            and _eff_policy != "none"
+            and health_status in ("ready", "compatible", "attention")):
         tb = dmarc.get("tag_breakdown") or {}
         cw = tb.get("config_warnings", [])
         has_no_rua = any(w.get("title") == "No aggregate reporting" for w in cw)
@@ -647,6 +691,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         rd_label, rd_color = readiness_map[health_status]
     else:
         rd_label, rd_color = "Action needed", "red"
+
+    # Same rule as the spoofing tile: red belongs to a DMARC card that fails.
+    # A published record the card grades amber cannot read "Action needed" in
+    # red beside it.
+    if rd_color == "red" and dmarc_status != "fail":
+        rd_label, rd_color = "In progress", "amber"
 
     dmarcbis_readiness = {
         "label": rd_label,
@@ -809,7 +859,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         elif "over the limit" in top_issue:
             deliverability_summary = (
                 "Your SPF record needs more than 10 DNS lookups, so receivers return PermError. "
-                "None of your mail passes SPF, and DMARC relies on DKIM alone."
+                "Some or all of your mail fails SPF, depending on the order of the record. "
+                "For that mail, DMARC relies on DKIM alone."
             )
         elif "SPF lookup" in top_issue:
             deliverability_summary = "Your SPF record is near the 10-lookup limit. Adding one more email service could break SPF for all your email."
@@ -1076,8 +1127,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if tb:
         cw = tb.get("config_warnings", [])
         for w in cw:
-            # Matched on the title: the warning is advisory on an enforcing
-            # policy and critical at p=none, and the row is high either way.
+            # Matched on the title. The warning is advisory at every policy,
+            # and the row is high either way.
             if w.get("title") == "No aggregate reporting":
                 items.append({"priority": "high", "protocol": "DMARC",
                               "action": "Add aggregate reporting (rua=)",
@@ -1150,20 +1201,21 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # high priority that the card calls well within the limit.
     #
     # Over the limit is critical, the same tier as a duplicate SPF record: both
-    # are a PermError for every message. At high it sorted behind a weak DKIM
+    # are a PermError. At high it sorted behind a weak DKIM
     # key added earlier in the same tier and lost the biggest-risk slot to it.
     spf_deep = spf.get("spf_deep") or {}
     _spf_band = _spf_card_band(spf)
     if _spf_band == "over":
         items.append({"priority": "critical", "protocol": "SPF",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
-                      "impact": "Past 10 lookups, receivers return PermError. None of the mail passes SPF, and DMARC relies on DKIM alone."})
+                      "impact": "Past 10 lookups, receivers return PermError. Some or all of your mail fails SPF, depending on the order of the record. For that mail, DMARC relies on DKIM alone."})
     elif _spf_band == "near":
         items.append({"priority": "medium", "protocol": "SPF",
                       "action": f"Free up SPF lookups ({spf_deep['lookup_count']}/10)",
                       "impact": "One more include, a, or mx mechanism would take this past 10. "
-                                "Past 10, receivers return PermError, none of the mail passes SPF, "
-                                "and DMARC relies on DKIM alone."})
+                                "Past 10, receivers return PermError. Some or all of your mail fails SPF, "
+                                "depending on the order of the record. For that mail, DMARC relies on DKIM "
+                                "alone."})
 
     # Nameservers. A red or amber card here had no row and no remediation
     # anywhere on the page. The action is the card's own fix text.
@@ -1403,7 +1455,18 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # and the row prints that under "What to change".
         if _card.get("plan_note"):
             item["what_note"] = _card["plan_note"]
-    items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), i["status"] == "absent"))
+    # An SOA serial mismatch between nameservers of one provider is amber and
+    # usually a zone change still propagating. Its Nameservers row is added
+    # ahead of the DMARC rows, so on a tie it took the biggest-risk slot
+    # (google.com). Within a tier it sorts after every other row.
+    def _transient_ns(item):
+        if item["protocol"] != "Nameservers" or item["status"] != "warn":
+            return False
+        bad = [d.get("text", "") for d in check_map["Nameservers"].get("details", [])
+               if d.get("type") in ("error", "warning")]
+        return bool(bad) and all("SOA serial" in t for t in bad)
+    items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), i["status"] == "absent",
+                              _transient_ns(i)))
 
     # Count by tier
     tiers = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -1928,6 +1991,16 @@ def build_subdomain_audit(
             color = "red"
             policy_display = "No DMARC record"
 
+        # A probed name that does not exist is not a subdomain this domain
+        # has, so it is not "Exposed". intelligentsia.com (p=none, no np=)
+        # showed twenty red "Exposed" rows under a header that said "20
+        # subdomains probed, none exposed". The policy column still says what
+        # a receiver would apply to mail using the name.
+        if not exists:
+            status = "absent"
+            status_label = "Does not exist"
+            color = "neutral"
+
         subdomains.append({
             "subdomain": sub,
             "exists": exists,
@@ -1940,8 +2013,9 @@ def build_subdomain_audit(
             "color": color,
         })
 
-    # Sort: exposed first, then partial, then protected
-    sort_order = {"exposed": 0, "partial": 1, "protected": 2}
+    # Sort: exposed first, then partial, then protected, then names that do
+    # not exist
+    sort_order = {"exposed": 0, "partial": 1, "protected": 2, "absent": 3}
     subdomains.sort(key=lambda s: (sort_order.get(s["status"], 3), s["subdomain"]))
 
     # Summary stats
@@ -3885,10 +3959,12 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
         # enforcing policy its absence is a prominent amber warning, not a
         # failure: at critical it made the health verdict "misconfigured", so
         # proton.me (p=quarantine, no rua) read "Action needed" in red above
-        # a readiness checklist that passed. p=none without rua enforces
-        # nothing and reports nothing, and keeps its critical level.
-        _rua_level = "advisory" if policy in ("reject", "quarantine") else "critical"
-        warnings.append({"level": _rua_level, "title": "No aggregate reporting", "text": msg, "tags": ["rua"]})
+        # a readiness checklist that passed. p=none without rua is the same
+        # case: a valid record the card grades amber. At critical it read
+        # "Misconfigured: This record has critical issues" under that amber
+        # card (intelligentsia.com), so it is advisory at every policy and the
+        # health verdict gives it its own "Needs Attention" branch.
+        warnings.append({"level": "advisory", "title": "No aggregate reporting", "text": msg, "tags": ["rua"]})
 
     # 2 and 3. sp or np weaker than an enforcing p. none is a gap (critical);
     # quarantine under reject is weaker enforcement (advisory). These used
@@ -4202,6 +4278,18 @@ def _calculate_dmarcbis_health(tags: Dict[str, str], policy: str, config_warning
             "color": "red",
             "summary": f"This record has critical issues. {worst['text'].split('.')[0]}.",
             "reasons": reasons,
+        }
+
+    # ── Needs Attention (amber): p=none without rua ─────────
+    # A valid record that asks for nothing and sends no reports. It is not
+    # broken (the DMARC card is amber), so it is not "Misconfigured".
+    if policy == "none" and not rua:
+        return {
+            "status": "attention",
+            "label": "Needs Attention",
+            "color": "amber",
+            "summary": "This record blocks nothing and reports nothing.",
+            "reasons": ["p=none (monitoring only)", "No aggregate reporting"],
         }
 
     # ── Monitoring (amber) ──────────────────────────────────
@@ -5202,8 +5290,9 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         elif _lookups and _lookups > 10:
             _deliverability = (
                 f"Your SPF record requires {_lookups} DNS lookups, exceeding the 10-lookup limit. "
-                f"Receivers return PermError, so none of your mail passes SPF and DMARC relies "
-                f"on DKIM alone. Every email platform you add (Mailchimp, Salesforce, "
+                f"Receivers return PermError. Some or all of your mail fails SPF, depending on "
+                f"the order of the record. For that mail, DMARC relies on DKIM alone. "
+                f"Every email platform you add (Mailchimp, Salesforce, "
                 f"HubSpot, SendGrid) consumes lookups. Audit your includes: remove "
                 f"services you no longer use and consolidate senders where possible."
             )
