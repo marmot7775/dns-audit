@@ -1002,6 +1002,12 @@ main {
     border-left-color: var(--text-tertiary);
 }
 
+/* Checks that do not apply to this domain (a null MX domain's DKIM, say).
+   Neutral like the two above, and shown only when the count is non-zero. */
+.na-card {
+    border-left-color: var(--text-tertiary);
+}
+
 .summary-label {
     font-size: var(--font-sm);
     font-weight: 500;
@@ -1026,6 +1032,7 @@ main {
 }
 
 .unavailable-value,
+.na-value,
 .absent-value {
     color: var(--text-tertiary);
 }

@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 
 import dns.flags
 import dns.exception
+import dns.rdatatype
 import dns.resolver
 import idna
 
@@ -64,12 +65,24 @@ class BoundedNegativeCache(dns.resolver.LRUCache):
     Positive answers keep their real TTL. They are where the saving of about
     35 duplicate queries per audit came from. The negatives contribute almost
     none of it and carry all of the staleness.
+
+    NXDOMAIN is not cached at all. dnspython stores it under (qname, ANY),
+    so one NXDOMAIN answers every later query for that name whatever its
+    type. Some authoritative servers answer NXDOMAIN for a type they do not
+    serve while serving another type at the same name: ns.vali.email returns
+    NXDOMAIN for CNAME at _dmarc.seattle.gov and the DMARC record for TXT.
+    The DMARC check probes CNAME first, so the cached NXDOMAIN turned the
+    TXT lookup into "no DMARC record" whenever the tree walk had not already
+    cached the TXT answer. A negative answer to one type must never decide
+    another type, and NODATA, which dnspython keys by type, stays cached.
     """
 
     def put(self, key, value):
         # rrset is None for both negative shapes: the NODATA answer and the
         # ANY-keyed NXDOMAIN answer. A positive answer always has an rrset.
         if getattr(value, "rrset", None) is None:
+            if key[1] == dns.rdatatype.ANY:
+                return
             cap = time.time() + NEGATIVE_TTL_CAP
             if getattr(value, "expiration", 0) > cap:
                 value.expiration = cap
