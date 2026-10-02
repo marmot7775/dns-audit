@@ -68,3 +68,21 @@ def test_a_sibling_under_the_same_registrable_domain_is_outside():
     assert "Remove the MX record" in issue["fix"], issue
     issue = _dangling_mx_issue("shop.example.com", "mx.shop.example.com")
     assert "Add A/AAAA records" in issue["fix"], issue
+
+
+def test_a_timed_out_address_lookup_never_says_remove_the_mx(audit_zone):
+    """A timeout learned nothing about the host, so there is no advice to
+    drop what may be a working mail route."""
+    import dns.exception
+    from conftest import FakeZone
+    host = "mx.partner.example"
+    zone = FakeZone({
+        DOMAIN: {"MX": [(1, "aspmx.l.google.com."), (15, host + ".")]},
+        "aspmx.l.google.com": {"A": ["192.0.2.1"]},
+    })
+    zone.fail(host, "A", dns.exception.Timeout())
+    zone.fail(host, "AAAA", dns.exception.Timeout())
+    result = audit_zone(zone, lambda: mx_check.check_mx(DOMAIN))
+    hits = [i for i in result["issues"] if host in i["issue"]]
+    assert hits and all("Remove" not in (i.get("fix") or "") for i in hits), hits
+    assert any(i["issue"].startswith("Could not resolve") for i in hits), hits
