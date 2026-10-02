@@ -369,7 +369,9 @@ def _do_first(data):
         roadmap = (data.get("security_roadmap") or {}).get("items") or []
         items = [{"plain_head": i.get("plain_head"), "title": i.get("action", ""),
                   "priority": i.get("priority", "medium"), "protocol": i.get("protocol", "")}
-                 for i in roadmap if i.get("priority") != "low"]
+                 for i in roadmap
+                 if i.get("priority") != "low" and not i.get("optional")
+                 and i.get("status") != "absent"]
     out = []
     for item in items[:3]:
         title = item.get("title") or item.get("action") or ""
