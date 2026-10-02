@@ -105,3 +105,18 @@ def test_a_real_organizational_domain_is_still_inherited(audit):
     assert "registry" not in result["executive_summary"]["verdict"]
     texts = " ".join(d["text"] for d in card["details"])
     assert "co.za registry" not in texts and "Organizational domain: co.za" not in texts, texts
+
+
+def test_a_registrable_domain_under_a_registry_policy_is_not_a_subdomain(audit):
+    """news24.co.za is its own organizational domain: the registry's record
+    above it does not make it a subdomain, so subdomain discovery runs, and a
+    child of a registrable domain is still a subdomain (no discovery)."""
+    domain = "news24-shape.co.za"
+    result = audit(_zone("v=DMARC1; p=none", domain=domain), domain)
+    assert _dmarc(result)["pill_label"] == "Missing"
+    assert result.get("subdomain_audit") is not None
+
+    child = "mail.shop-shape.co.za"
+    result = audit(_zone("v=DMARC1; p=none", domain=child,
+                         parent=("shop-shape.co.za", "v=DMARC1; p=none")), child)
+    assert result.get("subdomain_audit") is None

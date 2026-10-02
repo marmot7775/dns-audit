@@ -155,6 +155,7 @@ from dns_tools import (
 )
 
 from result_transformer import (
+    _registry_suffix,
     attach_reject_dkim_note,
     attach_what_this_is,
     PILL_ABSENT,
@@ -745,6 +746,15 @@ def _enrich_dmarc_inheritance(
             raw_dmarc["is_subdomain"] = True
             raw_dmarc["applied_tag"] = tree_walk_result.get("applied_tag", "p")
             raw_dmarc["inheritance_method"] = "tree_walk"
+            # news24.co.za: the only policy above it is the co.za registry's.
+            # That makes the name its own organizational domain, not a
+            # subdomain, so subdomain discovery and the alignment cross-check
+            # run as they would for any domain with no record. The inherited_*
+            # fields stay so the card can say what the registry publishes.
+            if (_registry_suffix(domain, raw_dmarc["inherited_from"])
+                    and (_get_org_domain(domain) or "").lower() == domain.lower().rstrip(".")):
+                raw_dmarc["is_subdomain"] = False
+                raw_dmarc["inherited_from_registry"] = True
             return
 
     # -- Fallback: classic RFC 7489 PSL-based org domain lookup --
