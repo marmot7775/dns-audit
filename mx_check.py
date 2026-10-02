@@ -99,6 +99,49 @@ def _resolve_addresses(hostname: str, rdtype: str) -> List[str]:
         return []
 
 
+def _registrable_domain(name: str) -> str:
+    """The registrable domain of a name, by the Public Suffix List.
+
+    Imported late: audit_engine imports this module, and it owns the
+    tldextract instance pinned to the bundled suffix list. Falls back to
+    the name itself, which only ever makes two names compare as different.
+    """
+    from audit_engine import _get_org_domain
+    name = name.lower().rstrip(".")
+    return _get_org_domain(name) or name
+
+
+def _dangling_mx_issue(domain: str, hostname: str) -> Dict[str, str]:
+    """The finding for an MX host with no A or AAAA records.
+
+    Only the owner of a host's registrable domain can give it addresses. A
+    host inside the audited domain can be fixed by adding them; for any
+    other host the audited domain can only drop the MX record.
+    """
+    title = f"MX host '{hostname}' does not resolve"
+    impact = "Mail delivery will fail for this MX."
+    host = hostname.lower().rstrip(".")
+    audited = domain.lower().rstrip(".")
+    if (host == audited or host.endswith("." + audited)
+            or _registrable_domain(host) == _registrable_domain(audited)):
+        return _make_issue(
+            "error", title, f"'{hostname}' has no A or AAAA records.", impact,
+            f"Add A/AAAA records for '{hostname}'.")
+    fix = f"Remove the MX record pointing at {hostname}; it does not resolve."
+    if host.endswith(".mx-verification.google.com"):
+        return _make_issue(
+            "error", title,
+            f"'{hostname}' is Google's leftover setup verification record. "
+            "Google Workspace asks for this MX record once to confirm the "
+            "domain is yours. It is not a mail server and has no A or AAAA "
+            "records.", impact, fix)
+    return _make_issue(
+        "error", title,
+        f"'{hostname}' has no A or AAAA records. It belongs to "
+        f"{_registrable_domain(host)}, so only that domain's owner "
+        "could add them.", impact, fix)
+
+
 # ============================================================
 # Main MX Check
 # ============================================================
@@ -221,11 +264,7 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
         mx_detail["resolved"] = bool(mx_detail["ips"])
 
         if not mx_detail["resolved"]:
-            result["issues"].append(_make_issue(
-                "error", f"MX host '{hostname}' does not resolve",
-                f"'{hostname}' has no A or AAAA records.",
-                "Mail delivery will fail for this MX.",
-                f"Add A/AAAA records for '{hostname}'."))
+            result["issues"].append(_dangling_mx_issue(domain, hostname))
 
         result["mx_details"].append(mx_detail)
 
