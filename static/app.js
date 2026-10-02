@@ -805,6 +805,9 @@ function renderResults(data) {
     document.getElementById('summary-warn').textContent = warnCount;
     document.getElementById('summary-fail').textContent = failCount;
     document.getElementById('summary-absent').textContent = counts.absent;
+    document.getElementById('summary-na').textContent = counts.not_applicable;
+    document.getElementById('summary-na-card')
+        .classList.toggle('is-hidden', counts.not_applicable === 0);
     document.getElementById('summary-unavailable').textContent = unavailableCount;
     document.getElementById('summary-unavailable-card')
         .classList.toggle('is-hidden', unavailableCount === 0);
@@ -1103,10 +1106,14 @@ const STATUS_TITLES = {
 // One tally for the tiles, the tab title and both share texts, so the four
 // can never disagree. "absent" is an optional protocol not published and
 // "unavailable" a check that did not run; neither is a warning or an issue.
+// A card whose pill says the check does not apply (a no-mail domain's DKIM,
+// MTA-STS or MX) is counted on its own, whatever its status, as in the PDF.
 function statusCounts(checks) {
-    const counts = { pass: 0, warn: 0, fail: 0, absent: 0, unavailable: 0 };
+    const counts = { pass: 0, warn: 0, fail: 0, absent: 0, unavailable: 0, not_applicable: 0 };
+    const notApplicable = ['Does not apply', 'No mail, by design'];
     for (const c of checks || []) {
-        if (Object.prototype.hasOwnProperty.call(counts, c.status)) counts[c.status] += 1;
+        if (notApplicable.includes(c.pill_label)) counts.not_applicable += 1;
+        else if (['pass', 'warn', 'fail', 'absent'].includes(c.status)) counts[c.status] += 1;
         else counts.unavailable += 1;
     }
     return counts;
@@ -3054,7 +3061,7 @@ function renderExecutiveSummary(es, roadmap) {
 function doFirstItems(es, roadmap) {
     if (es && Array.isArray(es.do_first)) return es.do_first.slice(0, 3);
     return ((roadmap && roadmap.items) || [])
-        .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low')
+        .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low' && !i.self_clearing)
         .slice(0, 3)
         .map(i => ({ plain_head: i.plain_head || '', title: i.action || '',
                      priority: i.priority, protocol: i.protocol }));
@@ -3064,8 +3071,10 @@ function doFirstItems(es, roadmap) {
 // with the plain consequence and keeps the technical instruction under it.
 function _doFirstHtml(es, roadmap) {
     const risk = es.biggest_risk || '';
-    const unread = risk.startsWith('This audit could not read');
-    const items = doFirstItems(es, roadmap);
+    const unread = es.biggest_risk_severity === 'unknown' || risk.startsWith('This audit could not read');
+    // The audit could not rank risks, so the page shows the message alone,
+    // as the PDF does.
+    const items = unread ? [] : doFirstItems(es, roadmap);
     let html = '';
     if (unread) html += `<p class="es-first-note">${escapeHtml(risk)}</p>`;
     if (items.length > 0) {

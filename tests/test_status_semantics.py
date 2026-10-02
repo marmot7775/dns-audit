@@ -227,8 +227,10 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
     counts = web["counts"]
 
     assert (counts["warn"], counts["fail"], counts["absent"]) == (2, 0, 6), counts
+    assert counts["not_applicable"] == 0
     assert pdf_report._tally(result["checks"]) == (
-        counts["pass"], counts["warn"], counts["fail"], counts["absent"], counts["unavailable"])
+        counts["pass"], counts["warn"], counts["fail"], counts["absent"], counts["unavailable"],
+        counts["not_applicable"])
 
     # Doc 92: the tally is one line on the plan page, page 2, and is
     # printed nowhere else.
@@ -250,6 +252,47 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
         assert "configured" not in text.lower(), (
             "the tab title and share text count only issues and warnings"
         )
+
+
+NOT_APPLICABLE_PILLS = {"Does not apply", "No mail, by design"}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_checks_that_do_not_apply_are_counted_on_their_own_everywhere(audit):
+    # A parked domain: DKIM, MTA-STS, TLS-RPT and DANE do not apply, and the
+    # MX card is a null MX. They were counted as "Optional, not set up".
+    result = audit(_parked_zone(), PARKED)
+    na = {c["name"] for c in result["checks"] if c.get("pill_label") in NOT_APPLICABLE_PILLS}
+    assert {"DKIM", "MX Records", "MTA-STS", "TLS-RPT"} <= na, na
+
+    web = _run_app_js(result)
+    counts = web["counts"]
+    assert counts["not_applicable"] == len(na), counts
+    absent_optional = {c["name"] for c in result["checks"]
+                       if c["status"] == "absent" and c["name"] not in na}
+    assert counts["absent"] == len(absent_optional), (counts, absent_optional)
+    assert sum(counts.values()) == len(result["checks"])
+    assert pdf_report._tally(result["checks"]) == (
+        counts["pass"], counts["warn"], counts["fail"], counts["absent"], counts["unavailable"],
+        counts["not_applicable"])
+
+    pages = [p.extract_text() or "" for p in
+             PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages]
+    tally = " ".join(pages[1].split())
+    assert _cover_count(tally, r"do not apply") == counts["not_applicable"], tally[:400]
+    assert _cover_count(tally, r"optional and not set up") == counts["absent"]
+    # The tab title and share text still count only issues and warnings.
+    for text in (web["title"], web["tweet"], web["summary"]):
+        assert "apply" not in text, text
+
+
+def test_the_pdf_tally_names_does_not_apply_only_when_there_is_one():
+    checks = [{"name": "DMARC", "status": "pass"}, {"name": "MTA-STS", "status": "absent"}]
+    text = pdf_report._tally_line(checks, pdf_report._styles()).text
+    assert "apply" not in text
+    checks.append({"name": "DKIM", "status": "pass", "pill_label": "Does not apply"})
+    text = pdf_report._tally_line(checks, pdf_report._styles()).text
+    assert "</b></font> does not apply" in text, text
 
 
 # ---------------------------------------------------------------
@@ -471,3 +514,41 @@ def test_icon_set_has_five_distinct_status_shapes():
     assert "stroke-dasharray" in shapes["absent"]
     assert 'stroke-width="1.75"' in icons and 'viewBox="0 0 16 16"' in icons
 
+
+
+# ---------------------------------------------------------------
+# The "Does not apply" tile: shown only when non-zero, neutral
+# ---------------------------------------------------------------
+
+from test_ui_consistency_a11y import _page, _render, browser  # noqa: E402,F401
+
+
+def test_the_does_not_apply_tile_shows_only_when_non_zero(browser, audit):  # noqa: F811
+    for zone, domain, kw in ((_parked_zone(), PARKED, {}),
+                             (_zone(), DOMAIN, {"dkim_selector": "s1"})):
+        result = audit(zone, domain, **kw)
+        expected = sum(1 for c in result["checks"] if c.get("pill_label") in NOT_APPLICABLE_PILLS)
+        ctx, page, errors = _page(browser, "light", 390)
+        try:
+            _render(page, result)
+            tile = page.evaluate("""() => {
+                const card = document.getElementById('summary-na-card');
+                const value = document.getElementById('summary-na');
+                const absent = document.querySelector('.absent-card');
+                return {shown: card.getClientRects().length > 0,
+                        label: card.querySelector('.summary-label').textContent,
+                        value: Number(value.textContent),
+                        border: getComputedStyle(card).borderLeftColor,
+                        colour: getComputedStyle(value).color,
+                        absentBorder: getComputedStyle(absent).borderLeftColor,
+                        absentColour: getComputedStyle(absent.querySelector('.summary-value')).color};
+            }""")
+            assert tile["value"] == expected
+            assert tile["shown"] == (expected > 0), tile
+            assert tile["label"] == "Does not apply"
+            # No new colour: the same neutral as "Optional, not set up".
+            assert (tile["border"], tile["colour"]) == (tile["absentBorder"], tile["absentColour"])
+            assert page.evaluate("document.documentElement.scrollWidth") <= 390
+            assert errors == []
+        finally:
+            ctx.close()
