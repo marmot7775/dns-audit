@@ -1420,7 +1420,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
                       "plain_head": ("Your approved sender list is too long for receivers to "
                                      "finish reading, so some or all of your mail fails this "
-                                     "check. Mail with a valid DKIM signature can still pass."),
+                                     "check. Mail signed with DKIM for your own domain can still pass."),
                       "who": WHO_DNS_HOST,
                       "impact": "Past 10 lookups, receivers return PermError. Some or all of your mail fails SPF, depending on the order of the record. For that mail, DMARC relies on DKIM alone."})
     elif _spf_band == "near":
