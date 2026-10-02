@@ -59,3 +59,12 @@ def test_mx_card_fix_carries_the_new_advice(audit):
     card = next(c for c in result["checks"] if c["name"] == "MX Records")
     assert "Remove the MX record pointing at" in (card.get("fix") or "")
     assert "Add A/AAAA" not in repr(card)
+
+
+def test_a_sibling_under_the_same_registrable_domain_is_outside():
+    """shop.example.com cannot assume it controls mail.other.example.com."""
+    from mx_check import _dangling_mx_issue
+    issue = _dangling_mx_issue("shop.example.com", "mail.other.example.com")
+    assert "Remove the MX record" in issue["fix"], issue
+    issue = _dangling_mx_issue("shop.example.com", "mx.shop.example.com")
+    assert "Add A/AAAA records" in issue["fix"], issue
