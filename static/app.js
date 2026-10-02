@@ -62,6 +62,64 @@ const STATUS_LABELS = {
 
 const COLOR_STATE = { green: 'pass', amber: 'warn', red: 'fail' };
 
+// Doc 92: what the tier pills on the plan say. Display only: the roadmap
+// still carries critical, high, medium and low, and the tag class uses them.
+const TIER_LABELS = {
+    critical: 'Fix now', high: 'Important', medium: 'Recommended', low: 'Optional',
+};
+
+// The protocols a domain can leave unpublished without anything being wrong.
+// Used, with the low tier, only when a plan row does not say for itself
+// whether it is optional.
+const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];
+
+// Doc 92: "What's unusual" items carry no protocol field, so the plan row
+// that covers each one is matched by title. A row for the same protocol
+// already says it, with a record to paste.
+const ANOMALY_PROTOCOL = {
+    'DMARC enforcement without SPF': 'SPF',
+    'MTA-STS configured without TLS-RPT': 'TLS-RPT',
+    'BIMI record without DMARC enforcement': 'DMARC',
+    'Mixed DKIM key strengths': 'DKIM',
+    'Parked domain with live MX records': 'MX Records',
+    'DMARC reports sent to unauthorized destinations': 'DMARC',
+    'Single nameserver': 'Nameservers',
+    'DNSSEC chain broken': 'DNSSEC',
+};
+
+function isOptionalPlanItem(item) {
+    if (!item) return false;
+    if (typeof item.optional === 'boolean') return item.optional;
+    // A low-tier row is a nicety (an explicit np= tag), not a fix.
+    if (item.priority === 'low') return true;
+    return item.status === 'absent' && OPTIONAL_PROTOCOLS.includes(item.protocol);
+}
+
+// The card title: the plain name the backend sends, or the protocol name.
+// Ids, keys and anchors keep using check.name.
+function checkTitle(check) {
+    return (check && (check.plain_name || check.name)) || '';
+}
+
+// One toggle for the page's collapsible blocks outside the cards: the
+// Technical summary, the optional plan rows and the services section. Like
+// setCardExpanded, a closed body is inert as well as hidden.
+function setDisclosure(toggle, body, open) {
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    body.classList.toggle('is-hidden', !open);
+    body.inert = !open;
+}
+
+function wireDisclosure(toggle) {
+    const body = document.getElementById(toggle.getAttribute('aria-controls'));
+    if (!body) return;
+    setDisclosure(toggle, body, toggle.getAttribute('aria-expanded') === 'true');
+    toggle.addEventListener('click', ev => {
+        ev.stopPropagation();
+        setDisclosure(toggle, body, toggle.getAttribute('aria-expanded') !== 'true');
+    });
+}
+
 // The one badge component: `tag`, plus a modifier for a status or a tier.
 function tagClass(state) {
     const known = ['pass', 'warn', 'fail', 'absent', 'unavailable', 'critical', 'high', 'medium', 'low'];
@@ -107,6 +165,8 @@ const domainInput = document.getElementById('domain-input');
 const auditBtn = document.getElementById('audit-btn');
 const loadingSection = document.getElementById('loading-section');
 const resultsSection = document.getElementById('results-section');
+const servicesToggle = document.getElementById('services-toggle');
+if (servicesToggle) wireDisclosure(servicesToggle);
 
 // -- Scope selector --
 // The visible line under the buttons and the hover tooltip are the same
@@ -660,7 +720,8 @@ function renderResults(data) {
         + ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
     document.getElementById('result-timestamp').textContent = `${tsText}  \u00b7  ${auditDuration}s`;
 
-    // Prompt 12: Cache status badge
+    // Prompt 12: Cache status badge. Doc 92 moved it and the Request ID to
+    // the bottom of the results.
     _renderCacheBadge(data);
 
     // Prompt 14: Request ID display
@@ -680,6 +741,8 @@ function renderResults(data) {
             esSlot.querySelectorAll('[data-scroll-to]').forEach(btn => {
                 btn.addEventListener('click', () => openCard(btn.dataset.scrollTo));
             });
+            // Technical summary starts closed on every audit.
+            esSlot.querySelectorAll('.es-tech-toggle').forEach(wireDisclosure);
         } else {
             esSlot.innerHTML = '';
             esSlot.style.display = 'none';
@@ -700,9 +763,9 @@ function renderResults(data) {
                 <span>${escapeHtml(a.message)}</span>
             </div>`;
         }).join('');
-        // Insert before the results list
-        const resultsList = document.getElementById('results-list');
-        resultsList.parentNode.insertBefore(advBanner, resultsList);
+        // Insert above the status line and the cards
+        const summaryGrid = document.getElementById('summary-grid');
+        summaryGrid.parentNode.insertBefore(advBanner, summaryGrid);
     }
 
     // -- Filter checks by scope --
@@ -756,6 +819,15 @@ function renderResults(data) {
 
     document.title = auditTabTitle(counts, data.domain);
 
+    // Doc 92: the card list is the technical layer, and says how many checks
+    // it holds.
+    const resultsHeading = document.getElementById('results-heading');
+    if (resultsHeading) {
+        resultsHeading.textContent = checks.length === 1
+            ? 'Technical details: 1 check'
+            : `Technical details: all ${checks.length} checks`;
+    }
+
     // -- Authentication Resilience --
     // No longer a panel of its own at the top of the page: it restated the
     // SPF, DKIM and DMARC cards a screen below it. The mechanisms table is a
@@ -783,6 +855,8 @@ function renderResults(data) {
                 if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
             });
         });
+        // Optional extras sit closed at the end of the list.
+        priorityList.querySelectorAll('.plan-optional-toggle').forEach(wireDisclosure);
         priorityList.querySelectorAll('[data-scroll-to]').forEach(el => {
             el.addEventListener('click', ev => {
                 ev.stopPropagation();
@@ -805,40 +879,22 @@ function renderResults(data) {
     const resultsList = document.getElementById('results-list');
     resultsList.innerHTML = '';
 
-    // -- Defensive DNS callout (inserted before the results list) --
-    const existingDefensive = document.getElementById('defensive-dns-card');
-    if (existingDefensive) existingDefensive.remove();
-
-    if (data.defensive_dns) {
-        const signals = data.defensive_signals || [];
-        const signalLabels = {
-            'null_mx': 'Null MX (no inbound email)',
-            'null_spf': 'Null SPF (no outbound email)',
-            'dmarc_reject': 'DMARC reject (block spoofing)',
-        };
-        const signalHtml = signals.map(s =>
-            `<span class="defensive-signal">${escapeHtml(signalLabels[s] || s)}</span>`
-        ).join('');
-
-        const defensiveCard = document.createElement('div');
-        defensiveCard.id = 'defensive-dns-card';
-        defensiveCard.className = 'defensive-dns-card';
-        defensiveCard.innerHTML = `
-            <div class="defensive-header">Defensive DNS Detected</div>
-            <div class="defensive-body">This domain publishes records that close some or all of its email directions. The signals below show which. Publishing them is a security best practice for domains that do not send or receive mail.</div>
-            <div class="defensive-signals">${signalHtml}</div>
-        `;
-        resultsList.parentNode.insertBefore(defensiveCard, resultsList);
-    }
+    // The Defensive DNS signals are part of the short answer at the top
+    // (renderExecutiveSummary), not a box of their own above the cards.
 
     // -- Anomalies ("What's Unusual") --
     const anomaliesSection = document.getElementById('anomalies-section');
     const anomaliesList = document.getElementById('anomalies-list');
     anomaliesList.innerHTML = '';
 
-    if (data.anomalies && data.anomalies.length > 0) {
+    // Doc 92: an item the plan already covers is said there, with the
+    // record to paste, so it is not said again here.
+    const planProtocols = new Set(((rm && rm.items) || []).map(i => i.protocol));
+    const anomalies = (data.anomalies || []).filter(a =>
+        !planProtocols.has(a.protocol || ANOMALY_PROTOCOL[a.title]));
+    if (anomalies.length > 0) {
         anomaliesSection.style.display = 'block';
-        data.anomalies.forEach(a => {
+        anomalies.forEach(a => {
             const sevClass = { critical: 'fail', high: 'warn', medium: 'info' }[a.severity] || 'info';
             const sevLabel = { critical: 'Critical', high: 'High', medium: 'Medium' }[a.severity] || escapeHtml(a.severity);
             const item = document.createElement('div');
@@ -929,7 +985,8 @@ function renderResults(data) {
     const vendorsGrid = document.getElementById('vendors-grid');
     vendorsGrid.innerHTML = '';
 
-    if (data.vendors && data.vendors.length > 0) {
+    const hasVendors = !!(data.vendors && data.vendors.length > 0);
+    if (hasVendors) {
         vendorsSection.style.display = 'block';
         data.vendors.forEach(v => {
             const card = document.createElement('div');
@@ -951,7 +1008,16 @@ function renderResults(data) {
     }
 
     // Provider Intelligence
-    renderProviderIntelligence(data.provider_intelligence);
+    const hasPlatform = renderProviderIntelligence(data.provider_intelligence);
+
+    // Doc 92: both lists sit in one closed section, "Services found in your
+    // DNS", which shows only when one of them has something in it.
+    const servicesSection = document.getElementById('services-section');
+    const servicesBody = document.getElementById('services-body');
+    if (servicesSection && servicesBody && servicesToggle) {
+        servicesSection.classList.toggle('is-hidden', !(hasVendors || hasPlatform));
+        setDisclosure(servicesToggle, servicesBody, false);
+    }
 
     // Share button with dropdown
     _initShareDropdown();
@@ -1078,6 +1144,7 @@ function createResultCard(check, index) {
     card.className = 'result-card';
     card.id = `check-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.dataset.status = check.status;
+    card.dataset.check = check.name || '';
     card.style.animationDelay = `${index * 60}ms`;
 
     const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
@@ -1085,7 +1152,9 @@ function createResultCard(check, index) {
     // Doc 67: the protocol description was a hover tooltip on this title,
     // which a phone never showed and the PDF never carried. It is now the
     // first line inside the opened card, from check.what_this_is.
-    const titleHtml = `<h3 class="result-title">${escapeHtml(check.name)}</h3>`;
+    // Doc 92: the title leads with the plain name ("Spoofing policy (DMARC)")
+    // when the backend sends one; the id above still comes from check.name.
+    const titleHtml = `<h3 class="result-title">${escapeHtml(checkTitle(check))}</h3>`;
 
     const bodyId = `body-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.innerHTML = `
@@ -1149,6 +1218,19 @@ function createResultCard(check, index) {
         hdr.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
         hdr.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggle(); }
+        });
+    });
+
+    // Doc 92: a panel inside Details repeated its sub-header's title as its
+    // own first line. The sub-header is already the heading, so the repeat
+    // is hidden.
+    card.querySelectorAll('.cd-subsection').forEach(sec => {
+        const title = sec.querySelector(':scope > [role="heading"] .cd-header-title');
+        const body = sec.querySelector(':scope > .cd-body');
+        if (!title || !body) return;
+        const text = title.textContent.trim();
+        body.querySelectorAll('h4, .as-title, .sua-title, .dbis-title, .spfd-title').forEach(h => {
+            if (h.textContent.trim() === text) h.classList.add('panel-title-repeat');
         });
     });
 
@@ -2911,61 +2993,116 @@ function renderExecutiveSummary(es, roadmap) {
             stroke-linecap="round" transform="rotate(-90 22 22)"/>
     </svg>`;
 
-    // Biggest risk styling
-    // "could not read" is not an urgent finding, and styling it red would give
-    // an incomplete audit the same weight as a real one.
-    const riskBg = (es.biggest_risk.startsWith('No urgent risks')
-        || es.biggest_risk.startsWith('Nothing to fix')
-        || es.biggest_risk.startsWith('This audit could not read'))
-        ? 'es-risk-calm' : 'es-risk-urgent';
-
     // Action buttons. #priority-section is hidden when the roadmap is empty,
     // so a button pointing at it would scroll to nothing.
     const hasPriorities = !!(roadmap && roadmap.items && roadmap.items.length > 0);
-    let actions = hasPriorities
-        ? `<button class="es-action" data-scroll-to="priority-section">What to do</button>` : '';
+    const planBtn = hasPriorities
+        ? `<button class="es-action es-action-primary" data-scroll-to="priority-section">See the plan</button>` : '';
     // Both point at the panel they name, which sits inside the DMARC card's
     // collapsed Details; openCard opens every section around it. A run with
-    // no DMARC card (transport, dns_infra) gets neither button.
+    // no DMARC card (transport, dns_infra) gets neither button. Doc 92 moved
+    // them into the Technical summary with the tiles they belong to.
+    let techActions = '';
     const dmarcCard = (lastAuditData && lastAuditData.checks || []).find(c => c.name === 'DMARC');
     if (dmarcCard && dmarcCard.attack_surface) {
-        actions += `<button class="es-action" data-scroll-to="dmarc-attack-surface">View Attack Surface</button>`;
+        techActions += `<button class="es-action" data-scroll-to="dmarc-attack-surface">View Attack Surface</button>`;
     }
     if (es.has_record_builder && dmarcCard && dmarcCard.record_builder) {
-        actions += `<button class="es-action" data-scroll-to="dmarc-record-builder">Copy Recommended Record</button>`;
+        techActions += `<button class="es-action" data-scroll-to="dmarc-record-builder">Copy Recommended Record</button>`;
     }
 
     return `<div class="es-block" id="executive-summary">
         <div class="es-verdict">${escapeHtml(es.verdict)}</div>
+        ${_defensiveHtml(lastAuditData)}
+        ${_doFirstHtml(es, roadmap)}
 
-        <div class="es-metrics">
-            <div class="es-metric">
-                <div class="es-metric-value es-color-${safeClass(sp.color)}">${escapeHtml(sp.label)}</div>
-                <div class="es-metric-label">Spoofing Protection</div>
-                <div class="es-metric-detail">${escapeHtml(sp.detail)}</div>
-            </div>
-            <div class="es-metric">
-                <div class="es-metric-value es-color-${safeClass(dr.color)}">${escapeHtml(dr.label)}</div>
-                <div class="es-metric-label">RFC 9989 Readiness</div>
-            </div>
-            <div class="es-metric">
-                <div class="es-metric-ring">${ringSvg}<span class="es-ring-text">${escapeHtml(ringText)}</span></div>
-                <div class="es-metric-label">Protocol Coverage</div>
-            </div>
+        <div class="es-actions">
+            ${planBtn}
+            <button class="es-action es-tech-toggle" type="button" aria-expanded="false" aria-controls="es-tech">Technical summary</button>
         </div>
 
-        <div class="es-risk ${riskBg}">
-            <div class="es-risk-label">Your biggest risk right now</div>
-            <div class="es-risk-text">${escapeHtml(es.biggest_risk)}</div>
-            ${es.biggest_risk_detail ? `<div class="es-risk-detail">${escapeHtml(es.biggest_risk_detail)}</div>` : ''}
+        <div class="es-tech is-hidden" id="es-tech">
+            <div class="es-metrics">
+                <div class="es-metric">
+                    <div class="es-metric-value es-color-${safeClass(sp.color)}">${escapeHtml(sp.label)}</div>
+                    <div class="es-metric-label">Spoofing Protection</div>
+                    <div class="es-metric-detail">${escapeHtml(sp.detail)}</div>
+                </div>
+                <div class="es-metric">
+                    <div class="es-metric-value es-color-${safeClass(dr.color)}">${escapeHtml(dr.label)}</div>
+                    <div class="es-metric-label">RFC 9989 Readiness</div>
+                </div>
+                <div class="es-metric">
+                    <div class="es-metric-ring">${ringSvg}<span class="es-ring-text">${escapeHtml(ringText)}</span></div>
+                    <div class="es-metric-label">Protocol Coverage</div>
+                </div>
+            </div>
+
+            ${es.deliverability_summary ? `<div class="es-deliverability">
+                <span class="deliv-icon">${ICON.mail}</span>
+                <span><strong>Email deliverability:</strong> ${escapeHtml(es.deliverability_summary)}</span>
+            </div>` : ''}
+
+            ${techActions ? `<div class="es-actions es-tech-actions">${techActions}</div>` : ''}
         </div>
+    </div>`;
+}
 
-        ${es.deliverability_summary ? `<div class="es-deliverability">
-            <span class="deliv-icon">${ICON.mail}</span>
-            <span><strong>Email deliverability:</strong> ${escapeHtml(es.deliverability_summary)}</span>
-        </div>` : ''}
+// Doc 92: up to three numbered actions, the top plan rows that are not
+// optional extras. The backend sends them as do_first; until it does, they
+// come from the roadmap. A low-tier row is never one of them.
+function doFirstItems(es, roadmap) {
+    if (es && Array.isArray(es.do_first)) return es.do_first.slice(0, 3);
+    return ((roadmap && roadmap.items) || [])
+        .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low')
+        .slice(0, 3)
+        .map(i => ({ plain_head: i.plain_head || '', title: i.action || '',
+                     priority: i.priority, protocol: i.protocol }));
+}
 
-        <div class="es-actions">${actions}</div>
+// "Do these first" replaces the old "biggest risk" box. Each action leads
+// with the plain consequence and keeps the technical instruction under it.
+function _doFirstHtml(es, roadmap) {
+    const risk = es.biggest_risk || '';
+    const unread = risk.startsWith('This audit could not read');
+    const items = doFirstItems(es, roadmap);
+    let html = '';
+    if (unread) html += `<p class="es-first-note">${escapeHtml(risk)}</p>`;
+    if (items.length > 0) {
+        html += `<h2 class="es-first-label">Do these first</h2><ol class="es-first-list">`
+            + items.map(it => {
+                const head = it.plain_head || it.title || '';
+                const sub = (it.plain_head && it.title && it.title !== it.plain_head) ? it.title : '';
+                return `<li class="es-first-item"><span class="es-first-head">${escapeHtml(head)}</span>`
+                    + (sub ? `<span class="es-first-title">${escapeHtml(sub)}</span>` : '') + '</li>';
+            }).join('') + '</ol>';
+    } else if (!unread) {
+        const calm = (risk.startsWith('Nothing to fix') || !(roadmap && roadmap.items && roadmap.items.length))
+            ? (risk || 'Nothing to fix.')
+            : 'Nothing urgent. The plan has smaller improvements.';
+        // The no-mail verdict already ends "Nothing to fix.", and a second
+        // line saying otherwise would contradict it.
+        const said = (es.verdict || '').includes('Nothing to fix');
+        if (!said) html += `<p class="es-first-note">${escapeHtml(calm)}</p>`;
+    }
+    return `<div class="es-first">${html}</div>`;
+}
+
+// The Defensive DNS signals, which used to be a box of their own above the
+// cards, as part of the short answer.
+function _defensiveHtml(data) {
+    if (!data || !data.defensive_dns) return '';
+    const signalLabels = {
+        'null_mx': 'Null MX (no inbound email)',
+        'null_spf': 'Null SPF (no outbound email)',
+        'dmarc_reject': 'DMARC reject (block spoofing)',
+    };
+    const signalHtml = (data.defensive_signals || []).map(s =>
+        `<span class="defensive-signal">${escapeHtml(signalLabels[s] || s)}</span>`
+    ).join('');
+    return `<div class="es-defensive">
+        <div class="es-defensive-body"><strong>Defensive DNS.</strong> This domain publishes records that close some or all of its email directions. The signals below show which. Publishing them is a security best practice for domains that do not send or receive mail.</div>
+        <div class="defensive-signals">${signalHtml}</div>
     </div>`;
 }
 
@@ -2973,54 +3110,95 @@ function renderExecutiveSummary(es, roadmap) {
 // Priorities
 // ============================================================
 
+// The count beside the heading, in the words the pills use. Optional extras
+// are counted once, as optional, whatever their tier.
 function priorityTierSummary(rm) {
-    return ['critical', 'high', 'medium', 'low']
-        .filter(t => (rm.tiers || {})[t] > 0)
-        .map(t => `${rm.tiers[t]} ${t}`)
-        .join(', ');
+    const n = { critical: 0, high: 0, medium: 0, low: 0 };
+    let optional = 0;
+    ((rm && rm.items) || []).forEach(i => {
+        if (isOptionalPlanItem(i)) optional += 1;
+        else if (Object.prototype.hasOwnProperty.call(n, i.priority)) n[i.priority] += 1;
+    });
+    const parts = [];
+    if (n.critical) parts.push(`${n.critical} to fix now`);
+    if (n.high) parts.push(`${n.high} important`);
+    if (n.medium) parts.push(`${n.medium} recommended`);
+    if (n.low + optional) parts.push(`${n.low + optional} optional`);
+    return parts.join(', ');
 }
 
-// One row per roadmap item, in the roadmap's order. The icon is the card's
-// status: fail, warn or absent, and info for a suggestion on a passing card.
-// A closed row is the one-line instruction; opening it answers why it
-// matters, what to change, and how to confirm the change worked, so the
-// reader does not have to go into a card and assemble the plan there.
+// One row per roadmap item, in the roadmap's order, with the optional
+// extras gathered at the end under one closed toggle. The icon is the
+// card's status: fail, warn or absent, and info for a suggestion on a
+// passing card. Doc 92: a closed row leads with the plain consequence when
+// the backend sends one, with the instruction under it; opening it answers
+// why it matters, what to paste, who does it and how to confirm it worked.
 function renderPriorities(rm, checks, resilience) {
     const cards = {};
     (checks || []).forEach(c => { if (c && c.name) cards[c.name] = c; });
 
-    return ((rm && rm.items) || []).map(item => {
-        const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
-        const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-        const card = cards[item.protocol];
-        const bodyId = `plan-body-${++_planSeq}`;
+    const items = (rm && rm.items) || [];
+    const main = items.filter(i => !isOptionalPlanItem(i));
+    const extras = items.filter(i => isOptionalPlanItem(i));
 
-        const why = _planWhy(item, card, resilience);
-        const what = _planWhat(item, card, anchor);
-        const confirm = _planConfirm(card, what.hasPropagation);
-
-        const part = (label, body) => `<div class="plan-part">
-            <div class="plan-part-label">${label}</div>
-            <div class="plan-part-body">${body}</div>
-        </div>`;
-
-        return `<div class="priority-row">
-            <div class="priority-head" role="button" tabindex="0"
-                 aria-expanded="false" aria-controls="${bodyId}">
-                <span class="status-icon ${st}">${ICON[st]}</span>
-                <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
-                <span class="tag tag-${safeClass(item.priority)}">${escapeHtml(item.priority)}</span>
-                <span class="priority-action">${escapeHtml(item.action)}</span>
+    let html = main.map(item => _priorityRow(item, cards, resilience, false)).join('');
+    if (extras.length > 0) {
+        const groupId = `plan-optional-${++_planSeq}`;
+        html += `<div class="plan-optional">
+            <button type="button" class="plan-optional-toggle" aria-expanded="false" aria-controls="${groupId}">
+                <span>Optional extras (${extras.length})</span>
                 <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
-            </div>
-            <div class="priority-body is-hidden" id="${bodyId}">
-                ${why ? part('Why it matters', why) : ''}
-                ${part('What to change', what.html)}
-                ${part('How to confirm', escapeHtml(confirm))}
-                <button class="plan-card-link" data-scroll-to="${anchor}">Open the ${escapeHtml(item.protocol)} card</button>
+            </button>
+            <div class="plan-optional-body is-hidden" id="${groupId}">
+                ${extras.map(item => _priorityRow(item, cards, resilience, true)).join('')}
             </div>
         </div>`;
-    }).join('');
+    }
+    return html;
+}
+
+function _priorityRow(item, cards, resilience, optional) {
+    const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
+    const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const card = cards[item.protocol];
+    const bodyId = `plan-body-${++_planSeq}`;
+
+    const why = _planWhy(item, card, resilience);
+    const what = _planWhat(item, card, anchor);
+    const confirm = _planConfirm(card, what.hasPropagation);
+
+    // A row in the optional group says so, whatever tier it came with.
+    const tier = optional ? 'low' : item.priority;
+    const tierLabel = TIER_LABELS[tier] || sentenceCase(tier || '');
+    const plain = item.plain_head && item.plain_head !== item.action ? item.plain_head : '';
+
+    const part = (label, body) => `<div class="plan-part">
+        <div class="plan-part-label">${label}</div>
+        <div class="plan-part-body">${body}</div>
+    </div>`;
+
+    return `<div class="priority-row">
+        <div class="priority-head" role="button" tabindex="0"
+             aria-expanded="false" aria-controls="${bodyId}">
+            <span class="status-icon ${st}">${ICON[st]}</span>
+            <span class="priority-text">
+                ${plain ? `<span class="priority-plain">${escapeHtml(plain)}</span>` : ''}
+                <span class="priority-action${plain ? ' priority-action-sub' : ''}">${escapeHtml(item.action)}</span>
+            </span>
+            <span class="priority-meta">
+                <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
+                <span class="tag tag-${safeClass(tier)}">${escapeHtml(tierLabel)}</span>
+            </span>
+            <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+        </div>
+        <div class="priority-body is-hidden" id="${bodyId}">
+            ${why ? part('Why it matters', why) : ''}
+            ${part(what.hasRecord ? 'What to paste' : 'What to change', what.html)}
+            ${item.who ? part('Who does this', escapeHtml(item.who)) : ''}
+            ${part('How to confirm', escapeHtml(confirm))}
+            <button class="plan-card-link" data-scroll-to="${anchor}">Open the ${escapeHtml(item.protocol)} card</button>
+        </div>
+    </div>`;
 }
 
 // Why it matters: the item's impact, and for a monitoring DMARC policy the
@@ -3085,8 +3263,8 @@ function _planWhat(item, card, anchor) {
         let html = _planRecordBlock(host, 'TXT', item.record);
         if (item.host_note) html += `<div class="plan-record-note">${escapeHtml(item.host_note)}</div>`;
         html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
-        if (card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
-        return { html, hasPropagation: !!card.ttl_info };
+        if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
+        return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
     }
 
     if (card && card.fix_records && card.fix_records.length > 0) {
@@ -3094,7 +3272,7 @@ function _planWhat(item, card, anchor) {
             _planRecordBlock(fr.host, fr.type, fr.value || fr.suggested || '', fr.comment)
         ).join('');
         if (card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
-        return { html, hasPropagation: !!card.ttl_info };
+        return { html, hasPropagation: !!card.ttl_info, hasRecord: true };
     }
 
     if (card && typeof card.fix === 'string' && card.fix.trim()) {
@@ -3946,12 +4124,12 @@ function sanitizeHtml(html) {
 function renderProviderIntelligence(pi) {
     const section = document.getElementById('provider-intelligence-section');
     const content = document.getElementById('provider-intelligence-content');
-    if (!section || !content) return;
+    if (!section || !content) return false;
     content.innerHTML = '';
 
     if (!pi || (!pi.primary_providers?.length && !pi.sending_services?.length)) {
         section.style.display = 'none';
-        return;
+        return false;
     }
 
     section.style.display = 'block';
@@ -3993,6 +4171,7 @@ function renderProviderIntelligence(pi) {
             body.classList.toggle('is-hidden', expanded);
         });
     });
+    return true;
 }
 
 function _renderProviderCard(provider, showScorecard) {
@@ -4247,10 +4426,10 @@ function _renderCacheBadge(data) {
         badge = document.createElement('div');
         badge.id = 'cache-status-badge';
         badge.className = 'tag';
-        const ts = document.getElementById('result-timestamp');
-        if (ts && ts.parentNode) {
-            ts.parentNode.insertBefore(badge, ts.nextSibling);
-        }
+        // Doc 92: with the Request ID at the bottom of the results, not
+        // between the domain and the short answer.
+        const meta = document.getElementById('results-meta');
+        if (meta) meta.insertBefore(badge, meta.firstChild);
     }
 
     if (data._cached || data.cached) {
@@ -4308,10 +4487,8 @@ function _renderRequestId(requestId) {
         el.type = 'button';
         el.id = 'request-id-display';
         el.className = 'request-id-display';
-        const ts = document.getElementById('result-timestamp');
-        if (ts && ts.parentNode) {
-            ts.parentNode.appendChild(el);
-        }
+        const meta = document.getElementById('results-meta');
+        if (meta) meta.appendChild(el);
     }
     el.innerHTML = `<span class="request-id-label">Request ID:</span> <code class="request-id-value">${escapeHtml(requestId)}</code>`;
     el.title = 'Click to copy';

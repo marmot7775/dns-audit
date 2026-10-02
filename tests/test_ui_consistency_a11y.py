@@ -664,8 +664,9 @@ def test_view_priorities_button_only_with_rows(browser, fixture_result):
                                   [es, {"items": [{"protocol": "DMARC"}]}])
         without = page.evaluate("([es, rm]) => renderExecutiveSummary(es, rm)",
                                 [es, {"items": []}])
-        # Doc 64 renamed the section and the button that scrolls to it.
-        assert "What to do" in with_rows
-        assert "What to do" not in without
+        # Doc 64 renamed the section; Doc 92 renamed the button that scrolls
+        # to it, which is part of the short answer at the top.
+        assert "See the plan" in with_rows
+        assert "See the plan" not in without
     finally:
         ctx.close()
