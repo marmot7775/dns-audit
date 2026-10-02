@@ -46,7 +46,7 @@ def test_null_mx_domain_gets_the_null_mx_card(audit):
     card = _mx_card(audit(ZONE, DOMAIN, scope="email_full"))
 
     assert card is not None
-    assert card["pill_label"] == "Null MX", (
+    assert card["pill_label"] == "No mail, by design", (
         f"A null MX record has its own card; got pill "
         f"{card.get('pill_label')!r} verdict {card.get('verdict')!r}"
     )
@@ -86,5 +86,5 @@ def test_a_real_single_mx_domain_still_gets_its_failover_warning(audit):
     }
     card = _mx_card(audit(zone, domain, scope="email_full"))
 
-    assert card["pill_label"] != "Null MX"
+    assert card["pill_label"] != "No mail, by design"
     assert "Single MX host" in _card_text(card)

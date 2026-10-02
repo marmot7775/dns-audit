@@ -48,7 +48,7 @@ def _card(result, name):
 
 def _is_waived(card):
     # DKIM is essential, so its waiver is a pass; the optional protocols are absent.
-    return card["status"] in ("pass", "absent") and card.get("pill_label") in ("N/A", "Not applicable")
+    return card["status"] in ("pass", "absent") and card.get("pill_label") == "Does not apply"
 
 
 # --- unit: the transformers no longer waive on has_mx=False alone ---------
@@ -134,7 +134,7 @@ def test_send_only_subdomain_dkim_is_a_real_finding(audit):
         f"send-only subdomain with no DKIM must not pass DKIM; got "
         f"{dkim['status']!r} / {dkim.get('verdict')!r}"
     )
-    assert dkim.get("pill_label") != "N/A"
+    assert dkim.get("pill_label") != "Does not apply"
     assert "non-mail" not in (dkim.get("verdict") or "").lower()
 
     for name in ("MTA-STS", "TLS-RPT", "BIMI"):
@@ -142,7 +142,10 @@ def test_send_only_subdomain_dkim_is_a_real_finding(audit):
         if card is None:
             continue
         assert "non-mail" not in (card.get("verdict") or "").lower(), (name, card.get("verdict"))
-        assert card.get("pill_label") != "N/A", (name, card)
+        # Doc 92: the no-MX card and the defensive waiver share the pill
+        # "Does not apply" (they were "Not applicable" and "N/A"), so the
+        # verdict above is what tells the waiver apart.
+        assert card.get("verdict") != "Not applicable (non-mail domain)", (name, card)
 
 
 def test_parked_domain_dkim_is_still_waived(audit):
@@ -151,4 +154,4 @@ def test_parked_domain_dkim_is_still_waived(audit):
     dkim = _card(result, "DKIM")
     assert dkim is not None
     assert dkim["status"] == "pass"
-    assert dkim.get("pill_label") == "N/A"
+    assert dkim.get("pill_label") == "Does not apply"

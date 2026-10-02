@@ -74,7 +74,7 @@ def test_missing_vmc_fix_names_no_specific_vendor():
 
 def test_dane_roadmap_impact_states_a_risk_not_a_feature():
     checks = [
-        {"name": "DANE", "status": "warn", "pill_label": "Not configured"},
+        {"name": "DANE", "status": "warn", "pill_label": "Optional, not set up"},
     ]
     roadmap = result_transformer.build_security_roadmap(checks)
     dane_items = [i for i in roadmap["items"] if i["protocol"] == "DANE"]

@@ -94,7 +94,7 @@ def test_a_real_negative_answer_is_absent_and_a_failed_lookup_is_unavailable(aud
     failed = _card(audit(FakeZone(dict(BASE)).fail(DOMAIN, "DNSKEY").fail(DOMAIN, "DS"),
                          DOMAIN), "DNSSEC")
 
-    assert (answered["status"], answered["pill_label"]) == ("absent", "Not configured")
+    assert (answered["status"], answered["pill_label"]) == ("absent", "Optional, not set up")
     assert (failed["status"], failed["pill_label"]) == ("unavailable", "Not confirmed")
 
 

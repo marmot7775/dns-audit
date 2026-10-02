@@ -22,8 +22,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=1997512">
-    <script src="/static/theme.js?v=1997512"></script>
+    <link rel="stylesheet" href="/static/style.css?v=af4fe5e">
+    <script src="/static/theme.js?v=af4fe5e"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -122,10 +122,14 @@
             <h1 class="dbis-article-title">DNSSEC in 2026: what changed and whether you need it</h1>
             <p class="dbis-article-sub">The operational problems behind DNSSEC's reputation were fixed by three RFCs and a provider rollout that few people noticed. What it protects, where it still falls short, and what a good deployment looks like.</p>
             <p class="article-card-meta">Published <time datetime="2026-04-26">April 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
-            <p class="dbis-lede">Most opinions about DNSSEC were formed before 2017 and never revisited. The common one was that it carried too much operational risk for the threat it closed: KSK rollovers broke domains, registrars wanted a ticket for every DS update, and RSA signatures pushed responses into TCP fallback. That was a fair reading at the time. It is out of date now. This article covers what changed, what DNSSEC protects against, where it still falls short, and what a good deployment looks like.</p>
+            <aside class="short-version" aria-labelledby="short-version-title">
+                <h2 id="short-version-title">The short version</h2>
+                <p>DNSSEC signs your domain's DNS answers so computers can tell they were not forged on the way. It does not stop phishing, email spoofing, or someone taking over your registrar account. The setup problems behind its bad name have mostly been fixed, and at many DNS hosts it is now a checkbox. Banks, registrars and anyone publishing DANE records should sign; for a brochure site, sign if your host makes it easy, and do not move hosts just for this.</p>
+            </aside>
+            <p class="dbis-lede">Most opinions about DNSSEC were formed before 2017 and never revisited. The common one was that it carried too much operational risk for the threat it closed. A KSK rollover replaces the main signing key, which means updating the DS record, the record at your registrar linking your signed zone to its parent. Those rollovers broke domains, registrars wanted a ticket for every DS update, and RSA signatures pushed responses into TCP fallback. That was a fair reading at the time. It is out of date now. This article covers what changed, what DNSSEC protects against, where it still falls short, and what a good deployment looks like.</p>
             <section class="dbis-section">
                 <h2>What got fixed</h2>
-                <p>The DNSSEC of the 2010s needed a person at every step. You signed the zone, copied the DS record out of your DNS host, pasted it into your registrar's form, and did it again at every key rollover. Miss the registrar step on a KSK rotation and every validating resolver treated your domain as bogus. Most of the pain was in the handoffs, not the cryptography.</p>
+                <p>The DNSSEC of the 2010s needed a person at every step. You signed the zone, copied the DS record out of your DNS host, pasted it into your registrar's form, and did it again at every key rollover. Miss the registrar step on a KSK rotation and every validating resolver treated your domain as bogus. A resolver is the server that looks up DNS answers for a device, and a validating resolver checks signatures and rejects forged answers. Most of the pain was in the handoffs, not the cryptography.</p>
                 <p>Three RFCs removed the handoffs. RFC 7344, in 2014, introduced CDS and CDNSKEY records: the DNS host publishes the new DS in the zone itself and the parent picks it up, with no form and no copying. RFC 8078 let a registry accept the first DS from CDS, but only through unauthenticated checks such as a waiting period. RFC 9615 made that first step authenticated. A growing set of registries, mostly country codes such as .ch, .cz, .li, and .se, scan for CDS records directly; in the large generic TLDs the registrar does that job. CSYNC, RFC 7477, does the same for NS and glue records.</p>
                 <p>Algorithm choice changed too. ECDSA P-256, algorithm 13, was defined in RFC 6605 in 2012 but took most of a decade to become the provider default. Its signatures are small enough to fit in a UDP response, and a good share of the old "DNSSEC broke my domain" stories were TCP fallback from oversized RSA responses.</p>
                 <p>The standards took twelve years. The provider work that made them matter happened mostly in the last six. At Cloudflare, deSEC, Route 53, NS1, and Google Cloud DNS, signing is a checkbox. Some of them roll every key for you; Route 53 and Google Cloud DNS still leave the KSK rollover to you. None of this made news, because slow fixes do not.</p>

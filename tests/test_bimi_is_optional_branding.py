@@ -58,7 +58,7 @@ def test_absent_bimi_is_not_a_warning(audit):
         f"declining an optional branding feature is not a finding; got "
         f"{card['status']!r}"
     )
-    assert card["pill_label"] == "Not configured"
+    assert card["pill_label"] == "Optional, not set up"
 
 
 def test_absent_bimi_gets_no_roadmap_item(audit):

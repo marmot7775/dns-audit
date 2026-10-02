@@ -34,6 +34,8 @@ _OPEN_ALL_JS = """() => {
     document.querySelectorAll('.result-header').forEach(h => h.click());
     document.querySelectorAll('.cd-body.is-hidden').forEach(b => b.classList.remove('is-hidden'));
     document.querySelectorAll('.priority-body.is-hidden').forEach(b => b.classList.remove('is-hidden'));
+    // Doc 92: optional extras (BIMI among them) sit in a closed group.
+    document.querySelectorAll('.plan-optional-toggle[aria-expanded="false"]').forEach(t => t.click());
 }"""
 
 
@@ -69,7 +71,7 @@ def test_null_spf_is_not_a_path_to_dmarc_pass(no_mail):
 
 def test_resilience_dkim_is_not_applicable_like_the_card(no_mail):
     dkim_card = next(c for c in no_mail["checks"] if c["name"] == "DKIM")
-    assert dkim_card["pill_label"] == "N/A"
+    assert dkim_card["pill_label"] == "Does not apply"
     mech = no_mail["resilience"]["mechanisms"]["dkim"]
     assert mech["status"] == "not_applicable"
     assert "may well be configured" not in mech["note"]

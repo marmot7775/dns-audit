@@ -107,7 +107,9 @@ def test_each_card_opens_with_the_two_labelled_parts(browser, fixture_result, th
             const line = inner.querySelector('.what-this-is');
             const kids = [...inner.children].map(k => k.className.split(' ')[0]);
             return {
-                name: c.querySelector('.result-title').textContent.trim(),
+                // Doc 92: the title shows the plain name; the check's own
+                // name is on the card.
+                name: c.dataset.check,
                 labels,
                 line: line ? line.textContent.trim() : null,
                 firstThree: kids.slice(0, 3),

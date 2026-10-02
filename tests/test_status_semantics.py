@@ -97,11 +97,11 @@ def test_essentials_passing_and_nothing_optional_is_no_warning_and_no_issue(audi
     assert _names_with(result, "absent") == OPTIONAL
 
 
-def test_the_six_optional_cards_say_not_configured(audit):
+def test_the_six_optional_cards_say_optional_not_set_up(audit):
     cards = _by_name(audit(_zone(), DOMAIN, dkim_selector="s1"))
     for name in OPTIONAL:
         assert cards[name]["status"] == "absent", name
-        assert cards[name]["pill_label"] == "Not configured", (
+        assert cards[name]["pill_label"] == "Optional, not set up", (
             f"{name} pill reads {cards[name]['pill_label']!r}"
         )
 
@@ -212,7 +212,7 @@ process.stdout.write(JSON.stringify({
 
 def _cover_count(text, label):
     m = re.search(r"(\d+)\s*%s" % label, text)
-    assert m, f"PDF cover has no {label!r} figure: {text[:400]!r}"
+    assert m, f"PDF tally has no {label!r} figure: {text[:400]!r}"
     return int(m.group(1))
 
 
@@ -230,11 +230,18 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
     assert pdf_report._tally(result["checks"]) == (
         counts["pass"], counts["warn"], counts["fail"], counts["absent"], counts["unavailable"])
 
-    cover = PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages[0].extract_text()
-    assert _cover_count(cover, r"issues?\b") == counts["fail"]
-    assert _cover_count(cover, r"warnings?\b") == counts["warn"]
-    assert _cover_count(cover, r"not configured") == counts["absent"]
-    assert _cover_count(cover, r"passing") == counts["pass"]
+    # Doc 92: the tally is one line on the plan page, page 2, and is
+    # printed nowhere else.
+    pages = [p.extract_text() or "" for p in
+             PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages]
+    cover = " ".join(pages[1].split())
+    assert "Across 12 checks:" in cover, cover[:400]
+    assert sum(" ".join(p.split()).count("Across 12 checks:") for p in pages) == 1
+    # Doc 92: the tally uses the pill words.
+    assert _cover_count(cover, r"needs? fixing") == counts["fail"]
+    assert _cover_count(cover, r"could be stronger") == counts["warn"]
+    assert _cover_count(cover, r"optional and not set up") == counts["absent"]
+    assert _cover_count(cover, r"pass\b") == counts["pass"]
 
     assert web["title"] == f"(2 warnings) {DOMAIN} | DNS Audit"
     assert web["tweet"].endswith("0 issues, 2 warnings")
@@ -272,7 +279,7 @@ def test_one_exposed_vector_verdict_says_it_is_open():
     ]
     verdict = build_executive_summary(checks, build_security_roadmap(checks))["verdict"]
 
-    assert verdict == "Your domain has email authentication, but subdomain spoofing is still open."
+    assert verdict == "Your settings block most forged mail, but not your subdomains."
 
 
 # ---------------------------------------------------------------
@@ -316,7 +323,7 @@ def _one_fail_one_warn_one_absent():
         {"name": "SPF", "status": "warn", "configured": True,
          "record": "v=spf1 include:a.test include:b.test ~all",
          "spf_deep": {"lookup_count": 9}},
-        {"name": "MTA-STS", "status": "absent", "pill_label": "Not configured",
+        {"name": "MTA-STS", "status": "absent", "pill_label": "Optional, not set up",
          "configured": False},
     ]
 
@@ -348,9 +355,13 @@ def test_web_priorities_list_has_one_row_per_item_in_order():
     rm = build_security_roadmap(checks)
     # Doc 64: a row is a head plus a body, and the link into the card is a
     # control inside the body, so the anchor is read from that link.
-    program = _js_functions("iconSvg", "ICON", "safeClass", "renderPriorities",
+    # Doc 92 split the row out of renderPriorities and grouped optional
+    # extras at the end; the absent MTA-STS row is one, and is still last.
+    program = _js_functions("iconSvg", "ICON", "safeClass", "sentenceCase", "TIER_LABELS",
+                            "isOptionalPlanItem", "renderPriorities", "_priorityRow",
                             "_planWhy", "_planWhat", "_planConfirm",
                             "_planRecordBlock", "_dmarcPolicy") + """
+const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];
 function escapeHtml(t) {
     return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -410,7 +421,7 @@ def test_complete_pdf_has_priorities_and_no_priority_fixes(audit):
     text = "\n".join(p.extract_text() or "" for p in
                      PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages)
 
-    assert "2. What to do" in text
+    assert "2. The plan" in text
     assert "Priority Fixes" not in text
     assert "Email Security Roadmap" not in text
     assert "priority_fixes" not in result, "Doc 49 removed the field after its last release"

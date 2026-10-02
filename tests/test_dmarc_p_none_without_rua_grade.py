@@ -45,7 +45,7 @@ def test_p_none_without_rua_is_needs_attention_not_misconfigured(audit):
 
     tile = result["executive_summary"]["dmarcbis_readiness"]
     assert tile["color"] == "amber", tile
-    assert tile["label"] != "Action needed"
+    assert tile["label"] not in ("Action needed", "Edits suggested")
 
 
 def test_p_none_without_rua_is_not_said_to_block_anything(audit):
@@ -78,4 +78,4 @@ def test_readiness_tile_is_never_redder_than_the_card(audit):
 def test_a_failing_card_keeps_a_red_tile():
     checks = [{"name": "DMARC", "status": "fail", "pill_label": "Missing"}]
     es = result_transformer.build_executive_summary(checks, {"items": []})
-    assert es["dmarcbis_readiness"] == {"label": "Action needed", "color": "red"}
+    assert es["dmarcbis_readiness"] == {"label": "No record", "color": "red"}

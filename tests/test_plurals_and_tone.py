@@ -103,7 +103,7 @@ def test_clean_report_biggest_risk_has_no_marketing_words():
     ]
     es = build_executive_summary(checks, build_security_roadmap(checks))
     assert "optimization opportunities" not in es["biggest_risk"]
-    assert "No urgent risks found" in es["biggest_risk"]
+    assert es["biggest_risk"] == "Nothing urgent. The plan has smaller improvements."
 
 
 def test_no_warning_predicts_what_attackers_will_do_and_the_real_domain_is_used():

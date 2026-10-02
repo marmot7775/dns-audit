@@ -22,8 +22,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=1997512">
-    <script src="/static/theme.js?v=1997512"></script>
+    <link rel="stylesheet" href="/static/style.css?v=af4fe5e">
+    <script src="/static/theme.js?v=af4fe5e"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -90,13 +90,17 @@
             <h1 class="dbis-article-title">SPF permerror from too many lookups: how to get back under 10</h1>
             <p class="dbis-article-sub">The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough.</p>
             <p class="article-card-meta">Published <time datetime="2026-09-29">September 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
-            <p class="dbis-lede">SPF gives a receiver 10 lookups per check. Go past that and some of your legitimate mail stops passing SPF. Which mail depends on the order of your record, so the failure is easy to miss and easy to misread.</p>
+            <aside class="short-version" aria-labelledby="short-version-title">
+                <h2 id="short-version-title">The short version</h2>
+                <p>Your SPF record lists the services allowed to send mail as you, and receivers stop reading it after 10 lookups. Past that point some of your mail fails SPF, and which mail depends on the order of the record. Mail with a DKIM signature for your own domain can still pass DMARC, so the damage is often smaller than it looks, but it is real. The fix is usually cleanup: remove unused services, drop old <code>a</code>, <code>mx</code> and <code>ptr</code> entries, and move bulk senders to a subdomain.</p>
+            </aside>
+            <p class="dbis-lede">SPF gives a receiver 10 lookups per check, where a lookup is a term that sends the receiver to DNS, counted once however many queries it takes. Go past that and some of your legitimate mail stops passing SPF. Which mail depends on the order of your record, so the failure is easy to miss and easy to misread.</p>
             <section class="dbis-section">
-                <p>RFC 7208 sets the limit and says what counts. Every <code>include</code>, <code>a</code>, <code>mx</code>, <code>ptr</code>, and <code>exists</code> mechanism costs one lookup, and so does a <code>redirect</code>. <code>ip4</code>, <code>ip6</code>, and <code>all</code> cost nothing. Includes nest, and the nested ones don't show up when you read your own record. As of September 2026, <code>include:sendgrid.net</code> costs two, because SendGrid's record pulls in one more include. <code>_spf.google.com</code> costs one. For years it pulled in three more, so the old advice that Google costs four is out of date. Mailgun costs five.</p>
+                <p>RFC 7208 sets the limit and says what counts. Every <code>include</code>, <code>a</code>, <code>mx</code>, <code>ptr</code>, and <code>exists</code> mechanism costs one lookup, and so does a <code>redirect</code>. <code>ip4</code>, <code>ip6</code>, and <code>all</code> cost nothing. An <code>include</code> pulls in another domain's SPF list, so it costs at least one lookup. Includes nest, and the nested ones don't show up when you read your own record. As of September 2026, <code>include:sendgrid.net</code> costs two, because SendGrid's record pulls in one more include. <code>_spf.google.com</code> costs one. For years it pulled in three more, so the old advice that Google costs four is out of date. Mailgun costs five.</p>
             </section>
             <section class="dbis-section">
                 <h2>Order decides who breaks</h2>
-                <p>A receiver reads your record left to right and stops at the first mechanism that matches the sending server. It counts lookups as it goes, so it only counts the ones it spent getting to the match. A sender listed early passes. Senders listed late reach the 11th lookup and get permerror. Take this record, which a lot of domains would recognize:</p>
+                <p>A receiver reads your record left to right and stops at the first mechanism that matches the sending server. It counts lookups as it goes, so it only counts the ones it spent getting to the match. A sender listed early passes. Senders listed late reach the 11th lookup and get permerror. That is SPF's result for a record it cannot finish, and it counts as a fail. Take this record, which a lot of domains would recognize:</p>
                 <pre><code>v=spf1 a mx ptr include:_spf.google.com include:sendgrid.net
 include:mailgun.org include:mail.zendesk.com ~all</code></pre>
                 <p>Count it. <code>a</code>, <code>mx</code>, and <code>ptr</code> are three. Google is one, four so far. SendGrid is two, six. Mailgun is five, eleven. Zendesk is one, twelve. Mail from Google Workspace passes on the fourth lookup and most SendGrid mail passes on the fifth. Mail from Mailgun's US servers passes on the ninth and tenth. Mail from its EU servers trips the limit inside Mailgun's own tree and gets permerror, and Zendesk never gets checked at all. Nobody at the company sees a problem in their own inbox, because Google is the sender that passes.</p>
@@ -115,7 +119,7 @@ include:mailgun.org include:mail.zendesk.com ~all</code></pre>
                 <h2>Find out which includes matter</h2>
                 <ol class="dbis-steps">
                     <li><div>Pull a message from each platform that sends as you and open the headers. In Gmail that's Show original.</div></li>
-                    <li><div>Find the <code>Authentication-Results</code> header and look for <code>smtp.mailfrom</code>. That's the envelope domain the receiver checked SPF against. It's the better field to read because it sits beside the SPF result it produced, in the receiver's own header.</div></li>
+                    <li><div>Find the <code>Authentication-Results</code> header and look for <code>smtp.mailfrom</code>. That's the envelope domain the receiver checked SPF against, also called the return path. It's the better field to read because it sits beside the SPF result it produced, in the receiver's own header.</div></li>
                     <li><div>If <code>smtp.mailfrom</code> is the platform's own domain, that platform's include in your record isn't doing anything for that mail. SPF is passing on their name, not yours, and it never counted toward DMARC either. Removing the include costs you nothing at the DMARC level.</div></li>
                     <li><div>If it's a subdomain of yours that the platform had you point at them with a CNAME, the receiver checks that subdomain's record, so the include in your main record is idle. Here the SPF pass still counts toward DMARC, because the subdomain aligns with your domain.</div></li>
                     <li><div>Before you remove anything, confirm with the vendor's setup docs. Some platforms use your domain for part of their mail and their own for the rest.</div></li>
@@ -131,7 +135,7 @@ include:mailgun.org include:mail.zendesk.com ~all</code></pre>
             <section class="dbis-section">
                 <h2>Put addresses first</h2>
                 <p><code>ip4</code> and <code>ip6</code> terms cost nothing, and mail from those addresses passes before the receiver spends a lookup. Put them first. Order the includes after them by volume, biggest sender first, so the most mail passes earliest.</p>
-                <p>Dedicated IPs belong here too, because they're the one case where listing addresses beats the include. If you're on dedicated IPs with a platform, those addresses are yours under contract, the vendor tells you when they change, and <code>ip4</code> terms for them cost nothing. That isn't flattening. Nothing goes stale behind your back. Confirm with the vendor that none of your mail leaves from their shared pool, since some route bounces or transactional mail that way, before you drop the include. While you're asking, ask whether they publish a narrower include for your product or region. The catch all is what the setup doc gives everyone.</p>
+                <p>Dedicated IPs belong here too, because they're the one case where listing addresses beats the include. If you're on dedicated IPs with a platform, those addresses are yours under contract, the vendor tells you when they change, and <code>ip4</code> terms for them cost nothing. That isn't flattening, which replaces includes with the addresses they hold today. Nothing goes stale behind your back. Confirm with the vendor that none of your mail leaves from their shared pool, since some route bounces or transactional mail that way, before you drop the include. While you're asking, ask whether they publish a narrower include for your product or region. The catch all is what the setup doc gives everyone.</p>
             </section>
             <section class="dbis-section">
                 <h2>Move bulk senders to a subdomain</h2>
