@@ -91,3 +91,13 @@ def test_null_mx_and_null_spf_waive_both_directions(audit):
 
     _assert_not_applicable(cards, INBOUND + OUTBOUND)
     assert result["defensive_dns"] is True
+
+
+def test_null_spf_with_an_unfinished_mx_lookup_leaves_inbound_unknown():
+    """A timed-out MX lookup learned nothing about inbound mail, so null SPF
+    alone cannot make MTA-STS, TLS-RPT and DANE inapplicable."""
+    from audit_engine import _receives_no_mail
+    null_spf = {"record": "v=spf1 -all"}
+    assert _receives_no_mail({"status": "unavailable", "records": []}, null_spf) is False
+    assert _receives_no_mail({}, null_spf) is False
+    assert _receives_no_mail({"status": "ok", "records": []}, null_spf) is True

@@ -4598,7 +4598,11 @@ def _receives_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
     """Inbound protections (MTA-STS, TLS-RPT, DANE) do not apply."""
     if _publishes_null_mx(raw_mx):
         return True
-    return _publishes_null_spf(raw_spf) and not _has_working_mx(raw_mx)
+    # Null SPF says nothing about receiving. Only a finished MX lookup that
+    # found no working host lets it stand in for "no inbound mail"; a lookup
+    # that timed out or failed leaves inbound unknown, not inapplicable.
+    mx_done = bool(raw_mx) and raw_mx.get("status") != "unavailable" and not raw_mx.get("timed_out")
+    return _publishes_null_spf(raw_spf) and mx_done and not _has_working_mx(raw_mx)
 
 
 def _sends_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
