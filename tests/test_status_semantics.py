@@ -348,9 +348,13 @@ def test_web_priorities_list_has_one_row_per_item_in_order():
     rm = build_security_roadmap(checks)
     # Doc 64: a row is a head plus a body, and the link into the card is a
     # control inside the body, so the anchor is read from that link.
-    program = _js_functions("iconSvg", "ICON", "safeClass", "renderPriorities",
+    # Doc 92 split the row out of renderPriorities and grouped optional
+    # extras at the end; the absent MTA-STS row is one, and is still last.
+    program = _js_functions("iconSvg", "ICON", "safeClass", "sentenceCase", "TIER_LABELS",
+                            "isOptionalPlanItem", "renderPriorities", "_priorityRow",
                             "_planWhy", "_planWhat", "_planConfirm",
                             "_planRecordBlock", "_dmarcPolicy") + """
+const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];
 function escapeHtml(t) {
     return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
