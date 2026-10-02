@@ -1664,7 +1664,14 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 # 100 is the exception: RFC 7489 receivers still honor it, so
                 # removing it changes how much failing mail the policy covers.
                 _partial = _dmarc_pct_kept(_cur) if "pct" in _tags else None
-                if _partial is not None:
+                if _partial == 0:
+                    # pct=0 applies the policy to none of the failing mail at
+                    # RFC 7489 receivers: as weak as p=none there, so it ranks
+                    # with the p=none row.
+                    _priority = "high"
+                    _head = ("Your policy covers none of the failing mail at "
+                             "receivers that still read pct.")
+                elif _partial is not None:
                     _priority = "medium"
                     _head = (f"Your policy covers only {_partial}% of failing mail at "
                              f"receivers that still read pct.")
