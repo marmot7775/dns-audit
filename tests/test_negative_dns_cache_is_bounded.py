@@ -78,11 +78,30 @@ def positive():
     )
 
 
+def nodata_without_soa():
+    return _answer("id 0\nopcode QUERY\nrcode NOERROR\nflags QR AA\n")
+
+
+# NXDOMAIN is no longer cached at all (see the next test), so the cap only
+# has NODATA left to bound.
 NEGATIVES = {
-    "NXDOMAIN with SOA": nxdomain_with_soa,
     "NODATA with SOA": nodata_with_soa,
-    "NXDOMAIN with no SOA": nxdomain_without_soa,
+    "NODATA with no SOA": nodata_without_soa,
 }
+
+
+@pytest.mark.parametrize("make", [nxdomain_with_soa, nxdomain_without_soa])
+def test_nxdomain_is_not_cached(make):
+    """dnspython keys NXDOMAIN on (qname, ANY), so a cached one answers every
+    type at that name. ns.vali.email returns NXDOMAIN for CNAME and the DMARC
+    record for TXT at the same _dmarc name, and the cached NXDOMAIN from the
+    CNAME probe hid the record. See
+    test_nxdomain_for_one_type_does_not_hide_another.py."""
+    answer = make()
+    cache = dns_tools.BoundedNegativeCache(max_size=10)
+    key = (dns.name.from_text(QNAME), dns.rdatatype.ANY, dns.rdataclass.IN)
+    cache.put(key, answer)
+    assert cache.get(key) is None
 
 
 @pytest.mark.parametrize("label", sorted(NEGATIVES))
@@ -112,7 +131,7 @@ def test_the_cap_is_shorter_than_the_result_cache():
 
 def test_a_negative_answer_expires_out_of_the_cache():
     """Capping expiration is only useful if get() honors it."""
-    answer = nxdomain_without_soa()
+    answer = nodata_without_soa()
     cache = dns_tools.BoundedNegativeCache(max_size=10)
     key = (dns.name.from_text(QNAME), answer.rdtype, dns.rdataclass.IN)
     cache.put(key, answer)
