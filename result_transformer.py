@@ -1519,10 +1519,22 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                     _impact = "Receivers on RFC 9989 ignore it."
                 if "pct" in _tags:
                     _impact = (_impact[:-1] + ", and pct never gave predictable control.")
-                items.append({"priority": "medium", "protocol": "DMARC",
+                # Receivers on RFC 9989 ignore these tags, so removing them is
+                # a tidy-up (low, never a "Do these first" item). pct below
+                # 100 is the exception: RFC 7489 receivers still honor it, so
+                # removing it changes how much failing mail the policy covers.
+                _partial = _dmarc_pct_kept(_cur) if "pct" in _tags else None
+                if _partial is not None:
+                    _priority = "medium"
+                    _head = (f"Your policy covers only {_partial}% of failing mail at "
+                             f"receivers that still read pct.")
+                else:
+                    _priority = "low"
+                    _head = ("Tidy-up: your DMARC record has settings the new "
+                             "standard dropped. Receivers ignore them.")
+                items.append({"priority": _priority, "protocol": "DMARC",
                               "action": f"Remove the {_noun} RFC 9989 retired: {', '.join(_tags)}",
-                              "plain_head": ("Tidy-up: your DMARC record has settings the new "
-                                             "standard dropped. Receivers ignore them."),
+                              "plain_head": _head,
                               "who": WHO_DNS_HOST,
                               "impact": _impact,
                               "record": _edit_dmarc_record(_cur, remove=_tags)})
@@ -4831,7 +4843,7 @@ def _dmarc_end_state(tags: Dict[str, str], domain: str = "", no_mail: bool = Fal
     #    A domain that sends no mail has nothing to report on; its card
     #    calls rua optional, so the end state does not add one.
     if not rec.get("rua") and not no_mail:
-        rec["rua"] = f"mailto:dmarc@{domain}" if domain else "mailto:dmarc@example.com"
+        rec["rua"] = f"mailto:dmarc-reports@{domain}" if domain else "mailto:dmarc-reports@example.com"
         changes.append({
             "tag": "rua", "action": "added", "value": rec["rua"],
             "reason": "Aggregate reporting address. Replace with your actual address.",
@@ -4902,7 +4914,7 @@ def _build_migration_path(tags: Dict[str, str], policy: str, health_status: str,
         if part_key in tags:
             current_parts.append(f"{part_key}={tags[part_key]}")
 
-    rua_placeholder = rua if rua else f"mailto:dmarc@{domain}"
+    rua_placeholder = rua if rua else f"mailto:dmarc-reports@{domain}"
 
     # Every step starts from the record as it stands and changes only the tags
     # the step is about. Rebuilding each record from p, t and rua dropped sp,
@@ -5115,7 +5127,7 @@ def _build_record_builder(
         safe_domain = domain
         # No fo=1 here: RFC 9989 section 4.7 requires a ruf= tag for fo to
         # have any effect, and this starter record does not add one.
-        rec = f"v=DMARC1; p=none; rua=mailto:dmarc@{safe_domain}"
+        rec = f"v=DMARC1; p=none; rua=mailto:dmarc-reports@{safe_domain}"
         return {
             "mode": "first_record",
             "current_record": None,
@@ -5124,7 +5136,7 @@ def _build_record_builder(
                 "tag": "p", "action": "added", "value": "none",
                 "reason": "Start with monitoring to review aggregate reports before enforcing.",
             }, {
-                "tag": "rua", "action": "added", "value": f"mailto:dmarc@{safe_domain}",
+                "tag": "rua", "action": "added", "value": f"mailto:dmarc-reports@{safe_domain}",
                 "reason": "Aggregate reporting address. Replace with your actual address.",
             }],
             "deploy": _deploy_instructions(domain, record),

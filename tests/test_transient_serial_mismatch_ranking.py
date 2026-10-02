@@ -30,8 +30,8 @@ def _ns_card_with_same_provider_mismatch():
 
 
 def _dmarc_card_with_a_medium_row(audit):
-    # pct is a retired tag: a medium "Remove the tag" row on a passing record.
-    result = audit(_zone(f"v=DMARC1; p=reject; pct=100; rua=mailto:d@{DOMAIN}",
+    # t=y on p=reject: a medium "Remove t=y" row on a passing record.
+    result = audit(_zone(f"v=DMARC1; p=reject; t=y; rua=mailto:d@{DOMAIN}",
                          "v=spf1 mx -all", domain=DOMAIN), DOMAIN, dkim_selector="s1")
     return {c["name"]: c for c in result["checks"]}["DMARC"]
 

@@ -84,9 +84,10 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
             };
         }""")
         assert m["label"] == "Do these first"
-        roadmap = fixture_result["security_roadmap"]["items"]
-        # Without the backend's do_first: the top rows that are not optional.
-        assert m["items"] == [roadmap[0]["action"], roadmap[1]["action"]], m["items"]
+        do_first = fixture_result["executive_summary"].get("do_first") or []
+        assert do_first, "the backend sends do_first for this fixture"
+        # Each item is the plain head, then the action title under it.
+        assert m["items"] == [d["plain_head"] + d["title"] for d in do_first], m["items"]
         assert m["buttons"] == ["See the plan", "Technical summary"]
         assert not m["riskBox"] and not m["defensiveBox"]
         assert m["tilesInTech"] and m["delivInTech"]

@@ -1093,10 +1093,10 @@ function applyDeferredStyles(root) {
 // passing nor failing. Anything unrecognised still reads as Failed, which is
 // the safe direction for a status this file does not know about.
 const STATUS_TITLES = {
-    pass: 'Passing',
-    warn: 'Warning',
-    fail: 'Failed',
-    absent: 'Not configured',
+    pass: 'Pass',
+    warn: 'Could be stronger',
+    fail: 'Needs fixing',
+    absent: 'Optional, not set up',
     unavailable: 'Not checked',
 };
 

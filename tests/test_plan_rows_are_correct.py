@@ -176,7 +176,10 @@ def test_a_readiness_row_reads_as_an_instruction(reasons, action, impact_start):
     card = {"name": "DMARC", "status": "warn", "configured": True,
             "record": f"v=DMARC1; p=reject; sp=reject; rua=mailto:d@plan.test{extra}",
             "tag_breakdown": {"health": {"status": "compatible", "reasons": reasons}}}
-    rows = [i for i in build_security_roadmap([card])["items"] if i["priority"] == "medium"]
+    # Doc 92: removing retired tags is a low tidy-up unless pct is below 100
+    # (here pct=1), so the row is found by its kind, not by one tier.
+    rows = [i for i in build_security_roadmap([card])["items"]
+            if i["priority"] in ("medium", "low") and not i["action"].startswith("Consider adding")]
 
     assert [i["action"] for i in rows] == [action]
     assert rows[0]["impact"].startswith(impact_start)
@@ -277,7 +280,7 @@ def test_the_no_record_case_still_starts_at_monitoring():
     builder = _build_record_builder({}, "", "", None, [], domain=DOMAIN)
 
     assert builder["mode"] == "first_record"
-    assert builder["recommended_record"] == f"v=DMARC1; p=none; rua=mailto:dmarc@{DOMAIN}"
+    assert builder["recommended_record"] == f"v=DMARC1; p=none; rua=mailto:dmarc-reports@{DOMAIN}"
 
 
 # ---------------------------------------------------------------

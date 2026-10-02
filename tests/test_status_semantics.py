@@ -237,10 +237,11 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
     cover = " ".join(pages[1].split())
     assert "Across 12 checks:" in cover, cover[:400]
     assert sum(" ".join(p.split()).count("Across 12 checks:") for p in pages) == 1
-    assert _cover_count(cover, r"issues?\b") == counts["fail"]
-    assert _cover_count(cover, r"warnings?\b") == counts["warn"]
-    assert _cover_count(cover, r"not configured") == counts["absent"]
-    assert _cover_count(cover, r"passing") == counts["pass"]
+    # Doc 92: the tally uses the pill words.
+    assert _cover_count(cover, r"needs? fixing") == counts["fail"]
+    assert _cover_count(cover, r"could be stronger") == counts["warn"]
+    assert _cover_count(cover, r"optional and not set up") == counts["absent"]
+    assert _cover_count(cover, r"pass\b") == counts["pass"]
 
     assert web["title"] == f"(2 warnings) {DOMAIN} | DNS Audit"
     assert web["tweet"].endswith("0 issues, 2 warnings")

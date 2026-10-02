@@ -55,6 +55,19 @@ def no_dmarc(audit):
     return audit(_zone(None), DOMAIN)
 
 
+def _without_backend_fields(result):
+    """The result as it looked before the result_transformer change: no
+    plain_head, who, optional or do_first. The fallback paths read this."""
+    result = copy.deepcopy(result)
+    for item in result["security_roadmap"]["items"]:
+        for key in ("plain_head", "who", "optional"):
+            item.pop(key, None)
+    result["executive_summary"].pop("do_first", None)
+    for card in result.get("checks", []):
+        card.pop("plain_name", None)
+    return result
+
+
 def _with_backend_fields(result):
     """The fields the result_transformer change adds, set by hand."""
     result = copy.deepcopy(result)
@@ -92,6 +105,7 @@ def test_page_one_is_the_short_answer(monitoring):
 
 
 def test_do_these_first_falls_back_to_the_first_items_that_are_not_low(monitoring):
+    monitoring = _without_backend_fields(monitoring)
     first = _pages(monitoring)[0]
     wanted = [i for i in monitoring["security_roadmap"]["items"]
               if i["priority"] != "low"][:3]
@@ -142,8 +156,8 @@ def test_page_two_is_the_plan_with_the_tally_once(monitoring):
     pages = _pages(monitoring)
 
     assert "2 The plan" in pages[1]
-    assert re.search(r"Across \d+ checks: \d+ issues?, \d+ warnings?, \d+ passing, "
-                     r"\d+ not configured", pages[1]), pages[1][:600]
+    assert re.search(r"Across \d+ checks: \d+ needs? fixing, \d+ could be stronger, \d+ pass, "
+                     r"\d+ optional and not set up", pages[1]), pages[1][:600]
     assert sum(p.count("Across ") for p in pages) == 1
     # The five counter tiles are gone.
     assert "Not configured Not checked" not in " ".join(pages)
@@ -159,7 +173,7 @@ def test_plan_rows_lead_with_the_plain_head_and_name_who_does_it(monitoring):
 
 
 def test_plan_rows_without_the_new_fields_print_no_who_line(monitoring):
-    text = " ".join(_pages(monitoring))
+    text = " ".join(_pages(_without_backend_fields(monitoring)))
 
     assert "Who does this" not in text
 

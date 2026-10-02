@@ -93,7 +93,7 @@ def test_the_pdf_builds_for_a_domain_with_no_dmarc_record(key_record):
     text = _flat(_pages(result))
     assert "Publish a DMARC record" in text
     # The no-record case is the record builder's first_record mode.
-    assert "v=DMARC1; p=none; rua=mailto:dmarc@" in text
+    assert "v=DMARC1; p=none; rua=mailto:dmarc-reports@" in text
 
 
 # ---------------------------------------------------------------

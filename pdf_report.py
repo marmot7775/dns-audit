@@ -548,10 +548,10 @@ def _tally_line(checks, S):
         return f'<font color="{clr.hexval()}"><b>{n}</b></font> {word}'
 
     parts = [
-        part(fails, FAIL_CLR, "issue" if fails == 1 else "issues"),
-        part(warns, WARN_CLR, "warning" if warns == 1 else "warnings"),
-        part(passes, PASS_CLR, "passing"),
-        part(absent, NEUTRAL_CLR, "not configured"),
+        part(fails, FAIL_CLR, "needs fixing" if fails == 1 else "need fixing"),
+        part(warns, WARN_CLR, "could be stronger"),
+        part(passes, PASS_CLR, "pass"),
+        part(absent, NEUTRAL_CLR, "optional and not set up"),
     ]
     if unavailable:
         parts.append(part(unavailable, TEXT_TER, "not checked"))
