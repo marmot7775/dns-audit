@@ -39,6 +39,10 @@ def test_summary_buttons_open_the_panel_they_name(browser, audit, dmarc, mode): 
                 c.querySelectorAll('.cd-header').forEach(h => h.click());
                 c.querySelector(".st-seg[data-mode='legacy']").click();
                 c.querySelectorAll('.cd-header[aria-expanded="true"]').forEach(h => h.click()); }""")
+        # Doc 92: the panel buttons sit in the Technical summary, closed by
+        # default, so it is opened first.
+        page.click(".es-tech-toggle")
+        assert _visible(page, "#es-tech")
         for label, target in (("View Attack Surface", "#dmarc-attack-surface .cd-body"),
                               ("Copy Recommended Record", "#dmarc-record-builder .cd-body")):
             btn = page.query_selector(f".es-action:text-is('{label}')")

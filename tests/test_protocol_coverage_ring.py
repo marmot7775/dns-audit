@@ -1,9 +1,9 @@
 """Regression test for the executive summary protocol coverage ring.
 
 Bug: build_executive_summary counted every "warn" status card as configured,
-with the pill-label filter (excluding "Not configured"/"Missing") applied
+with the pill-label filter (excluding "Optional, not set up"/"Missing") applied
 only to "fail". Since a not-configured protocol is rendered as
-status="warn", pill_label="Not configured" (see transform_mta_sts and
+status="warn", pill_label="Optional, not set up" (see transform_mta_sts and
 friends), a domain with zero protocols configured showed a green 7/9 ring
 instead of 0/9 red.
 
@@ -19,7 +19,7 @@ import result_transformer
 
 def _not_configured_card(name):
     """Shape matches real "not configured" cards, e.g. transform_mta_sts."""
-    return {"name": name, "status": "warn", "pill_label": "Not configured", "configured": False}
+    return {"name": name, "status": "warn", "pill_label": "Optional, not set up", "configured": False}
 
 
 def test_zero_configured_protocols_gives_zero_of_nine_red():

@@ -158,8 +158,8 @@ PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
 
 STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
 STATUS_BG  = {"pass": PASS_BG,  "warn": WARN_BG,  "fail": FAIL_BG,  "absent": NEUTRAL_BG}
-STATUS_LBL = {"pass": "Pass",   "warn": "Warning", "fail": "Issue",
-              "absent": "Not configured", "unavailable": "Not checked"}
+STATUS_LBL = {"pass": "Pass", "warn": "Could be stronger", "fail": "Needs fixing",
+              "absent": "Optional, not set up", "unavailable": "Not checked"}
 # Colours deliberately not mapped for "unavailable": every lookup falls
 # back to TEXT_SEC, which is the neutral grey this state should carry.
 # Helvetica has no glyph for U+26A0 (warning sign), so it rendered as a
@@ -275,35 +275,6 @@ def _tally(checks):
     return passes, warns, fails, absent, unavailable
 
 
-def _findings_summary(passes, warns, fails, absent=0, unavailable=0):
-    """Return a stacked tally of the cover counts as a list of Paragraphs.
-
-    Drops into a Table cell in place of the old donut gauge. Each line is a
-    colored count with a short label (issues / warnings / passing / not
-    checked). The "not checked" line only appears when there is something to
-    report, so a clean run reads the same as it always did.
-    """
-    total = passes + warns + fails + absent + unavailable
-    line = ParagraphStyle("FS", fontName=FONTS["sans_bold"], fontSize=11, leading=16)
-    # The 22pt total needs its own leading; on the 11pt line style its
-    # descenders printed over the "checks total" label beneath it.
-    big = ParagraphStyle("FSN", fontName=FONTS["sans_bold"], fontSize=22, leading=27)
-    label = ParagraphStyle("FSL", fontName=FONTS["sans"], fontSize=9, textColor=TEXT_TER, leading=12)
-    els = [
-        Paragraph(f'<font color="{TEXT_PRI.hexval()}">{total}</font>', big),
-        Paragraph(f"check{'s' if total != 1 else ''} total", label),
-        Spacer(1, SP_SM),
-        Paragraph(f'<font color="{FAIL_CLR.hexval()}"><b>{fails}</b></font> issue{"s" if fails != 1 else ""}', line),
-        Paragraph(f'<font color="{WARN_CLR.hexval()}"><b>{warns}</b></font> warning{"s" if warns != 1 else ""}', line),
-        Paragraph(f'<font color="{PASS_CLR.hexval()}"><b>{passes}</b></font> passing', line),
-        Paragraph(f'<font color="{NEUTRAL_CLR.hexval()}"><b>{absent}</b></font> not configured', line),
-    ]
-    if unavailable:
-        els.append(Paragraph(
-            f'<font color="{TEXT_TER.hexval()}"><b>{unavailable}</b></font> not checked', line))
-    return els
-
-
 # ================================================================
 # Styles
 # ================================================================
@@ -371,19 +342,120 @@ class _PageTpl:
 
 
 # ================================================================
-# Cover page (Page 1)
+# Page 1: The short answer (Doc 92)
 # ================================================================
 
-def _cover_page(data, S, toc_items=None):
-    """Build cover page elements.
+# The line under "Do these first". It names where the plan and the evidence
+# are, so a reader who stops after page 1 knows what the rest is for.
+SHORT_ANSWER_POINTER = ("Page 2 is the plan for whoever manages your DNS. "
+                        "Part 2 holds the evidence.")
 
-    toc_items is the numbered list of sections generate_pdf actually
-    emitted, so a scoped report's contents match its pages.
+
+def _do_first(data):
+    """Up to three actions for page 1, the same ones the web shows.
+
+    The backend's executive_summary["do_first"] when it is there. Before it
+    is, the first roadmap items that are not low priority, which is the rule
+    the biggest risk box used: an optional nicety never reads as urgent.
+    """
+    es = data.get("executive_summary") or {}
+    if es.get("biggest_risk_severity") == "unknown":
+        # The audit could not read part of the DNS, so it cannot rank risks.
+        # Page 1 says that instead of listing whatever floated up.
+        return []
+    if "do_first" in es:
+        items = es.get("do_first") or []
+    else:
+        roadmap = (data.get("security_roadmap") or {}).get("items") or []
+        items = [{"plain_head": i.get("plain_head"), "title": i.get("action", ""),
+                  "priority": i.get("priority", "medium"), "protocol": i.get("protocol", "")}
+                 for i in roadmap
+                 if i.get("priority") != "low" and not i.get("optional")
+                 and i.get("status") != "absent"]
+    out = []
+    for item in items[:3]:
+        title = item.get("title") or item.get("action") or ""
+        head = item.get("plain_head") or title
+        if not head:
+            continue
+        out.append({"plain_head": head, "title": title,
+                    "priority": item.get("priority", "medium"),
+                    "protocol": item.get("protocol", "")})
+    return out
+
+
+def _do_first_box(data, S):
+    """The "Do these first" box, or the sentence that stands in for it.
+
+    Red only when an item is critical, amber otherwise, as on the web. A high
+    item such as a missing rua used to print red here and amber on the page.
+    """
+    es = data.get("executive_summary") or {}
+    items = _do_first(data)
+    severity = es.get("biggest_risk_severity")
+
+    if not items:
+        message = es.get("biggest_risk") or ""
+        if not message:
+            return []
+        if severity == "unknown":
+            text, bg, rule = f"•  {_safe(message)}", SURFACE_BG, TEXT_TER
+        else:
+            tick = f'<font color="{PASS_CLR.hexval()}">{_glyphs(chr(0x2713))}</font>'
+            text, bg, rule = f"{tick}  {_safe(message)}", PASS_BG, PASS_CLR
+        box = Table([[Paragraph(text, S["callout_body"])]], colWidths=[6.5*inch])
+        box.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,-1), bg),
+            ("LINEBEFORE", (0,0), (0,-1), 3, rule),
+            ("TOPPADDING", (0,0), (-1,-1), 10),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 10),
+            ("LEFTPADDING", (0,0), (-1,-1), 12),
+            ("RIGHTPADDING", (0,0), (-1,-1), 12),
+            ("ROUNDEDCORNERS", [0,4,4,0]),
+        ]))
+        return [box]
+
+    critical = any(i["priority"] == "critical" for i in items)
+    bg, rule = (FAIL_BG, FAIL_CLR) if critical else (WARN_BG, WARN_CLR)
+    rows = [[Paragraph(f'<font color="{rule.hexval()}">{WARN_ICON}  Do these first</font>',
+                       S["callout"]), ""]]
+    for n, item in enumerate(items, 1):
+        # The consequence first, then the instruction, then the term in grey.
+        text = f"<b>{_safe(item['plain_head'])}</b>"
+        if item["title"] and item["title"] != item["plain_head"]:
+            text += f" {_safe(item['title'])}"
+        if item["protocol"]:
+            text += f' <font color="{TEXT_TER.hexval()}">({_safe(item["protocol"])})</font>'
+        rows.append([Paragraph(f"<b>{n}.</b>", S["callout_body"]),
+                     Paragraph(text, S["callout_body"])])
+    box = Table(rows, colWidths=[0.45*inch, 6.05*inch])
+    box.setStyle(TableStyle([
+        ("SPAN", (0,0), (1,0)),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("BACKGROUND", (0,0), (-1,-1), bg),
+        ("LINEBEFORE", (0,0), (0,-1), 3, rule),
+        ("TOPPADDING", (0,0), (-1,0), 10),
+        ("TOPPADDING", (0,1), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-2), 2),
+        ("BOTTOMPADDING", (0,-1), (-1,-1), 10),
+        ("LEFTPADDING", (0,0), (0,-1), 12),
+        ("RIGHTPADDING", (0,1), (0,-1), 0),
+        ("LEFTPADDING", (1,0), (1,-1), 0),
+        ("RIGHTPADDING", (1,0), (1,-1), 12),
+        ("ROUNDEDCORNERS", [0,4,4,0]),
+    ]))
+    return [box]
+
+
+def _cover_page(data, S):
+    """Page 1: the plain verdict and at most three things to do first.
+
+    Doc 92 moved the tally to one line on the plan page, and the tiles, the
+    attack surface table and the contents to the start of Part 2. A reader
+    who stops here has the answer.
     """
     domain = data.get("domain", "unknown")
-    checks = data.get("checks", []) or []
-    passes, warns, fails, absent, unavailable = _tally(checks)
-    es = data.get("executive_summary", {})
+    es = data.get("executive_summary", {}) or {}
     now = _audit_time(data)
 
     els = []
@@ -420,34 +492,86 @@ def _cover_page(data, S, toc_items=None):
     els.append(sub_tbl)
     els.append(Spacer(1, SP_LG))
 
-    # Findings summary tally + verdict
-    summary_cell = _findings_summary(passes, warns, fails, absent, unavailable)
+    els.extend(_section_header("1", "The short answer", S))
 
-    verdict_text = es.get("verdict", "")
-    verdict_cell = [
-        Paragraph("Overall Findings", S["subheading"]),
-        Spacer(1, SP_XS),
-        Paragraph(_safe(verdict_text), S["body_large"]),
-    ]
+    # The plain verdict.
+    verdict = es.get("verdict", "")
+    if verdict:
+        vt = Table([[Paragraph(_safe(verdict), S["body_large"])]], colWidths=[6.5*inch])
+        vt.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,-1), SURFACE_BG),
+            ("BOX", (0,0), (-1,-1), 0.5, BORDER),
+            ("TOPPADDING", (0,0), (-1,-1), 12),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 12),
+            ("LEFTPADDING", (0,0), (-1,-1), 12),
+            ("RIGHTPADDING", (0,0), (-1,-1), 12),
+            ("ROUNDEDCORNERS", [4,4,4,4]),
+        ]))
+        els.append(vt)
+        els.append(Spacer(1, SP_MD))
 
-    summary_row = Table([[summary_cell, verdict_cell]], colWidths=[1.8*inch, 4.7*inch])
-    summary_row.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("BACKGROUND", (0,0), (-1,-1), SURFACE_BG),
-        ("BOX", (0,0), (-1,-1), 0.5, BORDER),
-        ("TOPPADDING", (0,0), (-1,-1), 14),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 14),
-        ("LEFTPADDING", (0,0), (-1,-1), 12),
-        ("RIGHTPADDING", (0,0), (-1,-1), 12),
-        ("ROUNDEDCORNERS", [6,6,6,6]),
-    ]))
-    els.append(summary_row)
+    box = _do_first_box(data, S)
+    if box:
+        els.extend(box)
+        els.append(Spacer(1, SP_MD))
+
+    els.append(Paragraph(SHORT_ANSWER_POINTER, S["body"]))
     els.append(Spacer(1, SP_LG))
 
-    # Three key metrics
-    sp = es.get("spoofing_protection", {})
-    dr = es.get("dmarcbis_readiness", {})
-    pc = es.get("protocol_coverage", {})
+    # Scope line. A scoped report that does not say it is scoped implies
+    # coverage the reader has no way to know is missing: dns_infra runs five
+    # of twelve checks and says nothing about email authentication, so the
+    # verdict above reads "not assessed" with no explanation of why unless
+    # this line names what was and was not run.
+    scope = data.get("scope") or "complete"
+    if scope != "complete":
+        scope_keys = SCOPE_CHECKS.get(scope) or set()
+        scope_label = SCOPE_LABELS.get(scope, scope)
+        els.append(Paragraph(
+            f"Scope: {_safe(scope_label)} ({len(scope_keys)} of "
+            f"{len(ALL_SCOPE_CHECK_KEYS)} checks). This report covers only "
+            "those checks and makes no claim about the rest.",
+            S["body_small"],
+        ))
+        els.append(Spacer(1, SP_SM))
+
+    # Audit date line
+    els.append(Paragraph(f"Audit performed: {now}", S["body_small"]))
+
+    return els
+
+
+def _tally_line(checks, S):
+    """The check tally as one sentence. Doc 92: it used to print twice."""
+    passes, warns, fails, absent, unavailable = _tally(checks)
+    total = passes + warns + fails + absent + unavailable
+
+    def part(n, clr, word):
+        return f'<font color="{clr.hexval()}"><b>{n}</b></font> {word}'
+
+    parts = [
+        part(fails, FAIL_CLR, "needs fixing" if fails == 1 else "need fixing"),
+        part(warns, WARN_CLR, "could be stronger"),
+        part(passes, PASS_CLR, "pass"),
+        part(absent, NEUTRAL_CLR, "optional and not set up"),
+    ]
+    if unavailable:
+        parts.append(part(unavailable, TEXT_TER, "not checked"))
+    noun = "check" if total == 1 else "checks"
+    return Paragraph(f"Across {total} {noun}: " + ", ".join(parts) + ".", S["body"])
+
+
+def _technical_summary(data, S):
+    """The three tiles and the attack surface table, at the start of Part 2.
+
+    Doc 92 moved them off the first two pages: they are the evidence behind
+    the verdict, not the answer.
+    """
+    es = data.get("executive_summary", {}) or {}
+    sp = es.get("spoofing_protection", {}) or {}
+    dr = es.get("dmarcbis_readiness", {}) or {}
+    pc = es.get("protocol_coverage", {}) or {}
+    els = [Paragraph("Technical summary", S["subheading"]), Spacer(1, SP_XS)]
 
     def _metric_cell(label, value, color_name, detail=""):
         clr = _clr(color_name)
@@ -464,19 +588,21 @@ def _cover_page(data, S, toc_items=None):
                                   ParagraphStyle("MD2", fontName=FONTS["sans"], alignment=TA_CENTER, leading=10)))
         return cell
 
-    sp_val = sp.get("label", "Unknown")
-    sp_detail = sp.get("detail", "")
-    dr_val = dr.get("label", "Unknown")
     pc_conf = pc.get("configured", 0)
     pc_total = pc.get("total", 9)
+    # Six of the nine protocols counted are optional (MTA-STS, TLS-RPT,
+    # DNSSEC, CAA, DANE, BIMI), so a low count is not a low score.
+    pc_detail = "6 of the 9 are optional" if pc_total == 9 else ""
 
     metrics = Table([
-        [_metric_cell("Spoofing Protection", sp_val, sp.get("color", "red"), detail=sp_detail),
-         _metric_cell("RFC 9989 Readiness", dr_val, dr.get("color", "red")),
+        [_metric_cell("Forged mail blocked", sp.get("label", "Unknown"),
+                      sp.get("color", "red"), detail=sp.get("detail", "")),
+         _metric_cell("Ready for the 2026 DMARC standard (RFC 9989)",
+                      dr.get("label", "Unknown"), dr.get("color", "red")),
          # Coverage is a count of what is adopted, not a defect: primary
          # when assessable, neutral when not. pc["color"] is no longer read.
-         _metric_cell("Protocol Coverage", f"{pc_conf}/{pc_total}",
-                      "blue" if pc_total else "neutral")],
+         _metric_cell("Records published", f"{pc_conf} of {pc_total}",
+                      "blue" if pc_total else "neutral", detail=pc_detail)],
     ], colWidths=[2.17*inch]*3)
     metrics.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -489,41 +615,43 @@ def _cover_page(data, S, toc_items=None):
         ("ROUNDEDCORNERS", [6,6,6,6]),
     ]))
     els.append(metrics)
-    els.append(Spacer(1, SP_LG))
-
-    # Table of contents, built by generate_pdf from the sections it actually
-    # emitted and numbered consecutively. A fixed seven-item list promised a
-    # DMARC Deep Dive, Attack Surface and Migration Path that a scoped
-    # audit does not produce, and left gaps in the numbering.
-    els.append(Paragraph("Table of Contents", S["subheading"]))
-    els.append(Spacer(1, SP_XS))
-    for item in (toc_items or []):
-        els.append(Paragraph(item, S["toc"]))
-    if any("Part 2" in i for i in (toc_items or [])):
-        els.append(Spacer(1, SP_XS))
-        els.append(Paragraph("Part 1 is the report. Part 2 holds the detail behind it.",
-                             S["body_small"]))
     els.append(Spacer(1, SP_MD))
 
-    # Scope line. A scoped report that does not say it is scoped implies
-    # coverage the reader has no way to know is missing: dns_infra runs five
-    # of twelve checks and says nothing about email authentication, so the
-    # verdict above reads "not assessed" with no explanation of why unless
-    # this line names what was and was not run.
-    scope = data.get("scope") or "complete"
-    if scope != "complete":
-        scope_keys = SCOPE_CHECKS.get(scope) or set()
-        scope_label = SCOPE_LABELS.get(scope, scope)
-        els.append(Paragraph(
-            f"Scope: {_safe(scope_label)} ({len(scope_keys)} of "
-            f"{len(ALL_SCOPE_CHECK_KEYS)} checks). This report covers only "
-            "the checks listed above and makes no claim about the rest.",
-            S["body_small"],
-        ))
-        els.append(Spacer(1, SP_SM))
-
-    # Audit date line
-    els.append(Paragraph(f"Audit performed: {now}", S["body_small"]))
+    # Attack surface overview
+    dmarc = _get_check(data, "DMARC")
+    attack_surface = dmarc.get("attack_surface")
+    vectors = (attack_surface or {}).get("vectors", [])
+    if vectors:
+        els.append(Paragraph("Attack surface overview", S["subheading"]))
+        els.append(Spacer(1, SP_XS))
+        header = [
+            Paragraph("<b>Attack Vector</b>", S["body_small"]),
+            Paragraph("<b>Status</b>", S["body_small"]),
+            Paragraph("<b>Summary</b>", S["body_small"]),
+        ]
+        rows = [header]
+        for v in vectors:
+            status = v.get("status", "")
+            s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(status, TEXT_SEC)
+            s_lbl = {"protected": "Protected", "partial": "Partial", "exposed": "Exposed"}.get(status, status)
+            rows.append([
+                Paragraph(_safe(v.get("name", "")), S["body"]),
+                Paragraph(f'<font color="{s_clr.hexval()}"><b>{s_lbl}</b></font>', S["body"]),
+                Paragraph(_safe(v.get("summary", "")), S["body_small"]),
+            ])
+        vt = Table(rows, colWidths=[1.7*inch, 1.0*inch, 3.8*inch], repeatRows=1)
+        cmds = [
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
+            ("TOPPADDING", (0,0), (-1,-1), 5),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("LINEBELOW", (0,0), (-1,0), 0.5, NAVY),
+            ("LINEBELOW", (0,1), (-1,-2), 0.3, BORDER),
+            ("BACKGROUND", (0,0), (-1,0), SURFACE_BG),
+        ]
+        _alt_rows(cmds, len(rows))
+        vt.setStyle(TableStyle(cmds))
+        els.append(vt)
+        els.append(Spacer(1, SP_MD))
 
     return els
 
@@ -556,147 +684,7 @@ def _section_header(number, title, S):
 
 
 # ================================================================
-# Page 2: Executive Summary
-# ================================================================
-
-def _executive_summary_page(data, S, number=1):
-    """Build the executive summary page."""
-    es = data.get("executive_summary", {})
-    els = [PageBreak()]
-    els.extend(_section_header(str(number), "Summary", S))
-
-    # Verdict
-    verdict = es.get("verdict", "")
-    if verdict:
-        vt = Table([[Paragraph(_safe(verdict), S["body_large"])]], colWidths=[6.5*inch])
-        vt.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,-1), SURFACE_BG),
-            ("BOX", (0,0), (-1,-1), 0.5, BORDER),
-            ("TOPPADDING", (0,0), (-1,-1), 10),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 10),
-            ("LEFTPADDING", (0,0), (-1,-1), 12),
-            ("RIGHTPADDING", (0,0), (-1,-1), 12),
-            ("ROUNDEDCORNERS", [4,4,4,4]),
-        ]))
-        els.append(vt)
-        els.append(Spacer(1, SP_MD))
-
-    # Biggest risk callout. Framed in fail red only when it names a risk: the
-    # unconditional red box read "YOUR BIGGEST RISK RIGHT NOW: No urgent risks
-    # found", and wrapped the neutral could-not-read message the same way.
-    biggest_risk = es.get("biggest_risk", "")
-    _severity = es.get("biggest_risk_severity", "critical")
-    if _severity == "none":
-        _risk_glyph, _risk_title = _glyphs("\u2713"), "NO URGENT RISKS FOUND"
-        _risk_bg, _risk_rule = PASS_BG, PASS_CLR
-    elif _severity == "unknown":
-        _risk_glyph, _risk_title = "\u2022", "BIGGEST RISK NOT ESTABLISHED"
-        _risk_bg, _risk_rule = SURFACE_BG, TEXT_TER
-    elif _severity in ("medium", "low"):
-        _risk_glyph, _risk_title = WARN_ICON, "YOUR BIGGEST RISK RIGHT NOW"
-        _risk_bg, _risk_rule = WARN_BG, WARN_CLR
-    else:
-        _risk_glyph, _risk_title = WARN_ICON, "YOUR BIGGEST RISK RIGHT NOW"
-        _risk_bg, _risk_rule = FAIL_BG, FAIL_CLR
-    if biggest_risk:
-        # Doc 64: biggest_risk is the top item's action and the detail is its
-        # impact. Printing the action alone would drop the sentence this
-        # callout used to carry.
-        risk_content = [
-            [Paragraph(
-                f'<font color="{_risk_rule.hexval()}">{_risk_glyph}  {_risk_title}</font>',
-                S["callout"]),],
-            [Paragraph(_safe(biggest_risk), S["callout_body"])],
-        ]
-        _risk_detail = es.get("biggest_risk_detail", "")
-        if _risk_detail:
-            risk_content.append([Paragraph(_safe(_risk_detail), S["callout_body"])])
-        rt = Table(risk_content, colWidths=[6.5*inch])
-        rt.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,-1), _risk_bg),
-            ("LINEBEFORE", (0,0), (0,-1), 3, _risk_rule),
-            ("TOPPADDING", (0,0), (-1,0), 10),
-            ("TOPPADDING", (0,1), (-1,1), 2),
-            ("BOTTOMPADDING", (0,-1), (-1,-1), 10),
-            ("LEFTPADDING", (0,0), (-1,-1), 12),
-            ("RIGHTPADDING", (0,0), (-1,-1), 12),
-            ("ROUNDEDCORNERS", [0,4,4,0]),
-        ]))
-        els.append(rt)
-        els.append(Spacer(1, SP_MD))
-
-    # Summary table: pass/warn/fail counts
-    checks = data.get("checks", [])
-    # Same four buckets as the cover. Counting only three here would put a
-    # total on page 2 that disagrees with the one on page 1.
-    pc, wc, fc, ac, uc = _tally(checks)
-    def _count_cell(label, val, clr):
-        return [
-            Paragraph(f'<font color="{clr.hexval()}" size="20"><b>{val}</b></font>',
-                      ParagraphStyle("CC", fontName=FONTS["sans"], alignment=TA_CENTER, leading=26)),
-            Paragraph(f'<font color="#6b6b6b" size="9">{label}</font>',
-                      ParagraphStyle("CL", fontName=FONTS["sans"], alignment=TA_CENTER, leading=13)),
-        ]
-    count_cells = [
-        _count_cell("Passing", str(pc), PASS_CLR),
-        _count_cell("Warnings", str(wc), WARN_CLR),
-        _count_cell("Issues", str(fc), FAIL_CLR),
-        _count_cell("Not configured", str(ac), NEUTRAL_CLR),
-    ]
-    if uc:
-        count_cells.append(_count_cell("Not checked", str(uc), TEXT_TER))
-    col_w = 6.5 / len(count_cells)
-    count_tbl = Table([count_cells], colWidths=[col_w*inch]*len(count_cells))
-    count_tbl.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("TOPPADDING", (0,0), (-1,-1), 10),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
-        ("LINEAFTER", (0,0), (len(count_cells)-2,0), 0.5, BORDER),
-    ]))
-    els.append(count_tbl)
-    els.append(Spacer(1, SP_MD))
-
-    # Attack surface overview
-    dmarc = _get_check(data, "DMARC")
-    attack_surface = dmarc.get("attack_surface")
-    if attack_surface:
-        els.append(Paragraph("Attack Surface Overview", S["heading2"]))
-        vectors = attack_surface.get("vectors", [])
-        if vectors:
-            header = [
-                Paragraph("<b>Attack Vector</b>", S["body_small"]),
-                Paragraph("<b>Status</b>", S["body_small"]),
-                Paragraph("<b>Summary</b>", S["body_small"]),
-            ]
-            rows = [header]
-            for v in vectors:
-                status = v.get("status", "")
-                s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(status, TEXT_SEC)
-                s_lbl = {"protected": "Protected", "partial": "Partial", "exposed": "Exposed"}.get(status, status)
-                rows.append([
-                    Paragraph(_safe(v.get("name", "")), S["body"]),
-                    Paragraph(f'<font color="{s_clr.hexval()}"><b>{s_lbl}</b></font>', S["body"]),
-                    Paragraph(_safe(v.get("summary", "")), S["body_small"]),
-                ])
-            vt = Table(rows, colWidths=[1.7*inch, 1.0*inch, 3.8*inch])
-            cmds = [
-                ("VALIGN", (0,0), (-1,-1), "TOP"),
-                ("TOPPADDING", (0,0), (-1,-1), 5),
-                ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-                ("LINEBELOW", (0,0), (-1,0), 0.5, NAVY),
-                ("LINEBELOW", (0,1), (-1,-2), 0.3, BORDER),
-                ("BACKGROUND", (0,0), (-1,0), SURFACE_BG),
-            ]
-            _alt_rows(cmds, len(rows))
-            vt.setStyle(TableStyle(cmds))
-            els.append(vt)
-        els.append(Spacer(1, SP_MD))
-
-    return els
-
-
-# ================================================================
-# Page 3: Priorities
+# Page 2: The plan
 # ================================================================
 
 def _plan_confirm_line(card):
@@ -772,9 +760,16 @@ def _plan_item(data, item, S):
     glyph = STATUS_GLYPH.get(st, "\u2022")
     card = _get_check(data, item.get("protocol", "")) or {}
 
+    # Doc 92: the head is the plain consequence and the action sits under
+    # it. A row without plain_head leads with the action, as before.
+    action = item.get("action", "")
+    plain_head = item.get("plain_head") or ""
+    head_text = [Paragraph(f"<b>{_safe(plain_head or action)}</b>", S["body_large"])]
+    if plain_head and action and plain_head != action:
+        head_text.append(Paragraph(_safe(action), S["body"]))
     head = Table([[
         Paragraph(f'<font color="{s_clr.hexval()}">{_glyphs(glyph)}</font>', S["body"]),
-        Paragraph(f"<b>{_safe(item.get('action', ''))}</b>", S["body_large"]),
+        head_text,
         Paragraph(f'<font color="{p_clr.hexval()}" size="9"><b>{priority.upper()}</b></font>',
                   S["body_small"]),
     ]], colWidths=[0.3*inch, 5.2*inch, 1.0*inch])
@@ -786,6 +781,10 @@ def _plan_item(data, item, S):
     ]))
 
     body = [head, Paragraph(f"{_safe(item.get('protocol', ''))}", S["body_tiny"])]
+
+    who = item.get("who") or ""
+    if who:
+        body.append(Paragraph(f"<b>Who does this:</b> {_safe(who)}", S["body_small"]))
 
     impact = item.get("impact", "")
     if impact:
@@ -803,17 +802,23 @@ def _plan_item(data, item, S):
 
 
 def _roadmap_page(data, S, number=2):
-    """Build the Priorities section: the one prioritized list, as on the web."""
+    """Build the plan: the one prioritized list, as on the web.
+
+    Doc 92 put it on page 2, for whoever manages the DNS, with the check
+    tally once, as one line.
+    """
     roadmap = data.get("security_roadmap", {})
     items = roadmap.get("items", [])
-    els = [Spacer(1, SP_XL), CondPageBreak(4*inch)]
-    els.extend(_section_header(str(number), "What to do", S))
+    els = [PageBreak()]
+    els.extend(_section_header(str(number), "The plan", S))
 
     # Summary
     summary = roadmap.get("summary", "")
     if summary:
         els.append(Paragraph(_safe(summary), S["body"]))
         els.append(Spacer(1, SP_SM))
+    els.append(_tally_line(data.get("checks", []) or [], S))
+    els.append(Spacer(1, SP_MD))
 
     # Tier summary bar
     tiers = roadmap.get("tiers", {})
@@ -1666,25 +1671,57 @@ def _deep_analysis_page(data, S, number="C"):
     return els
 
 
-def _appendix_divider(S, titles=()):
+def _appendix_divider(S, titles=(), toc_items=(), data=None):
     """The page between the report and the evidence behind it.
 
     It names the sections that rendered. A fixed list promised DMARC, SPF
-    and DKIM detail on a transport-only run that held none of it.
+    and DKIM detail on a transport-only run that held none of it. Since
+    Doc 92 it also carries the contents, the three tiles and the attack
+    surface table, which used to sit in front of the plan.
     """
-    els = [PageBreak(), Spacer(1, SP_XL)]
+    els = [PageBreak()]
     els.append(Paragraph("Part 2: Appendix", S["page_title"]))
     els.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=SP_MD))
     names = [t[0].lower() + t[1:] if not t.startswith(("DMARC", "SPF", "DKIM")) else t
              for t in titles]
     listed = (", ".join(names[:-1]) + " and " + names[-1]) if len(names) > 1 else "".join(names)
-    for line in (
-        f"This appendix holds the evidence behind the report: {_safe(listed)}.",
-        "Nothing in it changes the plan in Part 1.",
-        "Where Part 1 points at an appendix section, it is here.",
-    ):
+    lines = [f"This appendix holds the evidence behind the report: {_safe(listed)}."] if listed else []
+    lines += ["Nothing in it changes the plan in Part 1.",
+              "Where Part 1 points at an appendix section, it is here."]
+    for line in lines:
         els.append(Paragraph(line, S["body"]))
-        els.append(Spacer(1, SP_SM))
+        els.append(Spacer(1, SP_XS))
+    els.append(Spacer(1, SP_SM))
+
+    # The evidence behind page 1's verdict: the three tiles and the attack
+    # surface table, then the contents.
+    if data is not None:
+        els.extend(_technical_summary(data, S))
+
+    # The contents, built by _build_sections from the sections it actually
+    # emitted and numbered consecutively, so a scoped report's contents
+    # match its pages.
+    if toc_items:
+        # Two columns, Part 1 beside Part 2, so the contents fit under the
+        # tables instead of taking a page of their own.
+        marker = "<b>Part 2: Appendix</b>"
+        split = toc_items.index(marker) if marker in toc_items else len(toc_items)
+        left = [Paragraph("<b>Part 1: The report</b>", S["toc"])]
+        left += [Paragraph(item, S["toc"]) for item in toc_items[:split]]
+        right = [Paragraph(item, S["toc"]) for item in toc_items[split:]]
+        cols = Table([[left, right]], colWidths=[3.6*inch, 2.9*inch], hAlign="LEFT")
+        cols.setStyle(TableStyle([
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
+            ("LEFTPADDING", (0,0), (0,-1), 0),
+            ("TOPPADDING", (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ]))
+        els.append(KeepTogether([
+            Paragraph("Contents", S["subheading"]), Spacer(1, SP_XS), cols, Spacer(1, SP_XS),
+            Paragraph("Part 1 is the report. Part 2 holds the detail behind it.",
+                      S["body_small"]),
+        ]))
+
     return els
 
 
@@ -1922,9 +1959,9 @@ def _about_page(data, S, number=7):
 def _build_sections(audit_result: dict, S):
     """Build the report in two parts and number them.
 
-    Returns (toc_items, flowables). Part 1 is the report: summary, plan,
-    checks. Part 2 is the appendix: the evidence, lettered A onward. The
-    cover's table of contents is built from toc_items, so it lists exactly
+    Returns (toc_items, flowables). Part 1 is the report: the short answer,
+    the plan, the checks. Part 2 is the appendix: the evidence, lettered A onward. The
+    contents at the start of Part 2 are built from toc_items, so they list exactly
     what the report contains: a builder returns [] when its section does not
     apply (no DMARC card on a scoped run, no migration path when already
     Ready) and then gets no number, no letter and no TOC line.
@@ -1969,15 +2006,17 @@ def _build_sections(audit_result: dict, S):
         joined = " and Appendix ".join(letters_for_check)
         pointer_lines[name] = f"Detail in Appendix {joined}."
 
+    # Section 1 is the short answer on page 1, which generate_pdf builds
+    # ahead of everything else; it is numbered here so the contents and
+    # the section badges agree.
     part1_specs = [
-        ("Summary", _executive_summary_page),
-        ("What to do", _roadmap_page),
+        ("The plan", _roadmap_page),
         (f"Checks ({_protocols})" if _protocols else "Checks",
          lambda d, st, n: _protocol_details(d, st, n, appendix=pointer_lines)),
     ]
     sections = []
-    toc_items = []
-    number = 0
+    toc_items = ["1. The short answer"]
+    number = 1
     for title, build in part1_specs:
         els = build(audit_result, S, number + 1)
         if not els:
@@ -1989,8 +2028,10 @@ def _build_sections(audit_result: dict, S):
     if appendix_els:
         toc_items.append("<b>Part 2: Appendix</b>")
         toc_items.extend(appendix_toc)
-        sections.extend(_appendix_divider(S, appendix_titles))
-        sections.extend(appendix_els)
+    # The divider renders even with no lettered section, because it holds
+    # the contents and the technical summary.
+    sections.extend(_appendix_divider(S, appendix_titles, toc_items, audit_result))
+    sections.extend(appendix_els)
 
     return toc_items, sections
 
@@ -2023,10 +2064,10 @@ def generate_pdf(audit_result: dict) -> bytes:
                  f"report for {_strip_html(domain)}"),
     )
 
-    toc_items, sections = _build_sections(audit_result, S)
+    _, sections = _build_sections(audit_result, S)
 
     story = []
-    story.extend(_cover_page(audit_result, S, toc_items))
+    story.extend(_cover_page(audit_result, S))
     story.extend(sections)
 
     doc.build(story, onFirstPage=tpl.on_page, onLaterPages=tpl.on_page)

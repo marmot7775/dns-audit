@@ -21,7 +21,8 @@ from test_dmarc_grades import _DKIM_P
 DOMAIN = "gitlab-shape.test"
 RUA = f"rua=mailto:d@{DOMAIN}"
 OVERCLAIMS = ("across all vectors", "minor improvements", "blocked at every level",
-              "most attack vectors covered")
+              "most attack vectors covered", "smaller improvements",
+              "refuse mail that pretends", "most forged mail")
 
 
 def _zone(dmarc, spf, domain=DOMAIN, extra=None, null_mx=False):
@@ -104,7 +105,7 @@ def test_a_healthy_record_keeps_its_verdict(audit):
 
     verdict = result["executive_summary"]["verdict"]
     assert "broken" not in verdict
-    assert "blocked at every level checked" in verdict or "blocks spoofed email" in verdict
+    assert verdict.startswith("Receivers are asked to refuse mail that pretends"), verdict
 
 
 # ---------------------------------------------------------------

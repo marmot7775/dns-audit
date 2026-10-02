@@ -171,6 +171,8 @@ def test_rendered_dmarc_rows_show_their_own_records(browser, audit):  # noqa: F8
 def test_rendered_rows_do_not_print_the_fix_twice(browser, audit):  # noqa: F811
     rows = _plan_rows(browser, _run(audit, f"v=DMARC1; p=reject; {RUA}"))
     for r in rows:
-        why, what = r["parts"].get("Why it matters", ""), r["parts"].get("What to change", "")
+        # Doc 92 labels the part "What to paste" when it carries a record.
+        why = r["parts"].get("Why it matters", "")
+        what = r["parts"].get("What to change") or r["parts"].get("What to paste", "")
         if what and len(what) > 20:
             assert what not in why, r

@@ -54,7 +54,7 @@ def test_google_workspace_dane_is_informational_with_no_fix(audit, mx_host):
     card = _dane(audit, "g.test", mx_host)
 
     assert card["status"] == "absent"
-    assert card["pill_label"] == "Not applicable"
+    assert card["pill_label"] == "Does not apply"
     assert not card.get("fix"), (
         f"a Workspace-hosted domain cannot publish TLSA for Google's hosts, so "
         f"the card must not hand it a fix: {card.get('fix')!r}"
@@ -102,7 +102,7 @@ def test_self_hosted_mx_keeps_the_existing_guidance(audit):
     card = _dane(audit, "s.test", "mail.s.test")
 
     assert card["status"] == "absent"
-    assert card["pill_label"] == "Not configured"
+    assert card["pill_label"] == "Optional, not set up"
     assert "TLSA" in card["fix"], (
         "a self-hosted domain controls its own MX host and can publish TLSA"
     )
