@@ -445,6 +445,38 @@ def _route_name(vector_name: str) -> str:
     return _ROUTE_NAMES.get(vector_name, vector_name.lower())
 
 
+def _registry_suffix(domain: str, source: Optional[str]) -> Optional[str]:
+    """The public suffix a DMARC policy was inherited from, or None.
+
+    news24.co.za has no record and _dmarc.co.za publishes one. co.za has no
+    registrable part, so it is a registry's name, not an organizational
+    domain the owner controls, and RFC 7489 receivers never query it.
+    """
+    name = (source or "").rstrip(".").lower()
+    if not name:
+        return None
+    ext = _tld_extract(name)
+    if ext.suffix and not ext.domain:
+        return name
+    own = _tld_extract((domain or "").rstrip(".").lower())
+    if own.suffix and name == own.suffix.lower():
+        return name
+    return None
+
+
+def _registrable_domain(domain: str) -> str:
+    """The audited name's registrable domain, or the name itself."""
+    name = (domain or "").rstrip(".").lower()
+    return _psl_org_domain(name) or name
+
+
+def _registry_policy_note(suffix: str, policy: Optional[str]) -> str:
+    _pol = f" (p={policy})" if policy else ""
+    return (f"A policy{_pol} is published at {suffix}, a public suffix, so it belongs "
+            f"to the {suffix} registry and not to this domain. Only receivers on "
+            f"RFC 9989 apply it. Receivers on RFC 7489 find no DMARC policy here.")
+
+
 def build_executive_summary(checks: List[Dict], roadmap: Dict,
                             is_no_mail: bool = False) -> Dict:
     """Build the executive summary card shown at the very top of results.
@@ -560,6 +592,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     _null_spf = (check_map.get("SPF", {}).get("record") or "").strip().lower() == "v=spf1 -all"
     _defensive_clean = (is_no_mail and _null_mx and _null_spf
                         and _eff_policy == "reject" and "fail" not in _statuses)
+    # pct=0 on p=quarantine: RFC 7489 receivers act on none of the failing
+    # mail, so the policy counts as not enforcing.
+    _rec_tags = _parse_record_tags(dmarc.get("record") or "")
+    _quarantine_pct0 = (_eff_policy == "quarantine"
+                        and (_rec_tags.get("pct") or "").strip() == "0"
+                        and dmarc_status != "fail")
     # Set when a branch below names a broken record or a domain with no mail,
     # so the no-reporting sentence further down does not replace it.
     _verdict_final = False
@@ -616,6 +654,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         else:
             verdict = ("Your domain does not tell receivers what to do with mail that "
                        "pretends to be from you (no DMARC record).")
+        # The policy above it is a registry's, not this domain's, and the
+        # verdict does not credit the domain with it.
+        _reg_sfx = (dmarc.get("registry_policy") or {}).get("suffix")
+        if _reg_sfx:
+            verdict += (f" The policy found at {_reg_sfx} belongs to the {_reg_sfx} registry, "
+                        "and only receivers on RFC 9989 apply it.")
     elif dmarc_status == "fail" and dmarc.get("multiple_records"):
         # Receivers discard every record when there is more than one, so
         # neither record's p= is the policy and none of the branches below,
@@ -646,6 +690,14 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         else:
             verdict = f"Receivers are asked to send forged mail to spam, but {_records}: {_names}."
         _verdict_final = True
+    elif _quarantine_pct0:
+        # p=quarantine with pct=0: RFC 7489 receivers apply the policy to
+        # none of the failing mail (section 6.6.4), and RFC 9989 receivers
+        # ignore pct. The subdomain routes read "partial" from sp alone, so
+        # no branch below may say anything is blocked.
+        verdict = ("Your policy is set to cover none of the forged mail (pct=0), so "
+                   "receivers that still read pct do not block any of it.")
+        _verdict_final = True
     elif _vector_total and protected_count == _vector_total:
         # An inherited name's readiness is the parent record's, and the
         # improvements it names are made at the parent, not here.
@@ -666,7 +718,14 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     elif exposed_count == 1:
         weakest = [v for v in vectors if v.get("status") == "exposed"]
         _route = _route_name(weakest[0]["name"]) if weakest else "one route"
-        verdict = f"Your settings block most forged mail, but not {_route}."
+        # "Block most" holds only when every other route is protected. A
+        # partial route is not blocked, so naming it is the honest sentence.
+        _weaker = [_route_name(v["name"]) for v in vectors if v.get("status") == "partial"]
+        if _weaker:
+            verdict = (f"Your settings do not ask receivers to block forged mail sent as "
+                       f"{_route}, and the request is weaker for {_join_names(_weaker)}.")
+        else:
+            verdict = f"Your settings block most forged mail, but not {_route}."
     elif partial_count > 0:
         if _eff_policy == "quarantine":
             verdict = ("Receivers are asked to send forged mail to spam rather than "
@@ -850,7 +909,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # failure mode as the auth_unavailable case above: presenting it as
         # "the biggest risk" implies real risks were weighed and lost, when
         # none were found at all.
-        risk_candidates = [i for i in roadmap_items if i.get("priority") != "low"]
+        risk_candidates = [i for i in roadmap_items if i.get("priority") != "low"
+                           and not i.get("self_clearing")]
         if risk_candidates:
             top = risk_candidates[0]
             # The action is the headline and the impact is the line under it.
@@ -877,7 +937,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
          "priority": i.get("priority"), "protocol": i.get("protocol")}
         for i in roadmap_items
         if not i.get("optional") and i.get("priority") != "low"
+        and not i.get("self_clearing")
     ][:3]
+    # The audit could not read part of the DNS, so it cannot rank what is
+    # left. The page and the PDF both show the could-not-read message alone.
+    if auth_unavailable and not _urgent:
+        do_first = []
 
     # ── Part 4: has_record_builder flag ──────────────────────
     has_record_builder = dmarc.get("record_builder") is not None
@@ -1176,6 +1241,10 @@ _FALLBACK_HEADS = {
 
 _NS_TRANSIENT_HEAD = ("Your DNS servers gave different versions of your records. This "
                       "usually clears within hours. If it lasts a day, ask your DNS host.")
+# A mismatch that has already lasted (usp.br, on a 2018 serial) is not
+# clearing, and the head does not say it will.
+_NS_PERSISTENT_HEAD = ("Your DNS servers disagree about your records. Ask your DNS host to "
+                       "check that every server gets updates.")
 
 _COUNT_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
                 "Nine", "Ten")
@@ -1200,6 +1269,52 @@ def _ns_serial_only(card: Dict) -> bool:
     bad = [d.get("text", "") for d in (card or {}).get("details", [])
            if d.get("type") in ("error", "warning")]
     return bool(bad) and all("SOA serial" in t for t in bad)
+
+
+def _ns_serial_head(card: Dict) -> str:
+    if (card or {}).get("soa_mismatch", {}).get("persistent"):
+        return _NS_PERSISTENT_HEAD
+    return _NS_TRANSIENT_HEAD
+
+
+def _ns_serial_transient(card: Dict) -> bool:
+    """The card's only finding is a serial mismatch that may still be
+    propagating. Such a row is kept in the plan and never put first."""
+    return _ns_serial_only(card) and not (card or {}).get("soa_mismatch", {}).get("persistent")
+
+
+def _serial_date(serial: int) -> Optional[datetime]:
+    """The date in a YYYYMMDDnn serial (RFC 1912 section 2.2), or the time
+    in a Unix time serial, else None. The day is not required to be valid:
+    usp.br publishes 2018085061, which still reads as August 2018."""
+    text = str(serial)
+    now = datetime.now(timezone.utc)
+    if len(text) == 10:
+        year, month = int(text[:4]), int(text[4:6])
+        if 1990 <= year <= now.year + 1 and 1 <= month <= 12:
+            day = min(max(int(text[6:8]), 1), 28)
+            return datetime(year, month, day, tzinfo=timezone.utc)
+    if 10 ** 9 <= serial <= now.timestamp() + 86400:
+        return datetime.fromtimestamp(serial, tz=timezone.utc)
+    return None
+
+
+def _soa_mismatch_persistent(serials: List[int]) -> bool:
+    """True when the nameservers' serials say the mismatch is not a change
+    still propagating: the newest serial is dated more than 30 days ago,
+    the serials are 30 days apart, or the values look unrelated."""
+    values = sorted(set(serials))
+    if len(values) < 2:
+        return False
+    lo, hi = values[0], values[-1]
+    d_lo, d_hi = _serial_date(lo), _serial_date(hi)
+    if d_lo and d_hi:
+        if (datetime.now(timezone.utc) - d_hi).days > 30:
+            return True
+        return (d_hi - d_lo).days > 30
+    if d_lo or d_hi or len(str(lo)) != len(str(hi)):
+        return True
+    return hi - lo > 10000
 
 
 # Health reasons that lower enforcement, restated as something to do.
@@ -1239,11 +1354,34 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
 
     # ── Critical ────────────────────────────────────────────
     if dmarc.get("status") == "fail" and dmarc.get("pill_label") == "Missing":
-        items.append({"priority": "critical", "protocol": "DMARC",
-                      "action": "Publish a DMARC record",
-                      "plain_head": "Receivers have no instructions for mail that pretends to be from you.",
-                      "who": WHO_DNS_HOST,
-                      "impact": "Receivers have no policy for mail that fails authentication, and you get no reports about who is sending as you."})
+        _missing_row = {"priority": "critical", "protocol": "DMARC",
+                        "action": "Publish a DMARC record",
+                        "plain_head": "Receivers have no instructions for mail that pretends to be from you.",
+                        "who": WHO_DNS_HOST,
+                        "impact": "Receivers have no policy for mail that fails authentication, and you get no reports about who is sending as you."}
+        # A registry's policy sits above this name. The row says whose it is,
+        # and the record it offers is for the owner's own domain: nothing in
+        # it names the registry's host or an address there.
+        _registry = dmarc.get("registry_policy") or {}
+        if _registry.get("suffix"):
+            _sfx = _registry["suffix"]
+            _builder = dmarc.get("record_builder") or {}
+            _rec = _builder.get("recommended_record")
+            _host = (_builder.get("deploy") or {}).get("host") or ""
+            _owner = _host[len("_dmarc."):] if _host.startswith("_dmarc.") else ""
+            _missing_row["plain_head"] = ("Your domain has no DMARC record of its own. The "
+                                          f"policy found above it belongs to the {_sfx} registry.")
+            _missing_row["impact"] = (f"The policy at {_sfx} belongs to the {_sfx} registry, and "
+                                      "only receivers on RFC 9989 apply it. Receivers on RFC 7489 "
+                                      "find no policy for your domain, and nobody sends you reports.")
+            if _owner and _rec:
+                _missing_row["host"] = f"_dmarc.{_owner}"
+                _missing_row["record"] = _rec
+                _missing_row["host_note"] = (
+                    f"Replace dmarc-reports@{_owner} with the mailbox or report service that "
+                    f"should receive the reports. The record at {_sfx} is the registry's, and "
+                    "you cannot change it.")
+        items.append(_missing_row)
 
     # More than one DMARC record: receivers ignore them all, so this is the
     # same tier as having none, and no row below may read either record as
@@ -1441,9 +1579,11 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         items.append({"priority": "high" if ns_card["status"] == "fail" else "medium",
                       "protocol": "Nameservers",
                       "action": _roadmap_fix_text(ns_card) or "Fix the nameserver delegation",
-                      "plain_head": (_NS_TRANSIENT_HEAD if _ns_serial_only(ns_card) else
-                                     "Your DNS servers have a fault that can stop your mail "
-                                     "and website from being found."),
+                      # The fault head is for a red card. An amber card (all
+                      # nameservers in one network block) works, so it gets the
+                      # warn head, and a serial mismatch gets its own.
+                      "plain_head": (_ns_serial_head(ns_card) if _ns_serial_only(ns_card)
+                                     else _fallback_head("Nameservers", ns_card["status"])),
                       "who": WHO_DNS_HOST,
                       "impact": "Nameservers answer every DNS query for this domain, so a fault "
                                 "here can stop mail and the website from resolving."})
@@ -1562,7 +1702,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         action = _roadmap_fix_text(bimi) or "Review your BIMI configuration"
         items.append({"priority": "low", "protocol": "BIMI",
                       "action": action,
-                      "plain_head": "Your logo may not show in inboxes because of a problem with its record.",
+                      # A warn card is a record that works and is weak, so
+                      # only a failing one says the logo may not show.
+                      "plain_head": _fallback_head("BIMI", bimi.get("status")),
                       "who": WHO_DNS_HOST,
                       "impact": "An issue with your existing BIMI setup may prevent your logo from displaying."})
 
@@ -1747,6 +1889,10 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # An optional protocol that is not set up. The plan groups these
         # under "Optional extras", and they never reach do_first.
         item["optional"] = item["status"] == "absent"
+        # A serial mismatch that may still be propagating stays in the plan
+        # and is never one of the first things to do.
+        item["self_clearing"] = (item["protocol"] == "Nameservers"
+                                 and _ns_serial_transient(check_map.get("Nameservers")))
 
     # Count by tier
     tiers = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -2668,6 +2814,48 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 "record is published."
             ),
         }
+
+    # The only policy above this name is a registry's, published at a public
+    # suffix (news24.co.za and _dmarc.co.za). The owner cannot edit that
+    # record, receivers on RFC 7489 never look there, and it is not this
+    # domain's policy. The card is the no-record card, for the owner's own
+    # name, with one row saying what the registry publishes.
+    _registry = (_registry_suffix(raw.get("domain", ""), raw.get("inherited_from"))
+                 if not raw.get("record") and raw.get("inherited_policy") else None)
+    if _registry:
+        # mail.shop.co.za under a shop.co.za that publishes its own record:
+        # the walk ran on to co.za, but RFC 7489 receivers apply shop.co.za's
+        # record, and that is the record its owner changes.
+        _org = _registrable_domain(raw.get("domain", ""))
+        _org_rec = next((s.get("record") for s in (tw.get("steps") or [])
+                         if s.get("domain") == _org and s.get("found") and s.get("record")),
+                        None) if _org != (raw.get("domain") or "").lower() else None
+        _org_tags = _parse_record_tags(_org_rec or "")
+        _org_pol = (_org_tags.get("sp") or _org_tags.get("p") or "").lower()
+        if _org_pol in ("none", "quarantine", "reject"):
+            _tag = "sp" if _org_tags.get("sp") else "p"
+            return transform_dmarc(
+                {**raw, "inherited_from": _org, "inherited_policy": _org_pol,
+                 "inherited_record": _org_rec, "applied_tag": _tag,
+                 "inheritance_method": "psl"},
+                {**tw, "org_domain": _org, "applied_tag": _tag,
+                 "steps": [s for s in (tw.get("steps") or []) if s.get("domain") != _registry]},
+                is_no_mail)
+        _own = {k: v for k, v in raw.items()
+                if k not in ("inherited_from", "inherited_policy", "inherited_record",
+                             "applied_tag", "inheritance_method")}
+        _own["is_subdomain"] = False
+        card = transform_dmarc(_own, None, is_no_mail)
+        _owner = _registrable_domain(raw.get("domain", ""))
+        _reg_policy = raw.get("inherited_policy")
+        _reg_note = _registry_policy_note(_registry, _reg_policy)
+        card["details"] = [{"type": "info", "text": _reg_note}] + (card.get("details") or [])
+        card["verdict"] = "No DMARC record of its own"
+        card["registry_policy"] = {"suffix": _registry, "policy": _reg_policy,
+                                   "record": raw.get("inherited_record")}
+        card["record_builder"] = _build_record_builder({}, "", "", None, [], domain=_owner,
+                                                       no_mail=is_no_mail)
+        return card
 
     if not raw.get("record") and raw.get("inheritance_lookup_failed"):
         return _lookup_unavailable_card(
@@ -8128,11 +8316,27 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
     # detail above, not something a passing card should also be fixing.
     fix = None if status == "pass" else _first_fix(issues)
 
+    # The serials of the servers that disagree, read from the engine's own
+    # finding, which names only the servers of the provider that disagrees.
+    # The plan reads whether the mismatch has already lasted.
+    soa_mismatch = None
+    if soa_consistent is False:
+        _pairs = {}
+        for issue in issues:
+            m = re.search(r"different SOA serial numbers \(([^)]*)\)", issue.get("plain_english") or "")
+            if m:
+                _pairs = {h: int(v) for h, v in re.findall(r"([\w.-]+): (\d+)", m.group(1))}
+                break
+        if _pairs:
+            soa_mismatch = {"serials": _pairs,
+                            "persistent": _soa_mismatch_persistent(list(_pairs.values()))}
+
     return {
         "name": "Nameservers",
         "status": status,
         "verdict": verdict,
         "record": record,
+        "soa_mismatch": soa_mismatch,
         "explanation": (
             f"Found <strong>{ns_count}</strong> nameserver{'s' if ns_count != 1 else ''} for this domain. "
             "Nameservers are authoritative for your DNS zone. They answer queries for all your "

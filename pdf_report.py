@@ -26,6 +26,11 @@ from datetime import datetime, timezone
 
 from audit_engine import SCOPE_CHECKS, SCOPE_LABELS, ALL_SCOPE_CHECK_KEYS
 from spf_recursive import spf_lookup_band
+from result_transformer import PILL_NOT_APPLICABLE, PILL_NULL_MX
+
+# The pills that say a check does not apply to this domain. The tally counts
+# these cards on their own, as the web counters do.
+NOT_APPLICABLE_PILLS = (PILL_NOT_APPLICABLE, PILL_NULL_MX)
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -246,7 +251,8 @@ def _alt_rows(cmds, row_count):
 
 
 def _tally(checks):
-    """Split checks into (passes, warns, fails, absent, unavailable), summing to len(checks).
+    """Split checks into (passes, warns, fails, absent, unavailable,
+    not_applicable), summing to len(checks).
 
     Every check has to land in exactly one counter or the cover page stops
     describing the document it introduces. "unavailable" exists because a
@@ -258,7 +264,11 @@ def _tally(checks):
     instead of quietly going missing. The assertion below is the guard: the
     four counters must always account for every check.
     """
-    counts = Counter((c.get("status") or "unavailable") for c in checks)
+    # A card that does not apply to this domain is counted on its own,
+    # whatever its status, as on the web (statusCounts in app.js).
+    not_applicable = sum(1 for c in checks if c.get("pill_label") in NOT_APPLICABLE_PILLS)
+    counts = Counter((c.get("status") or "unavailable") for c in checks
+                     if c.get("pill_label") not in NOT_APPLICABLE_PILLS)
     passes = counts.pop("pass", 0)
     warns = counts.pop("warn", 0)
     fails = counts.pop("fail", 0)
@@ -271,8 +281,8 @@ def _tally(checks):
             sorted(counts),
         )
         unavailable += sum(counts.values())
-    assert passes + warns + fails + absent + unavailable == len(checks)
-    return passes, warns, fails, absent, unavailable
+    assert passes + warns + fails + absent + unavailable + not_applicable == len(checks)
+    return passes, warns, fails, absent, unavailable, not_applicable
 
 
 # ================================================================
@@ -371,7 +381,7 @@ def _do_first(data):
                   "priority": i.get("priority", "medium"), "protocol": i.get("protocol", "")}
                  for i in roadmap
                  if i.get("priority") != "low" and not i.get("optional")
-                 and i.get("status") != "absent"]
+                 and i.get("status") != "absent" and not i.get("self_clearing")]
     out = []
     for item in items[:3]:
         title = item.get("title") or item.get("action") or ""
@@ -397,6 +407,10 @@ def _do_first_box(data, S):
     if not items:
         message = es.get("biggest_risk") or ""
         if not message:
+            return []
+        # The no-mail verdict already ends "Nothing to fix.", and a second
+        # line saying otherwise would contradict it. The web page skips it too.
+        if severity != "unknown" and "Nothing to fix" in (es.get("verdict") or ""):
             return []
         if severity == "unknown":
             text, bg, rule = f"•  {_safe(message)}", SURFACE_BG, TEXT_TER
@@ -543,8 +557,8 @@ def _cover_page(data, S):
 
 def _tally_line(checks, S):
     """The check tally as one sentence. Doc 92: it used to print twice."""
-    passes, warns, fails, absent, unavailable = _tally(checks)
-    total = passes + warns + fails + absent + unavailable
+    passes, warns, fails, absent, unavailable, not_applicable = _tally(checks)
+    total = passes + warns + fails + absent + unavailable + not_applicable
 
     def part(n, clr, word):
         return f'<font color="{clr.hexval()}"><b>{n}</b></font> {word}'
@@ -555,6 +569,9 @@ def _tally_line(checks, S):
         part(passes, PASS_CLR, "pass"),
         part(absent, NEUTRAL_CLR, "optional and not set up"),
     ]
+    if not_applicable:
+        parts.append(part(not_applicable, NEUTRAL_CLR,
+                          "does not apply" if not_applicable == 1 else "do not apply"))
     if unavailable:
         parts.append(part(unavailable, TEXT_TER, "not checked"))
     noun = "check" if total == 1 else "checks"
@@ -751,9 +768,26 @@ def _plan_what_to_change(data, item, card, S):
     return [Paragraph(f"See the {_safe(protocol)} check in section 3.", S["body"])]
 
 
-def _plan_item(data, item, S):
+# The tier words the web pills use (TIER_LABELS in app.js).
+TIER_LABELS = {"critical": "Fix now", "high": "Important", "medium": "Recommended",
+               "low": "Optional"}
+_OPTIONAL_PROTOCOLS = ("MTA-STS", "TLS-RPT", "BIMI", "DNSSEC", "CAA", "DANE")
+
+
+def _is_optional_item(item):
+    """The same test as isOptionalPlanItem in app.js: the row's own flag,
+    else a low row or an optional protocol that is not set up."""
+    if isinstance(item.get("optional"), bool):
+        return item["optional"]
+    if item.get("priority") == "low":
+        return True
+    return item.get("status") == "absent" and item.get("protocol") in _OPTIONAL_PROTOCOLS
+
+
+def _plan_item(data, item, S, optional=False):
     """One roadmap item: the action, why it matters, what to change, how to confirm."""
-    priority = item.get("priority", "low")
+    # A row in the optional group says so, whatever tier it came with.
+    priority = "low" if optional else item.get("priority", "low")
     p_clr = PRIORITY_CLR.get(priority, TEXT_SEC)
     st = item.get("status")
     s_clr = STATUS_CLR.get(st, NEUTRAL_CLR)
@@ -770,9 +804,10 @@ def _plan_item(data, item, S):
     head = Table([[
         Paragraph(f'<font color="{s_clr.hexval()}">{_glyphs(glyph)}</font>', S["body"]),
         head_text,
-        Paragraph(f'<font color="{p_clr.hexval()}" size="9"><b>{priority.upper()}</b></font>',
+        Paragraph(f'<font color="{p_clr.hexval()}" size="9"><b>'
+                  f'{TIER_LABELS.get(priority, priority).upper()}</b></font>',
                   S["body_small"]),
-    ]], colWidths=[0.3*inch, 5.2*inch, 1.0*inch])
+    ]], colWidths=[0.3*inch, 4.9*inch, 1.3*inch])
     head.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("ALIGN", (2,0), (2,0), "RIGHT"),
@@ -820,8 +855,13 @@ def _roadmap_page(data, S, number=2):
     els.append(_tally_line(data.get("checks", []) or [], S))
     els.append(Spacer(1, SP_MD))
 
-    # Tier summary bar
-    tiers = roadmap.get("tiers", {})
+    # Tier summary bar. Counted as the web heading counts them: an optional
+    # extra is optional whatever its tier.
+    main = [i for i in items if not _is_optional_item(i)]
+    extras = [i for i in items if _is_optional_item(i)]
+    tiers = {t: sum(1 for i in main if i.get("priority") == t)
+             for t in ("critical", "high", "medium", "low")}
+    tiers["low"] += len(extras)
     tier_cells = []
     for tier_name in ["critical", "high", "medium", "low"]:
         count = tiers.get(tier_name, 0)
@@ -829,7 +869,7 @@ def _roadmap_page(data, S, number=2):
         tier_cells.append([
             Paragraph(f'<font color="{t_clr.hexval()}" size="14"><b>{count}</b></font>',
                       ParagraphStyle("TC", fontName=FONTS["sans"], alignment=TA_CENTER, leading=18)),
-            Paragraph(f'<font color="#6b6b6b" size="8">{tier_name.upper()}</font>',
+            Paragraph(f'<font color="#6b6b6b" size="8">{TIER_LABELS[tier_name].upper()}</font>',
                       ParagraphStyle("TL", fontName=FONTS["sans"], alignment=TA_CENTER, leading=12)),
         ])
     if any(tiers.values()):
@@ -850,8 +890,13 @@ def _roadmap_page(data, S, number=2):
     # the web row. The table this replaces gave a line per item with no
     # record and a "Business Impact" column, so a reader who wanted to act
     # had to find the check further down and assemble the change there.
-    for item in items:
+    for item in main:
         els.extend(_plan_item(data, item, S))
+    # Optional extras last, under their own heading, as on the web.
+    if extras:
+        els.append(Paragraph(f"Optional extras ({len(extras)})", S["subheading"]))
+        for item in extras:
+            els.extend(_plan_item(data, item, S, optional=True))
 
     # No else branch: roadmap["summary"], printed above, already covers an
     # empty items list for every case (a real all-clear, a scoped run that
