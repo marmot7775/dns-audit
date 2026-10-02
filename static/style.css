@@ -7771,3 +7771,35 @@ h3.services-sub,
     margin-top: 3rem;
     margin-bottom: 1rem;
 }
+
+/* Doc 92: article short version */
+.short-version {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem 1.2rem;
+    margin: 0 0 2rem;
+}
+.dbis-article .short-version h2 {
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0;
+    line-height: 1.4;
+    margin: 0 0 0.5rem;
+}
+.dbis-article .short-version p {
+    font-size: var(--font-md);
+    color: var(--text-secondary);
+    line-height: 1.65;
+    margin: 0;
+}
+.short-version code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 0.1em 0.4em;
+    border-radius: var(--radius-sm);
+    color: var(--primary-light);
+}
