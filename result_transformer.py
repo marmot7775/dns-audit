@@ -3731,8 +3731,17 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     vectors.append(v1)
     policy = record_policy
 
+    # pct=0 applies to whichever policy a receiver picks, sp and np included
+    # (RFC 7489 section 6.6.4): reject is treated as quarantine and quarantine
+    # as none. london.gov.uk (p=quarantine; pct=0) read "partly protected" for
+    # its subdomain routes while nothing was actually applied.
+    def _at_pct(pol):
+        if pct > 0:
+            return pol
+        return {"reject": "quarantine", "quarantine": "none"}.get(pol, pol)
+
     # ── Vector 2: Subdomain Spoofing ────────────────────────
-    effective_sp = sp if sp else policy
+    effective_sp = _at_pct(sp if sp else policy)
     if effective_sp == "reject":
         v2 = {
             "name": "Subdomain Spoofing",
@@ -3767,7 +3776,7 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     vectors.append(v2)
 
     # ── Vector 3: Non-Existent Subdomain Spoofing ───────────
-    np_effective = np_val if np_val else (sp if sp else policy)
+    np_effective = _at_pct(np_val if np_val else (sp if sp else policy))
     np_fallback = np_val is None
     if np_effective == "reject":
         # Protected however the reject was reached. RFC 9989 section 4.7 makes
