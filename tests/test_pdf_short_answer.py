@@ -107,8 +107,9 @@ def test_page_one_is_the_short_answer(monitoring):
 def test_do_these_first_falls_back_to_the_first_items_that_are_not_low(monitoring):
     monitoring = _without_backend_fields(monitoring)
     first = _pages(monitoring)[0]
+    # Not low, and not an optional protocol that is simply not set up.
     wanted = [i for i in monitoring["security_roadmap"]["items"]
-              if i["priority"] != "low"][:3]
+              if i["priority"] != "low" and i.get("status") != "absent"][:3]
 
     assert wanted
     for n, item in enumerate(wanted, 1):
