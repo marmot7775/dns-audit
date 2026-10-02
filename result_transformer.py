@@ -1883,9 +1883,14 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # Doc 92: within a tier, rows about something broken come first, then
     # something weak, then a recommendation on a passing card, then an
     # optional protocol not set up.
+    # On a further tie, the protocol nearest to spoofing protection leads:
+    # london.gov.uk (p=quarantine; pct=0) listed a 1024-bit DKIM key, which
+    # still works, ahead of a policy that applies to none of the failing mail.
     _status_rank = {"fail": 0, "warn": 1, "info": 2, "absent": 3}
+    _protocol_rank = {"DMARC": 0, "SPF": 1, "DKIM": 2}
     items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), _transient_ns(i),
-                              _status_rank.get(i["status"], 2)))
+                              _status_rank.get(i["status"], 2),
+                              _protocol_rank.get(i.get("protocol"), 3)))
 
     for item in items:
         # Every row has both fields, whichever rule above built it.
