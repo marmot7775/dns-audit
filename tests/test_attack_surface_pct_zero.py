@@ -43,3 +43,11 @@ def test_reject_at_pct_zero_is_quarantine_on_subdomains(audit):
 def test_full_pct_is_unchanged(audit):
     routes = _routes(audit(_zone(f"v=DMARC1; p=reject; rua=mailto:d@{DOMAIN}"), DOMAIN))
     assert routes["Subdomain Spoofing"] == "protected", routes
+
+
+def test_pct_zero_plan_row_is_high_and_says_none(audit):
+    result = audit(_zone(f"v=DMARC1; p=quarantine; pct=0; rua=mailto:d@{DOMAIN}"), DOMAIN)
+    rows = [i for i in result["security_roadmap"]["items"]
+            if i["protocol"] == "DMARC" and "retired" in i["action"]]
+    assert rows and rows[0]["priority"] == "high", rows
+    assert rows[0]["plain_head"].startswith("Your policy covers none"), rows[0]["plain_head"]
