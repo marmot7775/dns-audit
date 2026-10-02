@@ -68,6 +68,8 @@ process.stdout.write(priorityTierSummary(rm));
     text = _plan_text(result)
     bar = dict((label, int(n)) for n, label in
                re.findall(r"(\d+) (FIX NOW|IMPORTANT|RECOMMENDED|OPTIONAL)", text)[:4])
+    # All four tiers must be on the bar, or the loop below checks nothing.
+    assert set(bar) == {"FIX NOW", "IMPORTANT", "RECOMMENDED", "OPTIONAL"}, text[:600]
     words = {"FIX NOW": "to fix now", "IMPORTANT": "important",
              "RECOMMENDED": "recommended", "OPTIONAL": "optional"}
     for label, n in bar.items():
