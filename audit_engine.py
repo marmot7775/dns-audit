@@ -3504,7 +3504,13 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
     elif result["record_count"] > 0 and result["has_issue"]:
         result["status"] = "ok"
 
-    result["ttl"] = _lookup_ttl(caa_source or domain, "CAA")
+    # TTL comes off the answer already in hand. _lookup_ttl re-issued the
+    # same query, and when the lookup above had failed it went back to the
+    # same unresponsive nameservers for a second full resolver lifetime:
+    # parkviewdental.com's nameservers drop CAA queries, and the repeat
+    # pushed the CAA check past the Phase 2 batch budget.
+    rrset = getattr(answers, "rrset", None) if answers is not None else None
+    result["ttl"] = rrset.ttl if rrset is not None else None
     return result
 
 
