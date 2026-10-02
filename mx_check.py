@@ -91,12 +91,49 @@ def _is_ip_address(value: str) -> bool:
         return False
 
 
-def _resolve_addresses(hostname: str, rdtype: str) -> List[str]:
-    """A or AAAA addresses for one host; empty when the lookup yields none."""
+def _resolve_addresses(hostname: str, rdtype: str) -> Optional[List[str]]:
+    """A or AAAA addresses for one host.
+
+    Empty when DNS answered that there are none (NXDOMAIN, NoAnswer). None
+    when the lookup itself failed (timeout, SERVFAIL): nothing was learned,
+    so the host must not be called dangling on that basis.
+    """
     try:
         return [str(r) for r in _get_resolver().resolve(hostname, rdtype)]
-    except dns.exception.DNSException:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return []
+    except dns.exception.DNSException:
+        return None
+
+
+def _dangling_mx_issue(domain: str, hostname: str) -> Dict[str, str]:
+    """The finding for an MX host with no A or AAAA records.
+
+    A host at or below the audited name can be fixed by adding addresses.
+    Any other host may sit in a zone someone else controls, even under the
+    same registrable domain (mail.other.example.com for shop.example.com),
+    so the audited domain can only drop the MX record.
+    """
+    title = f"MX host '{hostname}' does not resolve"
+    impact = "Mail delivery will fail for this MX."
+    host = hostname.lower().rstrip(".")
+    audited = domain.lower().rstrip(".")
+    if host == audited or host.endswith("." + audited):
+        return _make_issue(
+            "error", title, f"'{hostname}' has no A or AAAA records.", impact,
+            f"Add A/AAAA records for '{hostname}'.")
+    fix = f"Remove the MX record pointing at {hostname}; it does not resolve."
+    if host.endswith(".mx-verification.google.com"):
+        return _make_issue(
+            "error", title,
+            f"'{hostname}' is Google's leftover setup verification record. "
+            "Google Workspace asks for this MX record once to confirm the "
+            "domain is yours. It is not a mail server and has no A or AAAA "
+            "records.", impact, fix)
+    return _make_issue(
+        "error", title,
+        f"'{hostname}' has no A or AAAA records. It is outside {audited}, "
+        "so only whoever runs its DNS could add them.", impact, fix)
 
 
 # ============================================================
@@ -217,15 +254,22 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
                 seen_providers.add(provider)
                 result["providers"].append(provider)
 
-        mx_detail["ips"] = addresses[(hostname, "A")] + addresses[(hostname, "AAAA")]
+        _a, _aaaa = addresses[(hostname, "A")], addresses[(hostname, "AAAA")]
+        mx_detail["ips"] = (_a or []) + (_aaaa or [])
         mx_detail["resolved"] = bool(mx_detail["ips"])
 
         if not mx_detail["resolved"]:
-            result["issues"].append(_make_issue(
-                "error", f"MX host '{hostname}' does not resolve",
-                f"'{hostname}' has no A or AAAA records.",
-                "Mail delivery will fail for this MX.",
-                f"Add A/AAAA records for '{hostname}'."))
+            if _a is None or _aaaa is None:
+                # A lookup did not complete: no claim that the host is
+                # dangling, and certainly no advice to remove a mail route.
+                mx_detail["resolved"] = None
+                result["issues"].append(_make_issue(
+                    "info", f"Could not resolve MX host '{hostname}'",
+                    f"The address lookup for '{hostname}' did not complete, so this audit "
+                    "could not confirm it has addresses.", "",
+                    "Run the audit again. If this repeats, check the DNS for that host."))
+            else:
+                result["issues"].append(_dangling_mx_issue(domain, hostname))
 
         result["mx_details"].append(mx_detail)
 
