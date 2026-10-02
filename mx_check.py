@@ -99,6 +99,36 @@ def _resolve_addresses(hostname: str, rdtype: str) -> List[str]:
         return []
 
 
+def _dangling_mx_issue(domain: str, hostname: str) -> Dict[str, str]:
+    """The finding for an MX host with no A or AAAA records.
+
+    A host at or below the audited name can be fixed by adding addresses.
+    Any other host may sit in a zone someone else controls, even under the
+    same registrable domain (mail.other.example.com for shop.example.com),
+    so the audited domain can only drop the MX record.
+    """
+    title = f"MX host '{hostname}' does not resolve"
+    impact = "Mail delivery will fail for this MX."
+    host = hostname.lower().rstrip(".")
+    audited = domain.lower().rstrip(".")
+    if host == audited or host.endswith("." + audited):
+        return _make_issue(
+            "error", title, f"'{hostname}' has no A or AAAA records.", impact,
+            f"Add A/AAAA records for '{hostname}'.")
+    fix = f"Remove the MX record pointing at {hostname}; it does not resolve."
+    if host.endswith(".mx-verification.google.com"):
+        return _make_issue(
+            "error", title,
+            f"'{hostname}' is Google's leftover setup verification record. "
+            "Google Workspace asks for this MX record once to confirm the "
+            "domain is yours. It is not a mail server and has no A or AAAA "
+            "records.", impact, fix)
+    return _make_issue(
+        "error", title,
+        f"'{hostname}' has no A or AAAA records. It is outside {audited}, "
+        "so only whoever runs its DNS could add them.", impact, fix)
+
+
 # ============================================================
 # Main MX Check
 # ============================================================
@@ -221,11 +251,7 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
         mx_detail["resolved"] = bool(mx_detail["ips"])
 
         if not mx_detail["resolved"]:
-            result["issues"].append(_make_issue(
-                "error", f"MX host '{hostname}' does not resolve",
-                f"'{hostname}' has no A or AAAA records.",
-                "Mail delivery will fail for this MX.",
-                f"Add A/AAAA records for '{hostname}'."))
+            result["issues"].append(_dangling_mx_issue(domain, hostname))
 
         result["mx_details"].append(mx_detail)
 

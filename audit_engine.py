@@ -3504,7 +3504,13 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
     elif result["record_count"] > 0 and result["has_issue"]:
         result["status"] = "ok"
 
-    result["ttl"] = _lookup_ttl(caa_source or domain, "CAA")
+    # TTL comes off the answer already in hand. _lookup_ttl re-issued the
+    # same query, and when the lookup above had failed it went back to the
+    # same unresponsive nameservers for a second full resolver lifetime:
+    # parkviewdental.com's nameservers drop CAA queries, and the repeat
+    # pushed the CAA check past the Phase 2 batch budget.
+    rrset = getattr(answers, "rrset", None) if answers is not None else None
+    result["ttl"] = rrset.ttl if rrset is not None else None
     return result
 
 
@@ -4550,9 +4556,60 @@ def _positive_non_mail_signal(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -
     send-only subdomain has no MX and still sends (and should sign) real
     mail. Shared by the defensive-DNS classifier and the per-check
     "not applicable" gating so the two can never disagree."""
-    has_null_mx = bool((raw_mx or {}).get("has_null_mx"))
-    spf_record = ((raw_spf or {}).get("record") or "").strip().lower()
-    return has_null_mx or spf_record == "v=spf1 -all"
+    return _publishes_null_mx(raw_mx) or _publishes_null_spf(raw_spf)
+
+
+# Null SPF and null MX each speak for one direction of mail. RFC 7208 SPF
+# describes who may send as the domain, so "v=spf1 -all" says the domain
+# sends nothing and is silent about receiving. RFC 7505 null MX says the
+# domain accepts nothing. A domain with null SPF and a working MX (the shape
+# of a receive-only mailbox domain) still needs the inbound protections, and
+# reading the null SPF as "non-mail" waived MTA-STS and TLS-RPT for it while
+# DANE, which keys on MX hosts, still asked for TLSA records.
+#
+# A declaration for one direction stands in for the other only when the
+# domain publishes nothing about that other direction: null SPF with no MX at
+# all, or null MX with no ordinary SPF record. Absent MX alone is still never
+# a signal (send-only subdomains have no MX).
+
+def _publishes_null_mx(raw_mx: Optional[Dict]) -> bool:
+    return bool((raw_mx or {}).get("has_null_mx"))
+
+
+def _publishes_null_spf(raw_spf: Optional[Dict]) -> bool:
+    return ((raw_spf or {}).get("record") or "").strip().lower() == "v=spf1 -all"
+
+
+def _has_working_mx(raw_mx: Optional[Dict]) -> bool:
+    """At least one MX record that is not the RFC 7505 null MX."""
+    raw_mx = raw_mx or {}
+    return not _publishes_null_mx(raw_mx) and bool(
+        raw_mx.get("records") or raw_mx.get("mx_details")
+    )
+
+
+def _has_sending_spf(raw_spf: Optional[Dict]) -> bool:
+    """An SPF record that authorizes some sender, i.e. not null SPF."""
+    record = ((raw_spf or {}).get("record") or "").strip()
+    return bool(record) and not _publishes_null_spf(raw_spf)
+
+
+def _receives_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
+    """Inbound protections (MTA-STS, TLS-RPT, DANE) do not apply."""
+    if _publishes_null_mx(raw_mx):
+        return True
+    # Null SPF says nothing about receiving. Only a finished MX lookup that
+    # found no working host lets it stand in for "no inbound mail"; a lookup
+    # that timed out or failed leaves inbound unknown, not inapplicable.
+    mx_done = bool(raw_mx) and raw_mx.get("status") != "unavailable" and not raw_mx.get("timed_out")
+    return _publishes_null_spf(raw_spf) and mx_done and not _has_working_mx(raw_mx)
+
+
+def _sends_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
+    """Outbound items (DKIM, BIMI, the DMARC and DKIM cross-checks) do not apply."""
+    if _publishes_null_spf(raw_spf):
+        return True
+    return _publishes_null_mx(raw_mx) and not _has_sending_spf(raw_spf)
 
 
 def _audit_subdomains(domain: str) -> Dict[str, Any]:
@@ -5007,10 +5064,11 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     _bimi_dmarc_policy = (_bimi_dmarc.get("policy") or _bimi_dmarc.get("inherited_policy") or "").lower() or None
     _bimi_dmarc_enforcing = _bimi_dmarc_policy in ("quarantine", "reject")
 
-    # Positive non-mail declaration (null MX or null SPF). Absent MX alone
-    # never waives DKIM / MTA-STS / TLS-RPT / BIMI: send-only subdomains
-    # have no MX and still send real mail.
-    non_mail = _positive_non_mail_signal(raw_results.get("mx"), raw_results.get("spf"))
+    # Positive non-mail declarations, per direction (see _receives_no_mail).
+    # Absent MX alone never waives DKIM / MTA-STS / TLS-RPT / BIMI:
+    # send-only subdomains have no MX and still send real mail.
+    receives_no_mail = _receives_no_mail(raw_results.get("mx"), raw_results.get("spf"))
+    sends_no_mail = _sends_no_mail(raw_results.get("mx"), raw_results.get("spf"))
 
     # DNSSEC is hoisted out of Phase 2 because DANE needs its verdict.
     #
@@ -5060,13 +5118,13 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     if _should_include("mta_sts", scope_set):
         _parallel_checks.append(("mta_sts",
             lambda: check_mta_sts(domain),
-            lambda raw: transform_mta_sts(raw, domain, has_mx=has_mx, non_mail=non_mail),
+            lambda raw: transform_mta_sts(raw, domain, has_mx=has_mx, non_mail=receives_no_mail),
             "MTA-STS"))
 
     if _should_include("tls_rpt", scope_set):
         _parallel_checks.append(("tls_rpt",
             lambda: check_tls_rpt(domain),
-            lambda raw: transform_tls_rpt(raw, domain, has_mx=has_mx, non_mail=non_mail),
+            lambda raw: transform_tls_rpt(raw, domain, has_mx=has_mx, non_mail=receives_no_mail),
             "TLS-RPT"))
 
     if _should_include("bimi", scope_set):
@@ -5079,7 +5137,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                                 dmarc_found_override=_bimi_found,
                                 dmarc_pct_override=_bimi_pct,
                                 dmarc_policy_override=_bimi_policy),
-            lambda raw: transform_bimi(raw, domain, has_mx=has_mx, non_mail=non_mail),
+            lambda raw: transform_bimi(raw, domain, has_mx=has_mx, non_mail=sends_no_mail),
             "BIMI"))
 
     if _should_include("dnssec", scope_set):
@@ -5191,7 +5249,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     _raw["lookup_target"] = _fqdn
                 return _raw
             _parallel_checks.append(("dkim", _run_dkim_direct,
-                lambda raw: transform_dkim(raw, domain, has_mx=has_mx, non_mail=non_mail), "DKIM"))
+                lambda raw: transform_dkim(raw, domain, has_mx=has_mx, non_mail=sends_no_mail), "DKIM"))
         else:
             _spf_rec = spf_record  # capture
             # A hosted mailbox provider (Google Workspace, Microsoft 365) or a
@@ -5212,7 +5270,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                                         executor=_dkim_executor)
                 return _raw
             _parallel_checks.append(("dkim", _run_dkim_smart,
-                lambda raw: transform_dkim(raw, domain, has_mx=has_mx, non_mail=non_mail), "DKIM"))
+                lambda raw: transform_dkim(raw, domain, has_mx=has_mx, non_mail=sends_no_mail), "DKIM"))
 
     if _should_include("ct", scope_set):
         _ct_raw = dict(raw_results)
@@ -5327,7 +5385,14 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # Defensive domains intentionally do not send/receive email. Email-specific
     # checks should not show as failures or warnings.
     if is_defensive:
-        _defensive_override = {"MTA-STS", "TLS-RPT", "BIMI", "DKIM", "DANE"}
+        # Per direction, like the cards themselves: a defensive domain with
+        # null SPF and a working MX still receives mail, so its inbound
+        # cards keep their own verdicts.
+        _defensive_override = set()
+        if _receives_no_mail(raw_results.get("mx"), raw_results.get("spf")):
+            _defensive_override |= {"MTA-STS", "TLS-RPT", "DANE"}
+        if _sends_no_mail(raw_results.get("mx"), raw_results.get("spf")):
+            _defensive_override |= {"BIMI", "DKIM"}
         for check in checks:
             if check.get("name") in _defensive_override and check.get("status") not in ("pass", "absent"):
                 # DKIM is essential, so its waiver stays a pass. The optional
@@ -5433,9 +5498,12 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         _xc_enforcing = _xc_policy in ("quarantine", "reject")
 
         # Skip for non-mail / defensive DNS (null SPF + no DKIM = intentional)
+        # DMARC alignment is about outbound mail, so this follows the
+        # sending direction: a null MX beside an ordinary SPF record still
+        # sends.
         _xc_spf_rec = (_xc_spf.get("record") or "").strip().lower()
         _xc_is_defensive = (
-            bool(raw_results.get("mx", {}).get("has_null_mx"))
+            (_publishes_null_mx(raw_results.get("mx")) and not _has_sending_spf(_xc_spf))
             or (_xc_spf_rec == "v=spf1 -all" and not _xc_has_dkim)
         )
 
@@ -5813,8 +5881,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     attach_what_this_is(checks)
     attach_reject_dkim_note(
         checks, raw_results.get("dkim"),
-        non_mail=is_defensive or _positive_non_mail_signal(raw_results.get("mx"),
-                                                           raw_results.get("spf")),
+        non_mail=_sends_no_mail(raw_results.get("mx"), raw_results.get("spf")),
     )
 
     # --- Assemble final response ---
@@ -6001,7 +6068,7 @@ def _build_resilience_analysis(
     # The DKIM card reads a domain with no live key and a null MX or null SPF
     # as not applicable, and this row has to say the same. It used to say
     # DKIM "may well be configured" beside a card reading N/A.
-    _non_mail = _positive_non_mail_signal(raw_results.get("mx"), raw_results.get("spf"))
+    _non_mail = _sends_no_mail(raw_results.get("mx"), raw_results.get("spf"))
     if not dkim_tested:
         dkim_status = "inconclusive"
         dkim_note = "DKIM check was not included in this audit scope."
