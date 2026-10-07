@@ -1,11 +1,13 @@
 """
-DKIM key strength analysis.
+DKIM key record parsing and key strength analysis.
 
-analyze_dkim_key_strength() is the only public function; audit_engine,
-result_transformer and spf_intelligence use it to grade a selector's key.
+parse_dkim_tags() is the one parser for a key record. analyze_dkim_key_strength()
+grades a selector's key for audit_engine, result_transformer and
+spf_intelligence; dkim_record_problems() reads the tags that change what a
+receiver does with the key.
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import base64
 import re
 
@@ -109,31 +111,45 @@ def _asn1_length(data: bytes, idx: int) -> Tuple[int, int]:
     return idx + 1 + num_bytes, length
 
 
+def parse_dkim_tags(dkim_record: str) -> List[Tuple[str, str]]:
+    """The key record as an ordered list of (tag, value) pairs.
+
+    The one parser for a DKIM key record. Split on ';' and then on the first
+    '=', per RFC 6376 section 3.2. Order and repeats are kept, because v= must
+    come first and a repeated tag invalidates the whole record. Tag names are
+    kept as published: section 3.2 says tags are case sensitive, so "P=" is
+    not "p=". Values are stripped of surrounding whitespace only.
+    """
+    tags = []
+    for part in (dkim_record or "").split(";"):
+        key, sep, value = part.partition("=")
+        key = key.strip()
+        if sep and key:
+            tags.append((key, value.strip()))
+    return tags
+
+
 def _tag_value(dkim_record: str, tag: str) -> Optional[str]:
-    """Return a tag's value lowercased, or None when the tag is absent.
+    """Return a tag's first value lowercased, or None when the tag is absent.
 
     A substring test for "k=ed25519" also matched the string appearing inside
-    some other tag's value, e.g. a note tag. Tags are split on ';' and then on
-    the first '=', per RFC 6376 section 3.2.
+    some other tag's value, e.g. a note tag.
     """
-    for part in dkim_record.split(";"):
-        key, sep, value = part.partition("=")
-        if sep and key.strip().lower() == tag:
-            return value.strip().lower()
+    for key, value in parse_dkim_tags(dkim_record):
+        if key == tag:
+            return value.lower()
     return None
 
 
 def _extract_p_tag(dkim_record: str) -> Optional[str]:
     """Return the p= value with all whitespace stripped, or None if absent.
 
-    Split on ';' per RFC 6376 section 3.2. Section 3.6.1 permits folding
-    whitespace inside the base64 and long keys are routinely published folded,
-    so a regex that stops at the first space silently truncates a valid key and
-    it fails to decode.
+    Section 3.6.1 permits folding whitespace inside the base64 and long keys
+    are routinely published folded, so a regex that stops at the first space
+    silently truncates a valid key and it fails to decode.
     """
-    for part in dkim_record.split(";"):
-        key, sep, value = part.partition("=")
-        if sep and key.strip() == "p":
+    for key, value in parse_dkim_tags(dkim_record):
+        if key == "p":
             return re.sub(r"\s+", "", value)
     return None
 
@@ -144,7 +160,63 @@ def _is_ed25519(sel: dict, key_analysis: dict) -> bool:
     if "ed25519" in str(key_type).lower():
         return True
     # Selector dicts assembled elsewhere may carry only the raw record.
-    return "k=ed25519" in str(sel.get("record") or "").lower().replace(" ", "")
+    return _tag_value(str(sel.get("record") or ""), "k") == "ed25519"
+
+
+# RFC 6376 section 3.6.1 defines rsa; RFC 8463 adds ed25519.
+KNOWN_KEY_TYPES = ("rsa", "ed25519")
+
+
+def dkim_record_problems(dkim_record: str) -> Dict:
+    """Key record settings that change what a receiver does with the key.
+
+    Read from parse_dkim_tags, so every check sees the same tags. Keys:
+      duplicate_tags  tag names published more than once (section 3.2: the
+                      entire tag list is then invalid)
+      bad_version     the v= value when it is not exactly DKIM1 (section
+                      3.6.1: such a record is discarded; the comparison is
+                      a string comparison, so "dkim1" is not DKIM1)
+      version_not_first  v= is present but is not the first tag
+      unknown_key_type   the k= value when it is not rsa or ed25519
+                      (section 3.6.1: unrecognized key types are ignored)
+      excludes_email  the s= value when it lists neither email nor *
+                      (section 3.6.1: a verifier ignores the record)
+      test_mode       t= includes the y flag
+      hashes          the h= value when it lists no sha256 (RFC 8301)
+    Key type and service type names are compared case insensitively, so a
+    record is not failed over "RSA" or "Email" alone.
+    """
+    tags = parse_dkim_tags(dkim_record)
+    names = [k for k, _ in tags]
+    first = {}
+    for k, v in tags:
+        first.setdefault(k, v)
+
+    problems = {
+        "duplicate_tags": sorted({k for k in names if names.count(k) > 1}, key=names.index),
+        "bad_version": None,
+        "version_not_first": False,
+        "unknown_key_type": None,
+        "excludes_email": None,
+        "test_mode": False,
+        "hashes": None,
+    }
+    if "v" in first:
+        if first["v"] != "DKIM1":
+            problems["bad_version"] = first["v"]
+        if names[0] != "v":
+            problems["version_not_first"] = True
+    if "k" in first and first["k"].lower() not in KNOWN_KEY_TYPES:
+        problems["unknown_key_type"] = first["k"]
+    if "s" in first:
+        services = [s.strip().lower() for s in first["s"].split(":")]
+        if "email" not in services and "*" not in services:
+            problems["excludes_email"] = first["s"]
+    if "t" in first:
+        problems["test_mode"] = "y" in [f.strip().lower() for f in first["t"].split(":")]
+    if "h" in first and "sha256" not in [a.strip().lower() for a in first["h"].split(":")]:
+        problems["hashes"] = first["h"]
+    return problems
 
 
 def analyze_dkim_key_strength(dkim_record: str) -> Dict:

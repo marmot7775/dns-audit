@@ -28,7 +28,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from html import escape as _e
 
-from dkim_formatter import _tag_value, analyze_dkim_key_strength
+from dkim_formatter import analyze_dkim_key_strength, dkim_record_problems, parse_dkim_tags
 from spf_recursive import spf_lookup_band
 from dmarc_tree_walk import _psl_org_domain, _tld_extract
 
@@ -1530,6 +1530,59 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "impact": ", ".join(f"{d['selector']}._domainkey -> {d['cname_target']}"
                                           for d in _dkim_unreg)})
 
+    # Doc 94: key records receivers discard or ignore. Each is critical, the
+    # same tier as an h= without sha256: every signature made with the key
+    # fails at every receiver.
+    def _one_or_many(keys, one, many):
+        return one if len(keys) == 1 else f"{_count_word(len(keys))} {many}"
+    _dup_tags = dkim.get("dkim_duplicate_tags") or []
+    if _dup_tags:
+        items.append({"priority": "critical", "protocol": "DKIM",
+                      "action": f"Remove the repeated tag from DKIM key {', '.join(_dup_tags)}",
+                      "plain_head": _one_or_many(
+                          _dup_tags,
+                          "One of your email signing keys repeats a setting, which makes the "
+                          "whole record invalid, so its signatures always fail.",
+                          "of your email signing keys repeat a setting, which makes each whole "
+                          "record invalid, so their signatures always fail."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "RFC 6376 section 3.2: if a tag name occurs more than once, the entire tag list is invalid."})
+    _bad_version = dkim.get("dkim_bad_version") or []
+    if _bad_version:
+        items.append({"priority": "critical", "protocol": "DKIM",
+                      "action": f"Set v=DKIM1 on DKIM key {', '.join(_bad_version)}",
+                      "plain_head": _one_or_many(
+                          _bad_version,
+                          "One of your email signing keys names a version receivers do not "
+                          "accept, so they discard it and its signatures always fail.",
+                          "of your email signing keys name a version receivers do not accept, "
+                          "so they discard them and their signatures always fail."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "RFC 6376 section 3.6.1: a key record whose v= is anything but DKIM1 is discarded."})
+    _unknown_type = dkim.get("dkim_unknown_key_type") or []
+    if _unknown_type:
+        items.append({"priority": "critical", "protocol": "DKIM",
+                      "action": f"Set k=rsa or k=ed25519 on DKIM key {', '.join(_unknown_type)}",
+                      "plain_head": _one_or_many(
+                          _unknown_type,
+                          "One of your email signing keys names a key type receivers do not "
+                          "know, so they ignore it and its signatures always fail.",
+                          "of your email signing keys name a key type receivers do not know, "
+                          "so they ignore them and their signatures always fail."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "RFC 6376 section 3.6.1: unrecognized key types are ignored, so the selector has no usable key."})
+    _no_email = dkim.get("dkim_excludes_email") or []
+    if _no_email:
+        items.append({"priority": "critical", "protocol": "DKIM",
+                      "action": f"Allow email on DKIM key {', '.join(_no_email)}",
+                      "plain_head": _one_or_many(
+                          _no_email,
+                          "One of your email signing keys is limited to services other than "
+                          "email, so receivers ignore it and its signatures always fail.",
+                          "of your email signing keys are limited to services other than "
+                          "email, so receivers ignore them and their signatures always fail."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "RFC 6376 section 3.6.1: a receiver checking mail ignores a key whose s= lists neither email nor *."})
     _sha1_only = dkim.get("dkim_sha1_only") or []
     if _sha1_only:
         items.append({"priority": "critical", "protocol": "DKIM",
@@ -1550,6 +1603,18 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                      "may ignore its signatures."),
                       "who": WHO_EMAIL_PROVIDER,
                       "impact": "t=y lets receivers treat mail signed with this key as unsigned (RFC 6376)."})
+    _v_order = dkim.get("dkim_version_not_first") or []
+    if _v_order:
+        items.append({"priority": "medium", "protocol": "DKIM",
+                      "action": f"Move v=DKIM1 to the front of DKIM key {', '.join(_v_order)}",
+                      "plain_head": _one_or_many(
+                          _v_order,
+                          "One of your email signing keys does not start with v=DKIM1. Some "
+                          "receivers will reject it, so its signatures can fail there.",
+                          "of your email signing keys do not start with v=DKIM1. Some "
+                          "receivers will reject them, so their signatures can fail there."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "RFC 6376 section 3.6.1 requires v= to be the first tag. Receivers differ on a record that breaks this."})
 
     # DKIM weak keys
     dkim_deep = dkim.get("dkim_deep", {})
@@ -6487,6 +6552,12 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
     invalid_keys = []
     test_mode_keys = []
     sha1_only_keys = []
+    # Doc 94: key record settings that leave a key receivers cannot use.
+    duplicate_tag_keys = []
+    bad_version_keys = []
+    version_order_keys = []
+    unknown_type_keys = []
+    no_email_keys = []
     risks_called_out = set()
     for sel in found:
         selector = sel.get("selector", "unknown")
@@ -6522,6 +6593,7 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
             risks_called_out.add("DKIM_REVOKED_KEY")
             continue
 
+        _strength_at = len(details)
         if strength == "invalid":
             invalid_detail = {
                 "type": "error",
@@ -6565,27 +6637,84 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
                 "text": f"{selector}: key found{vendor_str}"
             })
 
-        # Two key settings change what a receiver does with a valid
-        # signature. t=y: RFC 6376 section 3.6.1 lets receivers treat the
-        # mail as unsigned. h= without sha256: RFC 8301 forbids accepting
-        # SHA-1, so nothing signed with the key can pass.
-        _flags = [f.strip() for f in (_tag_value(sel_record, "t") or "").split(":")]
-        if "y" in _flags:
+        # Key record settings that change what a receiver does with the key,
+        # all read from one parse of the record (dkim_formatter). Each RFC
+        # 6376 reference is to the section that governs it.
+        _problems = dkim_record_problems(sel_record)
+        _unusable = False
+        if _problems["duplicate_tags"]:
+            _dups = _problems["duplicate_tags"]
+            details.append({
+                "type": "error",
+                "text": (f"{selector}: the {', '.join(f'{t}=' for t in _dups)} "
+                         f"tag{'s appear' if len(_dups) > 1 else ' appears'} more than once. "
+                         "RFC 6376 makes the whole record invalid when a tag repeats, so no "
+                         "signature made with this key can pass. Keep one of each tag."),
+            })
+            duplicate_tag_keys.append(selector)
+            _unusable = True
+        if _problems["bad_version"] is not None:
+            _v = _problems["bad_version"]
+            details.append({
+                "type": "error",
+                "text": (f"{selector}: the record says v={_v[:40]}. Receivers accept only "
+                         "v=DKIM1, exactly as written"
+                         + (", capitals included" if _v.lower() == "dkim1" else "")
+                         + ", and discard any other version, so no signature made with this "
+                         "key can pass. Set v=DKIM1."),
+            })
+            bad_version_keys.append(selector)
+            _unusable = True
+        elif _problems["version_not_first"]:
+            details.append({
+                "type": "warning",
+                "text": (f"{selector}: v=DKIM1 is not the first tag. RFC 6376 requires it "
+                         "first, and some receivers will reject the key, so signatures made "
+                         "with it can fail there. Move v=DKIM1 to the start of the record."),
+            })
+            version_order_keys.append(selector)
+        if _problems["unknown_key_type"] is not None:
+            details.append({
+                "type": "error",
+                "text": (f"{selector}: k={_problems['unknown_key_type'][:40]} is not a key type "
+                         "receivers know. RFC 6376 tells them to ignore it, so no signature "
+                         "made with this key can pass. Use k=rsa or k=ed25519."),
+            })
+            unknown_type_keys.append(selector)
+            _unusable = True
+        if _problems["excludes_email"] is not None:
+            details.append({
+                "type": "error",
+                "text": (f"{selector}: s={_problems['excludes_email'][:40]} limits the key to "
+                         "services other than email. RFC 6376 tells receivers checking mail to "
+                         "ignore it, so no signature made with this key can pass. Set s=email "
+                         "or remove the s= tag."),
+            })
+            no_email_keys.append(selector)
+            _unusable = True
+        # t=y: RFC 6376 section 3.6.1 lets receivers treat the mail as
+        # unsigned. h= without sha256: RFC 8301 forbids accepting SHA-1, so
+        # nothing signed with the key can pass.
+        if _problems["test_mode"]:
             details.append({
                 "type": "warning",
                 "text": (f"{selector}: test mode is on (t=y), so receivers may treat mail "
                          "signed with this key as unsigned. Remove t=y once signing works."),
             })
             test_mode_keys.append(selector)
-        _hashes = _tag_value(sel_record, "h")
-        if _hashes is not None and "sha256" not in [a.strip() for a in _hashes.split(":")]:
+        if _problems["hashes"] is not None:
             details.append({
                 "type": "error",
-                "text": (f"{selector}: the key accepts only h={_hashes} signatures. "
+                "text": (f"{selector}: the key accepts only h={_problems['hashes'].lower()} signatures. "
                          "RFC 8301 forbids receivers from accepting SHA-1, so no signature "
                          "made with this key can pass. Set h=sha256 or remove the h= tag."),
             })
             sha1_only_keys.append(selector)
+            _unusable = True
+        # A key receivers discard or ignore is not a healthy key, whatever its
+        # size. The size line said "2048-bit RSA key" in green beside it.
+        if _unusable and details[_strength_at]["type"] == "good":
+            details[_strength_at]["type"] = "info"
 
     # One joined string, not one record block per selector: the generic
     # record-block renderer (app.js's renderCheckBody) takes a single
@@ -6613,9 +6742,10 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
 
     # Status
     status = "pass"
-    if weak_keys or test_mode_keys:
+    if weak_keys or test_mode_keys or version_order_keys:
         status = "warn"
-    if invalid_keys or sha1_only_keys:
+    if (invalid_keys or sha1_only_keys or duplicate_tag_keys or bad_version_keys
+            or unknown_type_keys or no_email_keys):
         status = "fail"
     # Downgrade status if audit engine found errors or warnings
     if raw.get("syntax_errors") or any(i.get("severity") == "error" for i in raw.get("issues", [])):
@@ -6652,11 +6782,37 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
     fix = None
     if raw.get("syntax_errors"):
         fix = _first_fix(raw.get("syntax_errors", []))
+    elif duplicate_tag_keys:
+        fix = (
+            f"Republish <strong>{_e(', '.join(duplicate_tag_keys))}</strong> with each tag "
+            "once. Your email provider's DKIM setup page gives the record to publish."
+        )
+    elif bad_version_keys:
+        fix = (
+            f"Set <strong>v=DKIM1</strong> on <strong>{_e(', '.join(bad_version_keys))}</strong>, "
+            "or remove the v= tag. Your email provider's DKIM setup page gives the record to publish."
+        )
+    elif unknown_type_keys:
+        fix = (
+            f"Republish <strong>{_e(', '.join(unknown_type_keys))}</strong> with "
+            "<strong>k=rsa</strong> or <strong>k=ed25519</strong>, matching the key your "
+            "provider signs with. Your email provider's DKIM setup page gives the record to publish."
+        )
+    elif no_email_keys:
+        fix = (
+            f"Set <strong>s=email</strong> on <strong>{_e(', '.join(no_email_keys))}</strong>, "
+            "or remove the s= tag, which allows every service."
+        )
     elif sha1_only_keys:
         fix = (
             f"Republish <strong>{_e(', '.join(sha1_only_keys))}</strong> with "
             "<strong>h=sha256</strong>, or without the h= tag, which allows every hash. "
             "Your email provider's DKIM setup page gives the record to publish."
+        )
+    elif version_order_keys:
+        fix = (
+            f"Move <strong>v=DKIM1</strong> to the start of "
+            f"<strong>{_e(', '.join(version_order_keys))}</strong>."
         )
     elif test_mode_keys:
         fix = (
@@ -6703,6 +6859,11 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         "verdict": verdict,
         "dkim_test_mode": test_mode_keys,
         "dkim_sha1_only": sha1_only_keys,
+        "dkim_duplicate_tags": duplicate_tag_keys,
+        "dkim_bad_version": bad_version_keys,
+        "dkim_version_not_first": version_order_keys,
+        "dkim_unknown_key_type": unknown_type_keys,
+        "dkim_excludes_email": no_email_keys,
         "record": _live_records or None,
         "configured": True,
         "explanation": explanation,
@@ -6740,6 +6901,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
     has_weak = False
     has_revoked = False
     has_invalid = False
+    has_unusable = False
     all_strong = True
 
     for sel in found:
@@ -6809,45 +6971,60 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             rating_label = "Key strength could not be determined."
             all_strong = False
 
+        # A key receivers discard or ignore is red whatever its size, so the
+        # table cannot call it strong beside a failed card (Doc 94).
+        _problems = dkim_record_problems(sel_record)
+        _unusable = None
+        if _problems["duplicate_tags"]:
+            _unusable = "A tag appears more than once, so the whole record is invalid."
+        elif _problems["bad_version"] is not None:
+            _unusable = "Wrong version. Receivers discard any record whose v= is not DKIM1."
+        elif _problems["unknown_key_type"] is not None:
+            _unusable = "Unknown key type. Receivers ignore this key."
+            key_type = _problems["unknown_key_type"]
+        elif _problems["excludes_email"] is not None:
+            _unusable = "Not for email. Receivers checking mail ignore this key."
+        elif _problems["hashes"] is not None:
+            _unusable = "SHA-1 only. Receivers refuse SHA-1, so every signature fails."
+        if _unusable and strength != "invalid":
+            rating = "red"
+            rating_label = _unusable
+            all_strong = False
+            has_unusable = True
+
         # Parse DKIM record tags
         dkim_tags = []
         key_revoked = False
-        for part in sel_record.split(";"):
-            part = part.strip()
-            if "=" in part:
-                k, _, v = part.partition("=")
-                k = k.strip().lower()
-                v = v.strip()
-
-                tag_info = {"tag": k, "value": v}
-                if k == "v":
-                    tag_info["label"] = "Version"
-                elif k == "k":
-                    tag_info["label"] = "Key type"
-                elif k == "p":
-                    if not v:
-                        tag_info["label"] = "Public key (revoked)"
-                        tag_info["revoked"] = True
-                        has_revoked = True
-                        key_revoked = True
-                    else:
-                        tag_info["label"] = "Public key"
-                        tag_info["truncated"] = v[:40] + "..." if len(v) > 40 else v
-                elif k == "t":
-                    if v == "y":
-                        tag_info["label"] = "Test mode"
-                    elif v == "s":
-                        tag_info["label"] = "Strict domain"
-                    else:
-                        tag_info["label"] = f"Flag: {v}"
-                elif k == "h":
-                    tag_info["label"] = "Hash algorithm"
-                elif k == "s":
-                    tag_info["label"] = "Service type"
+        for k, v in parse_dkim_tags(sel_record):
+            tag_info = {"tag": k, "value": v}
+            if k == "v":
+                tag_info["label"] = "Version"
+            elif k == "k":
+                tag_info["label"] = "Key type"
+            elif k == "p":
+                if not v:
+                    tag_info["label"] = "Public key (revoked)"
+                    tag_info["revoked"] = True
+                    has_revoked = True
+                    key_revoked = True
                 else:
-                    tag_info["label"] = k
+                    tag_info["label"] = "Public key"
+                    tag_info["truncated"] = v[:40] + "..." if len(v) > 40 else v
+            elif k == "t":
+                if v == "y":
+                    tag_info["label"] = "Test mode"
+                elif v == "s":
+                    tag_info["label"] = "Strict domain"
+                else:
+                    tag_info["label"] = f"Flag: {v}"
+            elif k == "h":
+                tag_info["label"] = "Hash algorithm"
+            elif k == "s":
+                tag_info["label"] = "Service type"
+            else:
+                tag_info["label"] = k
 
-                dkim_tags.append(tag_info)
+            dkim_tags.append(tag_info)
 
         # Provider from selector name
         provider = vendor or dkim_key_vendor(selector, sel.get("cname_target"))
@@ -6858,7 +7035,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
         # the shared rotation_guidance text below.
         if key_revoked:
             rotation_status = "Revoked"
-        elif strength == "invalid":
+        elif strength == "invalid" or _unusable:
             rotation_status = "Replace"
         elif rating in ("red", "amber"):
             rotation_status = "Rotate"
@@ -6906,6 +7083,13 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             "TXT value produces exactly this, so compare the published record against "
             "the key your mail server holds before regenerating anything."
         )
+    elif has_unusable:
+        _broken = [k["selector"] for k in keys if k["rotation_status"] == "Replace"]
+        rotation = (
+            f"Republish {', '.join(_broken)} exactly as your email provider gives it. As "
+            "published, receivers discard or ignore the record, so every signature made "
+            "with that selector fails verification."
+        )
     elif has_weak:
         weak_selectors = [k["selector"] for k in keys if k["rating"] in ("red", "amber")]
         rotation = (
@@ -6922,6 +7106,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
         "rotation_guidance": rotation,
         "has_weak": has_weak,
         "has_invalid": has_invalid,
+        "has_unusable": has_unusable,
     }
 
 
