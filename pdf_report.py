@@ -1628,8 +1628,9 @@ def _vendors(data, S):
         # names who receives its mail (inbound). Naming the vendor alone
         # reads as "handles your mail" when it may be only one side.
         side = v.get("detected_via") or "DNS records"
-        if v.get("detected_via") and v.get("sources"):
-            side = f"{', '.join(v['sources'])} ({side})"
+        if v.get("sources"):
+            side = (f"{', '.join(v['sources'])} ({side})" if v.get("detected_via")
+                    else ", ".join(v["sources"]))
         rows.append([
             Paragraph(f"<b>{_safe(v.get('name', ''))}</b>", S["body"]),
             Paragraph(_safe(side), S["body_small"]),

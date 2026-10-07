@@ -28,7 +28,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from html import escape as _e
 
-from dkim_formatter import analyze_dkim_key_strength
+from dkim_formatter import _tag_value, analyze_dkim_key_strength
 from spf_recursive import spf_lookup_band
 from dmarc_tree_walk import _psl_org_domain, _tld_extract
 
@@ -1514,6 +1514,42 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "plain_head": "Your settings do not ask receivers to block forged mail yet.",
                       "who": WHO_DNS_HOST,
                       "impact": "Nothing is blocked yet, and every receiver is making its own call on mail that fails."})
+
+    # A DKIM selector CNAME into an unregistered domain: anyone can register
+    # it and sign mail as this domain.
+    _dkim_unreg = [d for d in dkim.get("dangling_selectors") or []
+                   if d.get("status") == "unregistered"]
+    if _dkim_unreg:
+        items.append({"priority": "critical", "protocol": "DKIM",
+                      "action": ("Remove the DKIM record that points at an unregistered domain"
+                                 if len(_dkim_unreg) == 1 else
+                                 f"Remove the {len(_dkim_unreg)} DKIM records that point at unregistered domains"),
+                      "plain_head": ("A signing record points at a domain anyone can buy. Whoever "
+                                     "buys it can sign mail that passes as yours."),
+                      "who": WHO_DNS_HOST,
+                      "impact": ", ".join(f"{d['selector']}._domainkey -> {d['cname_target']}"
+                                          for d in _dkim_unreg)})
+
+    _sha1_only = dkim.get("dkim_sha1_only") or []
+    if _sha1_only:
+        items.append({"priority": "critical", "protocol": "DKIM",
+                      "action": f"Allow SHA-256 on DKIM key {', '.join(_sha1_only)}",
+                      "plain_head": ("One of your email signing keys only accepts an old hash "
+                                     "that receivers refuse, so its signatures always fail."
+                                     if len(_sha1_only) == 1 else
+                                     f"{_count_word(len(_sha1_only))} of your email signing keys "
+                                     "only accept an old hash that receivers refuse, so their "
+                                     "signatures always fail."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "h=sha1 limits the key to SHA-1, which RFC 8301 forbids receivers to accept."})
+    _test_mode = dkim.get("dkim_test_mode") or []
+    if _test_mode:
+        items.append({"priority": "medium", "protocol": "DKIM",
+                      "action": f"Turn off DKIM test mode on {', '.join(_test_mode)}",
+                      "plain_head": ("A signing key is still marked as a test, so receivers "
+                                     "may ignore its signatures."),
+                      "who": WHO_EMAIL_PROVIDER,
+                      "impact": "t=y lets receivers treat mail signed with this key as unsigned (RFC 6376)."})
 
     # DKIM weak keys
     dkim_deep = dkim.get("dkim_deep", {})
@@ -6128,6 +6164,36 @@ def _dkim_retired_detail(selectors: List[Dict], business_risk) -> List[Dict]:
 
 
 def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool = False) -> Dict:
+    """The DKIM card, plus any selector CNAME that leads nowhere.
+
+    A CNAME into a domain nobody has registered outranks every other DKIM
+    outcome, a no-mail domain included: whoever registers that domain can
+    publish a key there and sign mail that passes DKIM, and so DMARC, as
+    this domain. Stale targets in a live zone are info lines only.
+    """
+    card = _transform_dkim_card(raw, domain, has_mx=has_mx, non_mail=non_mail)
+    dangling = (raw or {}).get("dangling_selectors") or []
+    if not dangling:
+        return card
+    card["dangling_selectors"] = dangling
+    unregistered = [d for d in dangling if d.get("status") == "unregistered"]
+    if unregistered and card.get("status") != "fail":
+        card["status"] = "fail"
+        card.pop("pill_label", None)
+        card["verdict"] = (
+            f"DKIM selector {unregistered[0]['selector']} points at an unregistered domain"
+            if len(unregistered) == 1 else
+            f"{len(unregistered)} DKIM selectors point at unregistered domains")
+    have = {d.get("text") for d in card.get("details") or []}
+    for issue in raw.get("issues") or []:
+        if issue.get("issue", "").startswith("DKIM selector points at"):
+            detail = _issue_to_detail(issue)
+            if detail["text"] not in have:
+                card.setdefault("details", []).append(detail)
+    return card
+
+
+def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool = False) -> Dict:
     """Only a positive non-mail declaration (RFC 7505 null MX, or a null ``v=spf1 -all`` SPF record) waives this check. Absent MX alone does not: send-only subdomains have no MX and still send real mail.
 
     Grades a live key. Reports retired keys as correctly retired. Reports
@@ -6419,6 +6485,8 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
     # Every key that failed to yield a size, whatever the reason. The three
     # reasons are distinguished in the detail line and the callout below.
     invalid_keys = []
+    test_mode_keys = []
+    sha1_only_keys = []
     risks_called_out = set()
     for sel in found:
         selector = sel.get("selector", "unknown")
@@ -6497,6 +6565,28 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
                 "text": f"{selector}: key found{vendor_str}"
             })
 
+        # Two key settings change what a receiver does with a valid
+        # signature. t=y: RFC 6376 section 3.6.1 lets receivers treat the
+        # mail as unsigned. h= without sha256: RFC 8301 forbids accepting
+        # SHA-1, so nothing signed with the key can pass.
+        _flags = [f.strip() for f in (_tag_value(sel_record, "t") or "").split(":")]
+        if "y" in _flags:
+            details.append({
+                "type": "warning",
+                "text": (f"{selector}: test mode is on (t=y), so receivers may treat mail "
+                         "signed with this key as unsigned. Remove t=y once signing works."),
+            })
+            test_mode_keys.append(selector)
+        _hashes = _tag_value(sel_record, "h")
+        if _hashes is not None and "sha256" not in [a.strip() for a in _hashes.split(":")]:
+            details.append({
+                "type": "error",
+                "text": (f"{selector}: the key accepts only h={_hashes} signatures. "
+                         "RFC 8301 forbids receivers from accepting SHA-1, so no signature "
+                         "made with this key can pass. Set h=sha256 or remove the h= tag."),
+            })
+            sha1_only_keys.append(selector)
+
     # One joined string, not one record block per selector: the generic
     # record-block renderer (app.js's renderCheckBody) takes a single
     # string per check, and a second render path just for DKIM was more
@@ -6523,9 +6613,9 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
 
     # Status
     status = "pass"
-    if weak_keys:
+    if weak_keys or test_mode_keys:
         status = "warn"
-    if invalid_keys:
+    if invalid_keys or sha1_only_keys:
         status = "fail"
     # Downgrade status if audit engine found errors or warnings
     if raw.get("syntax_errors") or any(i.get("severity") == "error" for i in raw.get("issues", [])):
@@ -6562,6 +6652,17 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
     fix = None
     if raw.get("syntax_errors"):
         fix = _first_fix(raw.get("syntax_errors", []))
+    elif sha1_only_keys:
+        fix = (
+            f"Republish <strong>{_e(', '.join(sha1_only_keys))}</strong> with "
+            "<strong>h=sha256</strong>, or without the h= tag, which allows every hash. "
+            "Your email provider's DKIM setup page gives the record to publish."
+        )
+    elif test_mode_keys:
+        fix = (
+            f"Remove <strong>t=y</strong> from <strong>{_e(', '.join(test_mode_keys))}</strong> "
+            "once you have confirmed signed mail passes."
+        )
     elif weak_keys:
         # Name the sizes actually measured. This said "use 1024-bit keys"
         # whatever the real size was, so a card whose own detail line read
@@ -6600,6 +6701,8 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         "name": "DKIM",
         "status": status,
         "verdict": verdict,
+        "dkim_test_mode": test_mode_keys,
+        "dkim_sha1_only": sha1_only_keys,
         "record": _live_records or None,
         "configured": True,
         "explanation": explanation,

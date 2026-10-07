@@ -172,6 +172,37 @@ DKIM_SELECTOR_VENDORS: Dict[str, str] = {
 }
 
 
+# Apex TXT verification tokens that only a mail service asks for, as a
+# regex on the start of the record -> vendor. Tokens for services that do
+# not send or receive mail as the domain (Stripe, DocuSign, Atlassian
+# sign-in) are left out, and so is google-site-verification: it is mostly
+# Search Console, not Google Workspace. Prefixes seen on live domains on
+# 2026-10-07 (github.com MS=, proton.me protonmail-verification, klaviyo.com
+# mgverify and klaviyo-site-verification, rei.com amazonses:, target.com
+# brevo-code: and pardot<id>=, uber.com atlassian-sending-domain-verification).
+VERIFICATION_TXT_VENDORS = (
+    (r"ms=(ms)?[0-9a-f]{6,}$", "Microsoft 365"),
+    (r"protonmail-verification=", "Proton Mail"),
+    (r"zoho-verification=", "Zoho Mail"),
+    (r"mgverify=", "Mailgun"),
+    (r"amazonses:", "Amazon SES"),
+    (r"(brevo|sendinblue)-code:", "Brevo"),
+    (r"klaviyo-site-verification=", "Klaviyo"),
+    (r"pardot\d+=", "Salesforce Account Engagement"),
+    (r"atlassian-sending-domain-verification=", "Atlassian"),
+)
+
+
+def match_verification_txt(record: Optional[str]) -> Optional[str]:
+    """Vendor whose verification token this apex TXT record is, if any."""
+    import re
+    r = (record or "").strip().lower()
+    for pattern, vendor in VERIFICATION_TXT_VENDORS:
+        if re.match(pattern, r):
+            return vendor
+    return None
+
+
 def match_host(host: Optional[str], table: Dict[str, str]) -> Optional[str]:
     """Vendor for host by the longest pattern it equals or ends in on a
     label boundary. "sendgrid.net.attacker.example" is not SendGrid."""

@@ -303,6 +303,10 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         dkim_result = "not confirmed"
     else:
         dkim_result = "none"
+    # The DKIM card reads a no-mail domain with no live key as "Does not
+    # apply"; this row said "None, not configured" beside it.
+    if is_no_mail and not found_selectors:
+        dkim_result = "not applicable"
 
     # --- DMARC record and alignment modes ---
     dmarc_record = raw_dmarc.get("record")
