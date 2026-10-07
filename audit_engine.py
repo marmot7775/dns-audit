@@ -5453,6 +5453,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 tree_walk_result,
                 dkim_confirmed=_dkim_card.get("status") != "unavailable",
                 is_no_mail=is_defensive,
+                # The DKIM card's own outbound rule, not is_defensive: a null
+                # MX with a sending SPF record still sends, and signs.
+                dkim_not_applicable=sends_no_mail,
             )
         except Exception:
             log.debug("DMARC evaluation failed", exc_info=True)

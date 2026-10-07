@@ -259,36 +259,67 @@ def _selectors_from_vendors(vendors: List[Dict], base_selectors: List[str]) -> L
     return priority_selectors + remaining
 
 
-def _classify_dangling(dangling: List[Dict]) -> List[Dict]:
+# One budget for every registrable-domain check together, run in parallel
+# after the probe waves, so dangling targets cannot hold an audit open.
+_DANGLING_NS_BUDGET = 3.0
+
+
+def _classify_dangling(dangling: List[Dict], found: List[Dict]) -> List[Dict]:
     """Sort dangling DKIM CNAMEs by how much they matter.
 
     unregistered: the target's registrable domain does not exist, so anyone
     can register it and publish a key that signs as this domain.
-    stale: the target sits in a live zone, usually a sender that was
+    stale: the target sits in a zone that exists, usually a sender that was
     dropped; only that zone's owner can publish there.
-    Microsoft 365 is left out: it publishes both selector CNAMEs and fills
-    the second slot only when it rotates keys, so an empty target there is
-    the normal state, and onmicrosoft.com is not anyone else's to claim.
+    unknown: the registrable-domain lookup did not answer in time.
+    microsoft_unfilled: Microsoft 365 publishes both selector CNAMEs and fills
+    the second only when it rotates keys, so one empty slot is normal and is
+    not reported. Both empty, with no live Microsoft key, usually means DKIM
+    signing was never turned on in Microsoft 365. onmicrosoft.com is not
+    anyone else's to claim, so it is never "unregistered".
     """
+    from concurrent.futures import ThreadPoolExecutor, wait
     from dmarc_tree_walk import _tld_extract
     from vendor_patterns import DKIM_CNAME_VENDORS, match_host
 
     out = []
+    microsoft = []
+    others = []
     for d in dangling:
         vendor = match_host(d['cname_target'], DKIM_CNAME_VENDORS)
         if vendor == 'Microsoft 365':
-            continue
-        ext = _tld_extract(d['cname_target'])
-        registrable = ext.top_domain_under_public_suffix
-        status = 'stale'
-        if registrable:
-            try:
-                get_uncached_resolver(3).resolve(registrable, 'NS')
-            except dns.resolver.NXDOMAIN:
-                status = 'unregistered'
-            except dns.exception.DNSException:
-                pass
-        out.append({**d, 'vendor': vendor, 'registrable': registrable or '', 'status': status})
+            microsoft.append(d)
+        else:
+            others.append({**d, 'vendor': vendor,
+                           'registrable': _tld_extract(d['cname_target']).top_domain_under_public_suffix or ''})
+
+    live_microsoft = any(
+        match_host(f.get('cname_target'), DKIM_CNAME_VENDORS) == 'Microsoft 365' for f in found)
+    if len(microsoft) >= 2 and not live_microsoft:
+        out.append({**microsoft[0], 'selector': ', '.join(m['selector'] for m in microsoft),
+                    'vendor': 'Microsoft 365', 'registrable': '', 'status': 'microsoft_unfilled'})
+
+    def _ns(name):
+        try:
+            get_uncached_resolver(2).resolve(name, 'NS')
+            return 'stale'
+        except dns.resolver.NXDOMAIN:
+            return 'unregistered'
+        except dns.exception.DNSException:
+            return 'unknown'
+
+    names = sorted({d['registrable'] for d in others if d['registrable']})
+    verdict = {}
+    if names:
+        pool = ThreadPoolExecutor(max_workers=min(4, len(names)))
+        futures = {pool.submit(_ns, n): n for n in names}
+        done, _late = wait(futures, timeout=_DANGLING_NS_BUDGET)
+        for f in done:
+            verdict[futures[f]] = f.result()
+        pool.shutdown(wait=False, cancel_futures=True)
+    for d in others:
+        d['status'] = verdict.get(d['registrable'], 'unknown')
+        out.append(d)
     return out
 
 
@@ -597,7 +628,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
 
     result['unanswered_count'] = unanswered
     dangling.sort(key=lambda r: selector_order.get(r['selector'], 999))
-    result['dangling_selectors'] = _classify_dangling(dangling)
+    result['dangling_selectors'] = _classify_dangling(dangling, found)
     for d in result['dangling_selectors']:
         if d['status'] == 'stale':
             result.setdefault('issues', []).append({
@@ -607,6 +638,27 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                     f"{d['selector']}._domainkey is a CNAME to {d['cname_target']}, "
                     "which does not exist. It is usually a sender you no longer use. "
                     "If so, remove the CNAME."
+                ),
+            })
+        elif d['status'] == 'unknown':
+            result.setdefault('issues', []).append({
+                'severity': 'info',
+                'issue': 'DKIM selector points at a missing key',
+                'plain_english': (
+                    f"{d['selector']}._domainkey is a CNAME to {d['cname_target']}, "
+                    "which does not exist. This audit could not check whether "
+                    f"{d['registrable'] or 'its domain'} is registered. Remove the "
+                    "CNAME if you no longer use this sender."
+                ),
+            })
+        elif d['status'] == 'microsoft_unfilled':
+            result.setdefault('issues', []).append({
+                'severity': 'info',
+                'issue': 'DKIM selector points at a missing key',
+                'plain_english': (
+                    f"Microsoft 365 selectors ({d['selector']}) are published, but "
+                    "neither points at a key yet. That usually means DKIM signing is "
+                    "not turned on for this domain in Microsoft 365."
                 ),
             })
         elif d['status'] == 'unregistered':

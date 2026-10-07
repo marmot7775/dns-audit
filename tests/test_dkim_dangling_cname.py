@@ -101,3 +101,25 @@ def test_microsoft_rotation_slot_is_not_reported(monkeypatch):
 def test_plain_nxdomain_is_not_dangling(monkeypatch):
     raw = _run(_zone(keys=["s1"]), monkeypatch)
     assert raw["dangling_selectors"] == []
+
+
+def test_both_microsoft_slots_empty_is_an_info_line(monkeypatch):
+    zone = _zone(dangling=[
+        ("selector1", "selector1-dangle-test._domainkey.contoso.onmicrosoft.com"),
+        ("selector2", "selector2-dangle-test._domainkey.contoso.onmicrosoft.com"),
+    ], keys=["s1"])
+    raw = _run(zone, monkeypatch)
+    [d] = raw["dangling_selectors"]
+    assert d["status"] == "microsoft_unfilled"
+    card = transform_dkim(raw, DOMAIN)
+    assert card["status"] == "pass"
+    assert any("not turned on" in x["text"] for x in card["details"])
+
+
+def test_unanswered_ns_lookup_is_unknown_not_stale(monkeypatch):
+    zone = _zone(dangling=[("k1", "dkim.flaky-example.com")], keys=["s1"])
+    zone.fail("flaky-example.com", "NS")
+    raw = _run(zone, monkeypatch)
+    [d] = raw["dangling_selectors"]
+    assert d["status"] == "unknown"
+    assert transform_dkim(raw, DOMAIN)["status"] == "pass"

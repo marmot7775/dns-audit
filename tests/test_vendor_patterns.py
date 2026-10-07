@@ -114,7 +114,7 @@ def test_verification_tokens_name_mail_services_only():
 
 
 def test_verification_txt_feeds_the_panel_without_a_side():
-    vendors = _fp(apex_txt=["MS=ms12345678", "google-site-verification=x", "mgverify=27a"])
+    vendors = _fp(apex_txt=["MS=ms12345678", "google-site-verification=x", "mgverify=2738a5123a"])
     assert set(vendors) == {"Microsoft 365", "Mailgun"}
     out = audit_engine._format_vendors([vendors["Mailgun"]])
     assert out[0]["sources"] == ["TXT"] and out[0]["detected_via"] is None
@@ -124,3 +124,12 @@ def test_only_authorizing_includes_name_a_vendor():
     vendors = _fp(spf_record="v=spf1 include:_spf.google.com -include:sendgrid.net "
                              "~include:mailgun.org +include:spf.mtasv.net -all")
     assert set(vendors) == {"Google Workspace", "Postmark"}
+
+
+def test_verification_prefix_needs_a_token():
+    from vendor_patterns import match_verification_txt as m
+    assert m("mgverify=") is None
+    assert m("amazonses:") is None
+    assert m("pardot123=") is None
+    assert m("MS=") is None
+    assert m("MS=ms12345678") == "Microsoft 365"

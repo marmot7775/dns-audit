@@ -53,6 +53,16 @@ def test_dmarc_eval_dkim_row_does_not_apply_on_a_no_mail_domain():
     from spf_execution_engine import build_dmarc_evaluation
     ev = build_dmarc_evaluation(
         {"record": "v=DMARC1; p=reject", "policy": "reject"},
-        {"record": "v=spf1 -all"}, {"found_selectors": []}, None, is_no_mail=True)
+        {"record": "v=spf1 -all"}, {"found_selectors": []}, None,
+        is_no_mail=True, dkim_not_applicable=True)
     assert ev["dkim_result"] == "not applicable"
     assert ev["dkim_aligned"] is False
+
+
+def test_null_mx_alone_leaves_the_dkim_row_alone():
+    from spf_execution_engine import build_dmarc_evaluation
+    ev = build_dmarc_evaluation(
+        {"record": "v=DMARC1; p=reject", "policy": "reject"},
+        {"record": "v=spf1 include:_spf.google.com -all"}, {"found_selectors": []}, None,
+        dkim_confirmed=False, is_no_mail=True, dkim_not_applicable=False)
+    assert ev["dkim_result"] == "not confirmed"
