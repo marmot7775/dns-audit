@@ -26,7 +26,7 @@ from conftest import FakeZone, fake_dns
 from test_dkim_discovery_starvation import DKIM_RECORD
 import audit_engine
 import spf_intelligence
-from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS, GENERIC_SELECTORS
+from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS, ESP_SELECTORS, GENERIC_SELECTORS
 from spf_intelligence import _selectors_from_vendors, detect_vendors_from_spf
 
 DOMAIN = "drops.test"
@@ -98,9 +98,10 @@ def test_a_zone_that_drops_queries_finishes_in_budget_and_reads_not_confirmed():
     card = _dkim_card(result)
 
     assert elapsed < 10, f"audit took {elapsed:.1f}s against a dropping zone"
-    # The priority wave runs in full, the generic fallback never starts.
+    # The priority wave (the capped 40 plus ESP_SELECTORS) runs in full,
+    # the generic fallback never starts.
     probed = len(_dkim_queries(zone))
-    assert probed <= 40, f"{probed} selector probes; the sweep did not stop"
+    assert probed <= 40 + len(ESP_SELECTORS), f"{probed} selector probes; the sweep did not stop"
     assert card["status"] == "unavailable", card["verdict"]
     assert card["pill_label"] == "Not confirmed"
     assert card["verdict"] == "DKIM discovery did not finish"
