@@ -22,6 +22,7 @@ Each card looks like:
 }
 """
 
+from vendor_patterns import DKIM_SELECTOR_VENDORS, dkim_key_vendor
 import re
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
@@ -6424,11 +6425,10 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         sel_record = sel.get("record", "")
         # Discovery tags a key with a vendor only when SPF or MX named that
         # vendor. ESP selectors are probed on every domain, so a k1 key at a
-        # domain whose SPF never mentions Mailchimp is credited from its name,
-        # the same map the key analysis table reads. "Generic" is not a sender.
-        vendor = sel.get("vendor") or _DKIM_SELECTOR_PROVIDERS.get(selector.lower())
-        if vendor == "Generic":
-            vendor = None
+        # domain whose SPF never mentions Mailchimp is credited from where its
+        # CNAME points, else from its name, as the key table and vendor panel
+        # do. "Generic" is not a sender.
+        vendor = sel.get("vendor") or dkim_key_vendor(selector, sel.get("cname_target"))
         key_type = sel.get("key_type", "")
 
         # Analyze key strength
@@ -6621,50 +6621,9 @@ def _is_microsoft_dkim_cname(target) -> bool:
     return t.endswith(".dkim.mail.microsoft") or t.endswith(".onmicrosoft.com")
 
 
-# selector1 and selector2 are not here. Microsoft 365 publishes them only as
-# CNAMEs (a TXT key at the selector is not supported), so a TXT key under that
-# name is evidence against Microsoft; they are attributed from the CNAME.
-#
-# The ESP block names the vendor for each comprehensive_selectors.ESP_SELECTORS
-# entry, the names Doc 93 verified against vendor docs or live DNS. "api"
-# (Elastic Email) is the one left out: the name is too common to credit to
-# one vendor on the name alone.
-_DKIM_SELECTOR_PROVIDERS = {
-    "google": "Google Workspace", "gapps": "Google Workspace",
-    "k1": "Mailchimp", "k2": "Mailchimp", "k3": "Mailchimp",
-    "mandrill": "Mandrill", "mte1": "Mandrill", "mte2": "Mandrill",
-    "s1": "SendGrid", "s2": "SendGrid",
-    "ses": "Amazon SES",
-    "cm": "Campaign Monitor",
-    "zendesk1": "Zendesk", "zendesk2": "Zendesk",
-    "hubspot": "HubSpot", "hs1": "HubSpot", "hs2": "HubSpot",
-    "sf": "Salesforce", "sf1": "Salesforce", "sf2": "Salesforce",
-    "protonmail": "Proton Mail", "protonmail2": "Proton Mail", "protonmail3": "Proton Mail",
-    "mg": "Mailgun",
-    "dkim": "Generic",
-    "default": "Generic",
-    "sendgrid": "SendGrid", "smtpapi": "SendGrid",
-    "fm1": "Fastmail", "fm2": "Fastmail", "fm3": "Fastmail",
-    "mimecast": "Mimecast",
-    "pphosted": "Proofpoint",
-    "everlytickey1": "Everlytic", "everlytickey2": "Everlytic",
-    "kl": "Klaviyo", "kl2": "Klaviyo", "km1": "Klaviyo", "km2": "Klaviyo",
-    "kt1": "Klaviyo", "kt2": "Klaviyo", "ks1": "Klaviyo", "ks2": "Klaviyo",
-    "ctct1": "Constant Contact", "ctct2": "Constant Contact",
-    "mailjet": "Mailjet",
-    "brevo1": "Brevo", "brevo2": "Brevo",
-    "acdkim1": "ActiveCampaign", "acdkim2": "ActiveCampaign",
-    "aweber_key_a": "AWeber", "aweber_key_b": "AWeber", "aweber_key_c": "AWeber",
-    "litesrv": "MailerLite",
-    "cka": "Kit",
-    "e2ma-k1": "Emma", "e2ma-k2": "Emma", "e2ma-k3": "Emma",
-    "sailthru": "Sailthru",
-    "resend": "Resend",
-    "pepipost": "Pepipost",
-    "strong1": "Help Scout", "strong2": "Help Scout",
-    "intercom": "Intercom",
-    "gor": "Gorgias", "gor2": "Gorgias",
-}
+# One table with the vendor panel (vendor_patterns.py), so the card, the key
+# table and the panel cannot name different senders for the same key.
+_DKIM_SELECTOR_PROVIDERS = DKIM_SELECTOR_VENDORS
 
 
 def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
@@ -6787,10 +6746,9 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
                 dkim_tags.append(tag_info)
 
         # Provider from selector name
-        provider = vendor or _DKIM_SELECTOR_PROVIDERS.get(selector.lower())
+        provider = vendor or dkim_key_vendor(selector, sel.get("cname_target"))
         if not provider and selector.lower() in ("selector1", "selector2"):
-            provider = ("Microsoft 365" if _is_microsoft_dkim_cname(sel.get("cname_target"))
-                        else "Vendor: unknown")
+            provider = "Vendor: unknown"
 
         # Per-key rotation status, derived from the same signals that drive
         # the shared rotation_guidance text below.
