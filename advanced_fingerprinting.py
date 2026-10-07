@@ -25,6 +25,14 @@ from dns_tools import get_resolver
 from typing import Dict, Optional
 from collections import defaultdict
 
+from vendor_patterns import (
+    DKIM_CNAME_VENDORS,
+    MX_VENDORS,
+    SPF_INCLUDE_VENDORS,
+    dkim_key_vendor,
+    match_host,
+)
+
 class AdvancedVendorFingerprinter:
     """
     Multi-technique vendor fingerprinting with confidence scoring.
@@ -67,6 +75,7 @@ class AdvancedVendorFingerprinter:
         # Run all detection techniques
         self._fingerprint_spf()
         self._fingerprint_mx()
+        self._fingerprint_dkim()
         self._fingerprint_dmarc()
         self._fingerprint_tls_rpt()
         self._fingerprint_dns_patterns()
@@ -143,6 +152,31 @@ class AdvancedVendorFingerprinter:
                 if self.verbose:
                     print(f"  ✓ {vendor} (from {mx_host})")
     
+    def _fingerprint_dkim(self):
+        """Vendors behind the DKIM keys the audit found. Never queries: the
+        keys come from the DKIM check via prefetch, or there are none.
+
+        A key whose selector is a CNAME into the vendor's zone is the vendor
+        hosting it, as strong as an SPF include. A TXT key credited by its
+        selector name alone (k1, s1, mandrill) is weaker: another sender
+        could pick the same name.
+        """
+        for sel in self.prefetch.get('dkim_selectors') or []:
+            selector = sel.get('selector') or ''
+            target = sel.get('cname_target')
+            by_cname = match_host(target, DKIM_CNAME_VENDORS)
+            vendor = dkim_key_vendor(selector, target)
+            if not vendor:
+                continue
+            self.signals.append({
+                'technique': 'DKIM Key',
+                'vendor': vendor,
+                'evidence': f'{selector}._domainkey' + (f' -> {target}' if by_cname else ''),
+                'confidence': 0.95 if by_cname else 0.70,
+            })
+            if self.verbose:
+                print(f"  ✓ {vendor} (DKIM selector {selector})")
+
     def _fingerprint_dmarc(self):
         """DMARC record analysis - policy and reporting"""
         if self.verbose:
@@ -295,44 +329,13 @@ class AdvancedVendorFingerprinter:
         return bool(c) and bool(p) and (c == p or c.endswith("." + p))
 
     def _match_spf_vendor(self, include: str) -> Optional[str]:
-        """Map SPF includes to vendors"""
-        spf_map = {
-            '_spf.google.com': 'Google Workspace',
-            'spf.protection.outlook.com': 'Microsoft 365',
-            '_spf.pphosted.com': 'Proofpoint',
-            '_spf.mimecast.com': 'Mimecast',
-            'servers.mcsv.net': 'Mailchimp',
-            'sendgrid.net': 'SendGrid',
-            'amazonses.com': 'Amazon SES',
-            'mailgun.org': 'Mailgun',
-            '_spf.hubspot.com': 'HubSpot',
-            '_spf.marketo.com': 'Marketo',
-            'mail.zendesk.com': 'Zendesk',
-            'spf.mailkit.eu': 'Omnivery/Mailkit',
-            'mailkit.eu': 'Omnivery/Mailkit',
-            'omnivery.com': 'Omnivery',
-        }
-        
-        for pattern, vendor in spf_map.items():
-            if self._matches_suffix(include, pattern):
-                return vendor
-        return None
-    
+        """Map SPF includes to vendors, from the table the DKIM card shares."""
+        return match_host(include, SPF_INCLUDE_VENDORS)
+
     def _match_mx_vendor(self, mx_host: str) -> Optional[str]:
         """Map MX records to vendors"""
-        mx_patterns = {
-            'google.com': 'Google Workspace',
-            'outlook.com': 'Microsoft 365',
-            'protection.outlook.com': 'Microsoft 365',
-            'pphosted.com': 'Proofpoint',
-            'mimecast.com': 'Mimecast',
-        }
-        
-        for pattern, vendor in mx_patterns.items():
-            if self._matches_suffix(mx_host, pattern):
-                return vendor
-        return None
-    
+        return match_host(mx_host, MX_VENDORS)
+
     def _match_reporting_vendor(self, email: str) -> Optional[str]:
         """Map reporting destinations to vendors"""
         domain = email.split('@')[-1] if '@' in email else email
@@ -360,8 +363,10 @@ class AdvancedVendorFingerprinter:
         # Calculate scores
         results = []
         for vendor, signals in vendor_signals.items():
-            # Base confidence (average)
-            base_conf = sum(s['confidence'] for s in signals) / len(signals)
+            # Base confidence: the strongest signal. An average let a second,
+            # weaker signal lower the score, so an SPF include plus a DKIM key
+            # known only by its name read less certain than the include alone.
+            base_conf = max(s['confidence'] for s in signals)
             
             # Bonus for multiple signals (+5% per signal, max +20%)
             signal_bonus = min(len(signals) * 0.05, 0.20)
