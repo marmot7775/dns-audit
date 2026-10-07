@@ -997,10 +997,10 @@ function renderResults(data) {
             // SPF authorizes a vendor to send as this domain (outbound); MX
             // names who receives its mail (inbound). Naming the vendor
             // alone reads as "handles your mail" when it may be one side.
-            const via = (v.sources && v.sources.length) ? v.sources.join(', ') : 'SPF/MX';
+            const via = (v.sources && v.sources.length) ? v.sources.join(', ') : '';
             const detail = v.detected_via
-                ? `Detected via ${escapeHtml(via)} (${escapeHtml(v.detected_via)})`
-                : 'Detected via DNS records';
+                ? `Detected via ${escapeHtml(via || 'SPF/MX')} (${escapeHtml(v.detected_via)})`
+                : via ? `Detected via ${escapeHtml(via)}` : 'Detected via DNS records';
             card.innerHTML = `
                 <div class="vendor-name">${escapeHtml(v.name)}</div>
                 <div class="vendor-confidence">${detail}</div>
@@ -3519,7 +3519,8 @@ function renderDmarcEvaluation(ev) {
         : (ev.spf_result === 'none' || spfNull) ? ''
             : 'tag-fail';
     const dkimPillClass = (ev.dkim_result === 'pass' || ev.dkim_result === 'configured') ? 'tag-pass'
-        : (ev.dkim_result === 'none' || ev.dkim_result === 'not confirmed') ? ''
+        : (ev.dkim_result === 'none' || ev.dkim_result === 'not confirmed'
+            || ev.dkim_result === 'not applicable') ? ''
             : 'tag-fail';
     const dmarcPillClass = (ev.dmarc_result === 'pass' || ev.dmarc_result === 'configured') ? 'tag-pass'
         : ev.dmarc_result === 'not confirmed' ? '' : 'tag-fail';
@@ -3533,7 +3534,8 @@ function renderDmarcEvaluation(ev) {
     const spfAlignClass = ev.spf_aligned ? 'de-aligned' : 'de-not-aligned';
     const dkimAlignIcon = ev.dkim_aligned ? `${ICON.pass} alignment possible`
         : ev.dkim_result === 'not confirmed' ? 'not confirmed by probing'
-            : `${ICON.fail} not configured`;
+            : ev.dkim_result === 'not applicable' ? 'does not apply'
+                : `${ICON.fail} not configured`;
     const dkimAlignClass = ev.dkim_aligned ? 'de-aligned' : 'de-not-aligned';
 
     // Beside an enforcing policy, a bare "no action requested" read as the
