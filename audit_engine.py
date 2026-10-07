@@ -6040,6 +6040,16 @@ def _build_resilience_analysis(
             "Receivers will return PermError, which means SPF cannot provide a DMARC alignment path. "
             "This leaves DKIM as the only viable authentication mechanism."
         )
+    elif _publishes_null_spf(raw_spf):
+        # v=spf1 -all authorizes nobody. The generic note below said SPF
+        # "verifies that the sending server's IP address is authorized" and
+        # warned about forwarding, for a record that authorizes no server.
+        spf_status = "pass"
+        spf_note = (
+            "The SPF record is v=spf1 -all, which authorizes no server to send "
+            "mail as this domain. That is correct for a domain that sends no "
+            "mail: any message claiming to come from it fails SPF."
+        )
     elif spf_record:
         spf_status = "pass"
         spf_note = (
