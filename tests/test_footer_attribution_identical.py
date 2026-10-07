@@ -113,6 +113,10 @@ def test_the_footer_version_matches_the_packaged_version():
 
 def test_footer_attribution_says_what_neil_does():
     block = _attribution(os.path.join(STATIC, "index.html"))
+    # Cloudflare's email_off markers keep the address readable (see
+    # test_cloudflare_email_off.py); the checks below read what visitors see.
+    assert f'<!--email_off--><a href="mailto:{ALIAS}"' in block
+    block = block.replace("<!--email_off-->", "").replace("<!--/email_off-->", "")
     assert block.startswith('<div class="footer-attribution">Built by Neil Anuskiewicz.')
     for service in ("email deliverability", "email security", "DNS"):
         assert service in block, service
