@@ -6437,7 +6437,8 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         strength = key_analysis.get("status", "unknown")
 
         vendor_str = f" ({vendor})" if vendor else ""
-        if vendor:
+        # A retired key says who signed once, not who sends now.
+        if vendor and key_analysis.get("reason") != "revoked":
             vendor_names.add(vendor)
 
         # A revoked selector alongside a live one is a key that was rotated

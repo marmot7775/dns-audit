@@ -43,3 +43,7 @@ def test_softfail_all_is_not_null_spf():
 def test_ordinary_record_keeps_the_generic_note():
     row = _spf_row("v=spf1 include:_spf.google.com -all", lookups=4)
     assert row["note"].startswith("SPF record is valid (4/10 lookups used).")
+
+
+def test_null_spf_with_extra_spaces_between_terms():
+    assert "authorizes no server" in _spf_row("v=spf1  -all")["note"]
