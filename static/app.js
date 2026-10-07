@@ -997,8 +997,9 @@ function renderResults(data) {
             // SPF authorizes a vendor to send as this domain (outbound); MX
             // names who receives its mail (inbound). Naming the vendor
             // alone reads as "handles your mail" when it may be one side.
+            const via = (v.sources && v.sources.length) ? v.sources.join(', ') : 'SPF/MX';
             const detail = v.detected_via
-                ? `Detected via SPF/MX (${escapeHtml(v.detected_via)})`
+                ? `Detected via ${escapeHtml(via)} (${escapeHtml(v.detected_via)})`
                 : 'Detected via DNS records';
             card.innerHTML = `
                 <div class="vendor-name">${escapeHtml(v.name)}</div>
