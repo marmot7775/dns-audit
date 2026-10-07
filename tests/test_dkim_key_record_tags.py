@@ -239,3 +239,11 @@ def test_pdf_carries_the_row_and_the_key_table_verdict(audit):
     assert f"Set v=DKIM1 on DKIM key {SELECTOR}" in text
     assert "names a version receivers do not accept" in text
     assert "Wrong version." in text
+
+
+def test_wrong_version_out_of_place_still_fails():
+    # Section 6.1.2 step 5: "the Verifier MUST ignore keys with a version
+    # code ("v=" tag) that they do not implement", wherever the tag sits.
+    card = _card(f"k=rsa; v=DKIM2; p={P}")
+    assert card["status"] == "fail"
+    assert "v=DKIM2" in _texts(card)
