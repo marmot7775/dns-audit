@@ -4589,7 +4589,10 @@ def _publishes_null_mx(raw_mx: Optional[Dict]) -> bool:
 
 
 def _publishes_null_spf(raw_spf: Optional[Dict]) -> bool:
-    return ((raw_spf or {}).get("record") or "").strip().lower() == "v=spf1 -all"
+    # Terms compared, not the raw string: "v=spf1  -all" is the same record,
+    # and result_transformer._is_null_spf already reads it that way.
+    record = " ".join(((raw_spf or {}).get("record") or "").split()).lower()
+    return record == "v=spf1 -all"
 
 
 def _has_working_mx(raw_mx: Optional[Dict]) -> bool:
