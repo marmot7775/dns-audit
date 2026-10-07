@@ -6422,7 +6422,13 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
     for sel in found:
         selector = sel.get("selector", "unknown")
         sel_record = sel.get("record", "")
-        vendor = sel.get("vendor")
+        # Discovery tags a key with a vendor only when SPF or MX named that
+        # vendor. ESP selectors are probed on every domain, so a k1 key at a
+        # domain whose SPF never mentions Mailchimp is credited from its name,
+        # the same map the key analysis table reads. "Generic" is not a sender.
+        vendor = sel.get("vendor") or _DKIM_SELECTOR_PROVIDERS.get(selector.lower())
+        if vendor == "Generic":
+            vendor = None
         key_type = sel.get("key_type", "")
 
         # Analyze key strength
@@ -6548,7 +6554,8 @@ def transform_dkim(raw: Dict, domain: str, has_mx: bool = True, non_mail: bool =
         "it does not test live message signatures."
     ).format(domain=_e(domain))
     if raw.get("discovery_method") == "spf_intelligent":
-        explanation += " Selectors were targeted using SPF-based sender discovery."
+        explanation += (" Selectors were chosen from the senders named in SPF, plus "
+                        "the fixed selectors common email services use.")
 
     # Fix
     fix = None
@@ -6617,11 +6624,16 @@ def _is_microsoft_dkim_cname(target) -> bool:
 # selector1 and selector2 are not here. Microsoft 365 publishes them only as
 # CNAMEs (a TXT key at the selector is not supported), so a TXT key under that
 # name is evidence against Microsoft; they are attributed from the CNAME.
+#
+# The ESP block names the vendor for each comprehensive_selectors.ESP_SELECTORS
+# entry, the names Doc 93 verified against vendor docs or live DNS. "api"
+# (Elastic Email) is the one left out: the name is too common to credit to
+# one vendor on the name alone.
 _DKIM_SELECTOR_PROVIDERS = {
     "google": "Google Workspace", "gapps": "Google Workspace",
     "k1": "Mailchimp", "k2": "Mailchimp", "k3": "Mailchimp",
-    "mandrill": "Mandrill",
-    "s1": "Generic (Exchange)", "s2": "Generic (Exchange)",
+    "mandrill": "Mandrill", "mte1": "Mandrill", "mte2": "Mandrill",
+    "s1": "SendGrid", "s2": "SendGrid",
     "ses": "Amazon SES",
     "cm": "Campaign Monitor",
     "zendesk1": "Zendesk", "zendesk2": "Zendesk",
@@ -6631,11 +6643,27 @@ _DKIM_SELECTOR_PROVIDERS = {
     "mg": "Mailgun",
     "dkim": "Generic",
     "default": "Generic",
-    "sendgrid": "SendGrid", "smtpapi": "SendGrid", "s1._domainkey": "SendGrid",
+    "sendgrid": "SendGrid", "smtpapi": "SendGrid",
     "fm1": "Fastmail", "fm2": "Fastmail", "fm3": "Fastmail",
     "mimecast": "Mimecast",
     "pphosted": "Proofpoint",
     "everlytickey1": "Everlytic", "everlytickey2": "Everlytic",
+    "kl": "Klaviyo", "kl2": "Klaviyo", "km1": "Klaviyo", "km2": "Klaviyo",
+    "kt1": "Klaviyo", "kt2": "Klaviyo", "ks1": "Klaviyo", "ks2": "Klaviyo",
+    "ctct1": "Constant Contact", "ctct2": "Constant Contact",
+    "mailjet": "Mailjet",
+    "brevo1": "Brevo", "brevo2": "Brevo",
+    "acdkim1": "ActiveCampaign", "acdkim2": "ActiveCampaign",
+    "aweber_key_a": "AWeber", "aweber_key_b": "AWeber", "aweber_key_c": "AWeber",
+    "litesrv": "MailerLite",
+    "cka": "Kit",
+    "e2ma-k1": "Emma", "e2ma-k2": "Emma", "e2ma-k3": "Emma",
+    "sailthru": "Sailthru",
+    "resend": "Resend",
+    "pepipost": "Pepipost",
+    "strong1": "Help Scout", "strong2": "Help Scout",
+    "intercom": "Intercom",
+    "gor": "Gorgias", "gor2": "Gorgias",
 }
 
 
