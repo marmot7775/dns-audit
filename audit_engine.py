@@ -2451,6 +2451,10 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         result["lookup_target"] = domain
         return result
 
+    # Kept for vendor fingerprinting: verification tokens at the apex name
+    # mail services the SPF record may not (a hosted or flattened SPF, or a
+    # vendor that sends from its own Return-Path).
+    result["apex_txt"] = [r for r in all_txt if not is_spf_record(r)]
     spf_records = [r for r in all_txt if is_spf_record(r)]
 
     # A record that starts with v=spf1 but fails the version match, most
@@ -5660,6 +5664,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             # Live keys only: a retired selector (empty p=) says who signed
             # once, not who signs now.
             "dkim_selectors": _live_dkim_selectors(raw_results.get("dkim")),
+            "apex_txt": _raw_spf.get("apex_txt") or [],
         }
         # Only the subdomain probe still queries, and it is not worth a card of
         # its own, so the whole call gets a hard ceiling rather than running
@@ -5948,7 +5953,8 @@ def _live_dkim_selectors(raw_dkim: Optional[Dict]) -> List[Dict]:
 
 
 # Record type each fingerprint technique reads, in the order the panel names them.
-_VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DKIM"))
+_VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DKIM"),
+                   ("Verification TXT", "TXT"))
 
 
 def _format_vendors(fp_vendors: List) -> List[Dict]:

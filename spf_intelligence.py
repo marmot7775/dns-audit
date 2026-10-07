@@ -259,6 +259,39 @@ def _selectors_from_vendors(vendors: List[Dict], base_selectors: List[str]) -> L
     return priority_selectors + remaining
 
 
+def _classify_dangling(dangling: List[Dict]) -> List[Dict]:
+    """Sort dangling DKIM CNAMEs by how much they matter.
+
+    unregistered: the target's registrable domain does not exist, so anyone
+    can register it and publish a key that signs as this domain.
+    stale: the target sits in a live zone, usually a sender that was
+    dropped; only that zone's owner can publish there.
+    Microsoft 365 is left out: it publishes both selector CNAMEs and fills
+    the second slot only when it rotates keys, so an empty target there is
+    the normal state, and onmicrosoft.com is not anyone else's to claim.
+    """
+    from dmarc_tree_walk import _tld_extract
+    from vendor_patterns import DKIM_CNAME_VENDORS, match_host
+
+    out = []
+    for d in dangling:
+        vendor = match_host(d['cname_target'], DKIM_CNAME_VENDORS)
+        if vendor == 'Microsoft 365':
+            continue
+        ext = _tld_extract(d['cname_target'])
+        registrable = ext.top_domain_under_public_suffix
+        status = 'stale'
+        if registrable:
+            try:
+                get_uncached_resolver(3).resolve(registrable, 'NS')
+            except dns.resolver.NXDOMAIN:
+                status = 'unregistered'
+            except dns.exception.DNSException:
+                pass
+        out.append({**d, 'vendor': vendor, 'registrable': registrable or '', 'status': status})
+    return out
+
+
 def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selectors: int = 40,
                      mx_hosts: Optional[List[str]] = None,
                      progress_callback: Optional[Callable[[int], None]] = None,
@@ -466,10 +499,23 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
             # No answer at all. Not the same as NXDOMAIN: the name may hold a
             # key the server never got round to telling us about.
             return _UNANSWERED
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
+        except dns.resolver.NXDOMAIN as e:
+            # A selector that is a CNAME to a name that does not exist. The
+            # exception already records where the alias led, so this costs
+            # no extra query.
+            try:
+                _canon = str(e.canonical_name).rstrip(".").lower()
+            except Exception:
+                _canon = ""
+            if _canon and _canon != fqdn.lower():
+                return {'selector': selector, 'fqdn': fqdn,
+                        'cname_target': _canon, 'dangling': True}
+            return None
+        except (dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
             return None
 
     found = []
+    dangling = []
     timed_out = False
     unanswered = 0
     tested = 0
@@ -501,7 +547,9 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                     unanswered += 1
                     continue
                 tested += 1
-                if r:
+                if r and r.get('dangling'):
+                    dangling.append(r)
+                elif r:
                     found.append(r)
                     if progress_callback:
                         progress_callback(len(found))
@@ -548,6 +596,30 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     result['tested_count'] = tested
 
     result['unanswered_count'] = unanswered
+    dangling.sort(key=lambda r: selector_order.get(r['selector'], 999))
+    result['dangling_selectors'] = _classify_dangling(dangling)
+    for d in result['dangling_selectors']:
+        if d['status'] == 'stale':
+            result.setdefault('issues', []).append({
+                'severity': 'info',
+                'issue': 'DKIM selector points at a missing key',
+                'plain_english': (
+                    f"{d['selector']}._domainkey is a CNAME to {d['cname_target']}, "
+                    "which does not exist. It is usually a sender you no longer use. "
+                    "If so, remove the CNAME."
+                ),
+            })
+        elif d['status'] == 'unregistered':
+            result.setdefault('issues', []).append({
+                'severity': 'error',
+                'issue': 'DKIM selector points at an unregistered domain',
+                'plain_english': (
+                    f"{d['selector']}._domainkey is a CNAME to {d['cname_target']}, "
+                    f"and {d['registrable']} is not a registered domain. Anyone who "
+                    "registers it can publish a key there and sign mail that passes "
+                    "DKIM as this domain. Remove the CNAME."
+                ),
+            })
     if timed_out:
         result['timed_out'] = True
         result['timeout_note'] = 'DKIM selector discovery timed out, results may be incomplete.'
