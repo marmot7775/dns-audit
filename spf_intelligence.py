@@ -276,6 +276,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         domain: Domain to check
         spf_record: SPF record (optional, will query if not provided)
         max_selectors: Max prioritized selectors to test (default 40, 0 = unlimited).
+            ESP_SELECTORS are added on top of this cap, not inside it.
         mx_hosts: MX hostnames, for vendors that both receive and sign mail
             (Google Workspace, Microsoft 365) or resign it as a relay
             (Proofpoint, Mimecast). Used alongside SPF-detected vendors.
@@ -288,6 +289,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     """
     from comprehensive_selectors import (
         COMPREHENSIVE_DKIM_SELECTORS as DKIM_SELECTORS,
+        ESP_SELECTORS,
         GENERIC_SELECTORS,
     )
 
@@ -349,6 +351,18 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     if max_selectors > 0:
         priority_selectors = priority_selectors[:max_selectors]
 
+    # ESP_SELECTORS go on top of the cap, in the same wave, the way the
+    # generics were added for "default" before they became a fallback. The
+    # 40-name slice ends inside the mailbox providers, so k1, s1, zendesk1
+    # and the rest were probed only when the vendor's include was in SPF,
+    # and ESPs usually send from their own Return-Path domain. A domain on
+    # Google plus Mailchimp then showed only the Google key, and one whose
+    # only signer was an ESP was told it had no DKIM.
+    _seen_priority = set(priority_selectors)
+    priority_selectors = priority_selectors + [
+        s for s in ESP_SELECTORS if not (s in _seen_priority or _seen_priority.add(s))
+    ]
+
     # GENERIC_SELECTORS is a fallback sweep, not a standing addition. Before,
     # it was unioned into every probe regardless of outcome, so every audit
     # ran 40 (capped priority) + 156 (generic) = 196 probes even when the
@@ -357,7 +371,6 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     # the master list when no vendor was detected -- finds nothing, which is
     # the common case for self-hosted mail publishing "default" and the rare
     # case for everyone else.
-    _seen_priority = set(priority_selectors)
     fallback_selectors = [
         s for s in GENERIC_SELECTORS if not (s in _seen_priority or _seen_priority.add(s))
     ]
@@ -511,7 +524,8 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
 
     try:
         # The priority wave always runs in full: these are the selectors the
-        # domain's own SPF or MX points at, and they go out first.
+        # domain's own SPF or MX points at, plus ESP_SELECTORS, and they go
+        # out first, concurrently, in one wave.
         _run_wave(priority_selectors)
         if not found:
             for i in range(0, len(fallback_selectors), DKIM_FALLBACK_CHUNK):
