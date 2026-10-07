@@ -336,6 +336,81 @@ GENERIC_SELECTORS = [
 ]
 
 # ============================================================================
+# ESP SELECTORS
+# Fixed selector names that marketing, transactional, CRM and support vendors
+# publish at the customer's own domain. smart_dkim_check unions these into the
+# priority wave on top of the max_selectors cap, the way GENERIC_SELECTORS was
+# unioned in for "default": the 40-name slice ends inside OTHER_EMAIL_PROVIDERS,
+# so without this nothing in the vendor blocks above is reached unless the
+# vendor's include is in SPF, and ESPs usually bounce to their own Return-Path
+# domain, so it often is not.
+#
+# Every name was checked against the vendor's current setup documentation or
+# against live DNS on 2026-10-06 (about 100 domains swept; "live" below means
+# the name resolved into the vendor's namespace at unrelated customers, or
+# carried the same vendor key at several of them). Vendors whose selector is
+# per account (an id, a token, a timestamp or a name the customer picks) are
+# left out, because no fixed name can find them: HubSpot's current
+# hs1-<id>/hs2-<id>, Amazon SES, Postmark, SparkPost/Bird, GetResponse,
+# Marketo, Salesforce, Zoho Campaigns, Mailgun. So are vendors that publish
+# only under their own sending subdomain (Customer.io, Braze, Salesforce
+# Marketing Cloud, Klaviyo's dynamic setup).
+# ============================================================================
+
+ESP_SELECTORS = [
+    # Mailchimp: k2 and k3 are the current CNAMEs into dkim2/dkim3.mcsv.net,
+    # k1 into dkim.mcsv.net the older one (docs; live at 25 to 40 domains).
+    'k1', 'k2', 'k3',
+    # Mailchimp Transactional (Mandrill): mte1/mte2 into mandrillapp.com
+    # (docs; live). mandrill is the legacy name: the same vendor key sits at
+    # several unrelated domains (live).
+    'mte1', 'mte2', 'mandrill',
+    # HubSpot, older connections: CNAMEs into dkim.hubspotemail.net (live).
+    # Current connections add the hub id and cannot be guessed.
+    'hs1', 'hs2',
+    # SendGrid (Twilio), also Drip: s1/s2 (docs; live at 63 of 100).
+    # smtpapi is SendGrid's legacy shared key (live, CNAME to dkim.sendgrid.net).
+    's1', 's2', 'smtpapi',
+    # Klaviyo: kl/kl2 into Klaviyo's own SendGrid account (live); the
+    # current static setup uses km, kt and ks pairs (docs).
+    'kl', 'kl2', 'km1', 'km2', 'kt1', 'kt2', 'ks1', 'ks2',
+    # Constant Contact, CNAME method (docs; live).
+    'ctct1', 'ctct2',
+    # Campaign Monitor (docs; live).
+    'cm',
+    # Mailjet (docs; live).
+    'mailjet',
+    # Brevo: CNAMEs into dkim.brevo.com (live).
+    'brevo1', 'brevo2',
+    # ActiveCampaign (docs; live).
+    'acdkim1', 'acdkim2',
+    # AWeber (docs; live on aweber.com).
+    'aweber_key_a', 'aweber_key_b', 'aweber_key_c',
+    # MailerLite (docs; live on mailerlite.com).
+    'litesrv',
+    # Kit, formerly ConvertKit (docs; live).
+    'cka',
+    # Emma (docs; live).
+    'e2ma-k1', 'e2ma-k2', 'e2ma-k3',
+    # Sailthru: CNAME into sailthrudkim.com (live).
+    'sailthru',
+    # Elastic Email (docs; live on elasticemail.com).
+    'api',
+    # Resend (docs; live).
+    'resend',
+    # Pepipost / Netcore (docs).
+    'pepipost',
+    # Zendesk (docs; live at 40 of 100).
+    'zendesk1', 'zendesk2',
+    # Help Scout (docs; live).
+    'strong1', 'strong2',
+    # Intercom: CNAME into dkim.intercom.io (docs; live).
+    'intercom',
+    # Gorgias (docs; live).
+    'gor', 'gor2',
+]
+
+# ============================================================================
 # MASTER LIST
 # ============================================================================
 
@@ -444,5 +519,6 @@ if __name__ == "__main__":
     print(f"   Sequential:          {len(SEQUENTIAL_SELECTORS)}")
     print(f"   Date-based:          {len(DATE_SELECTORS)}")
     print(f"   Generic:             {len(GENERIC_SELECTORS)}")
+    print(f"   ESP (priority wave): {len(ESP_SELECTORS)}")
     print(f"\n SPF Vendor Mappings:   {len(COMPREHENSIVE_SPF_VENDOR_MAP)}")
     print("=" * 70)
