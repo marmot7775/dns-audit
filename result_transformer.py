@@ -7106,6 +7106,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
         "rotation_guidance": rotation,
         "has_weak": has_weak,
         "has_invalid": has_invalid,
+        "has_unusable": has_unusable,
     }
 
 
