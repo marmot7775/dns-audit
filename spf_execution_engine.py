@@ -235,7 +235,8 @@ def build_spf_execution_trace(spf_recursive_result: Dict, spf_record: Optional[s
 def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
                            raw_dkim: Dict, tree_walk: Optional[Dict],
                            dkim_confirmed: bool = True,
-                           is_no_mail: bool = False) -> Optional[Dict]:
+                           is_no_mail: bool = False,
+                           dkim_not_applicable: bool = False) -> Optional[Dict]:
     """
     Build a DMARC evaluation summary showing how receivers would process
     legitimate mail from this domain's authorized servers.
@@ -303,9 +304,11 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         dkim_result = "not confirmed"
     else:
         dkim_result = "none"
-    # The DKIM card reads a no-mail domain with no live key as "Does not
-    # apply"; this row said "None, not configured" beside it.
-    if is_no_mail and not found_selectors:
+    # The DKIM card reads a domain that sends no mail and has no live key as
+    # "Does not apply"; this row said "None, not configured" beside it. The
+    # caller passes the card's own outbound rule (null SPF, or null MX with no
+    # sending SPF), not is_no_mail: RFC 7505 null MX is about receiving only.
+    if dkim_not_applicable and not found_selectors:
         dkim_result = "not applicable"
 
     # --- DMARC record and alignment modes ---

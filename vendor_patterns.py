@@ -181,7 +181,7 @@ DKIM_SELECTOR_VENDORS: Dict[str, str] = {
 # mgverify and klaviyo-site-verification, rei.com amazonses:, target.com
 # brevo-code: and pardot<id>=, uber.com atlassian-sending-domain-verification).
 VERIFICATION_TXT_VENDORS = (
-    (r"ms=(ms)?[0-9a-f]{6,}$", "Microsoft 365"),
+    (r"ms=(?=(ms)?[0-9a-f]{6,}$)", "Microsoft 365"),
     (r"protonmail-verification=", "Proton Mail"),
     (r"zoho-verification=", "Zoho Mail"),
     (r"mgverify=", "Mailgun"),
@@ -198,7 +198,9 @@ def match_verification_txt(record: Optional[str]) -> Optional[str]:
     import re
     r = (record or "").strip().lower()
     for pattern, vendor in VERIFICATION_TXT_VENDORS:
-        if re.match(pattern, r):
+        m = re.match(pattern, r)
+        # A prefix with no token after it ("mgverify=") verifies nothing.
+        if m and len(r[m.end():].strip()) >= 4:
             return vendor
     return None
 
