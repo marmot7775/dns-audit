@@ -146,7 +146,7 @@ _tld_extract = tldextract.TLDExtract(
     suffix_list_urls=(),
     cache_fetch_timeout=3.0,
 )
-from spf_intelligence import smart_dkim_check
+from spf_intelligence import smart_dkim_check, DKIM_FALLBACK_CHUNK as _DKIM_FALLBACK_CHUNK
 from dns_tools import (
     is_spf_record,
     get_dnssec_resolver,
@@ -4416,7 +4416,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
 # config has no project imports, so this cannot introduce a cycle.
 from config import MAX_CONCURRENT_AUDITS as _MAX_CONCURRENT_AUDITS
 # Neither does comprehensive_selectors; it is pure data, no imports of its own.
-from comprehensive_selectors import GENERIC_SELECTORS as _GENERIC_SELECTORS
+from comprehensive_selectors import ESP_SELECTORS as _ESP_SELECTORS
 
 _PHASE2_WIDTH = 9  # mta_sts, tls_rpt, bimi, dnssec, caa, nameservers, dane, dkim, ct
 _shared_executor = ThreadPoolExecutor(
@@ -4449,13 +4449,15 @@ _probe_executor = ThreadPoolExecutor(
 # to 120 at the concurrency cap; one long-lived pool replaces all of them.
 #
 # Also sized off the concurrency cap, for the same reason as _probe_executor:
-# a fixed 20 workers under 8 concurrent audits each submitting up to
-# max_selectors (40) plus every GENERIC_SELECTORS entry is the starvation this
-# doc exists to fix. The threads are idle DNS waits; ThreadPoolExecutor only
-# creates them on demand, so sizing for the worst case costs address space,
-# not CPU, even though most audits use a fraction of it after the selector-set
-# reduction below.
-_DKIM_PROBE_WIDTH = 40 + len(_GENERIC_SELECTORS)
+# a fixed 20 workers under 8 concurrent audits each submitting a full wave is
+# the starvation this pool exists to fix. The width is the largest single
+# wave one audit submits at once. The priority wave is max_selectors (40)
+# plus ESP_SELECTORS (46 as of Doc 93), so 86; the generic fallback only runs
+# after it, in chunks of DKIM_FALLBACK_CHUNK (52), so it never adds to that.
+# 86 x MAX_CONCURRENT_AUDITS (8) = 688 workers. The threads are idle DNS
+# waits; ThreadPoolExecutor only creates them on demand, so sizing for the
+# worst case costs address space, not CPU.
+_DKIM_PROBE_WIDTH = max(40 + len(_ESP_SELECTORS), _DKIM_FALLBACK_CHUNK)
 _dkim_executor = ThreadPoolExecutor(
     max_workers=max(20, _MAX_CONCURRENT_AUDITS * _DKIM_PROBE_WIDTH),
     thread_name_prefix="dkim",
