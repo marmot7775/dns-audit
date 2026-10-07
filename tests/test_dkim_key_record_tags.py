@@ -141,6 +141,7 @@ def test_repeated_tag_fails_with_a_critical_row():
     [row] = [r for r in _dkim_rows(card) if "repeated tag" in r["action"]]
     assert row["priority"] == "critical"
     assert _key_row(card)["rotation_status"] == "Replace"
+    assert card["dkim_deep"]["has_unusable"]
 
 
 # ---------------------------------------------------------------
@@ -152,6 +153,7 @@ def test_clean_record_passes():
     assert card["status"] == "pass"
     assert _dkim_rows(card) == []
     assert _key_row(card)["rating"] == "green"
+    assert not card["dkim_deep"]["has_unusable"]
     assert not any(v for v in dkim_record_problems(CLEAN).values())
 
 
