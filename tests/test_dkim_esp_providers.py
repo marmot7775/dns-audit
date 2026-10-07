@@ -83,3 +83,16 @@ def test_discovery_sentence_mentions_the_esp_names():
     card = transform_dkim(_raw(["k1"]), DOMAIN)
     assert "SPF-based sender discovery" not in card["explanation"]
     assert "the fixed selectors common email services use" in card["explanation"]
+
+
+def test_retired_key_names_no_sending_provider():
+    raw = _raw(["s1"])
+    raw["found_selectors"].append({"selector": "k1", "record": "v=DKIM1; k=rsa; p=", "vendor": None})
+    card = transform_dkim(raw, DOMAIN)
+    assert "Sending providers detected: SendGrid." in card["explanation"]
+    assert "Mailchimp" not in card["explanation"]
+
+
+def test_key_table_never_says_generic():
+    keys = _build_dkim_key_analysis(_raw(["default"], method="blind_loop"))["keys"]
+    assert keys[0]["provider"] is None

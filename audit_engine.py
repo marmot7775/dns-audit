@@ -4589,7 +4589,10 @@ def _publishes_null_mx(raw_mx: Optional[Dict]) -> bool:
 
 
 def _publishes_null_spf(raw_spf: Optional[Dict]) -> bool:
-    return ((raw_spf or {}).get("record") or "").strip().lower() == "v=spf1 -all"
+    # Terms compared, not the raw string: "v=spf1  -all" is the same record,
+    # and result_transformer._is_null_spf already reads it that way.
+    record = " ".join(((raw_spf or {}).get("record") or "").split()).lower()
+    return record == "v=spf1 -all"
 
 
 def _has_working_mx(raw_mx: Optional[Dict]) -> bool:
@@ -5654,6 +5657,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             "dmarc_record": _raw_dmarc.get("record"),
             "tls_rpt_record": _raw_tls_rpt.get("record"),
             "txt_ttl": _raw_spf.get("ttl"),
+            # Live keys only: a retired selector (empty p=) says who signed
+            # once, not who signs now.
+            "dkim_selectors": _live_dkim_selectors(raw_results.get("dkim")),
         }
         # Only the subdomain probe still queries, and it is not worth a card of
         # its own, so the whole call gets a hard ceiling rather than running
@@ -5935,6 +5941,16 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 # Vendor Detection
 # ============================================================
 
+def _live_dkim_selectors(raw_dkim: Optional[Dict]) -> List[Dict]:
+    from result_transformer import _split_dkim_selectors
+    live, _retired = _split_dkim_selectors((raw_dkim or {}).get("found_selectors") or [])
+    return live
+
+
+# Record type each fingerprint technique reads, in the order the panel names them.
+_VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DKIM"))
+
+
 def _format_vendors(fp_vendors: List) -> List[Dict]:
     """Format pre-computed vendor fingerprint results for frontend."""
     vendors = []
@@ -5948,7 +5964,9 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
             # vendor handles your mail" when it may only do one half.
             techniques = {s.get("technique") for s in v.get("signals", [])}
             sides = []
-            if "SPF Include" in techniques:
+            # A DKIM key is the vendor signing mail as you: outbound, the
+            # same side as an SPF include.
+            if techniques & {"SPF Include", "DKIM Key"}:
                 sides.append("outbound")
             if "MX Record" in techniques:
                 sides.append("inbound")
@@ -5956,6 +5974,7 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
                 "name": v["vendor"],
                 "confidence": int(confidence * 100),
                 "detected_via": " + ".join(sides) if sides else None,
+                "sources": [label for t, label in _VENDOR_SOURCES if t in techniques],
             })
 
     # Deduplicate by name, keep highest confidence
