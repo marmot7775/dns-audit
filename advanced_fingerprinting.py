@@ -31,6 +31,7 @@ from vendor_patterns import (
     SPF_INCLUDE_VENDORS,
     dkim_key_vendor,
     match_host,
+    match_verification_txt,
 )
 
 class AdvancedVendorFingerprinter:
@@ -76,6 +77,7 @@ class AdvancedVendorFingerprinter:
         self._fingerprint_spf()
         self._fingerprint_mx()
         self._fingerprint_dkim()
+        self._fingerprint_verification_txt()
         self._fingerprint_dmarc()
         self._fingerprint_tls_rpt()
         self._fingerprint_dns_patterns()
@@ -108,7 +110,12 @@ class AdvancedVendorFingerprinter:
                 print("  ✗ No SPF record found")
             return
 
-        for inc in re.findall(r'include:([^\s]+)', txt):
+        # Only a bare or "+" include authorizes the vendor. "-include:" says
+        # mail from it fails, and "~" or "?" ask for a softfail or neutral
+        # result: none of those is evidence the vendor sends as this domain.
+        for qualifier, inc in re.findall(r'(?:^|\s)([+?~-]?)include:([^\s]+)', txt, re.I):
+            if qualifier not in ('', '+'):
+                continue
             vendor = self._match_spf_vendor(inc)
             if vendor:
                 self.signals.append({
@@ -176,6 +183,22 @@ class AdvancedVendorFingerprinter:
             })
             if self.verbose:
                 print(f"  ✓ {vendor} (DKIM selector {selector})")
+
+    def _fingerprint_verification_txt(self):
+        """Mail services named by a verification token at the apex. The token
+        proves the domain was set up with the service, not that it sends
+        today, so it sits below an SPF include or a CNAMEd DKIM key."""
+        seen = set()
+        for record in self.prefetch.get('apex_txt') or []:
+            vendor = match_verification_txt(record)
+            if vendor and vendor not in seen:
+                seen.add(vendor)
+                self.signals.append({
+                    'technique': 'Verification TXT',
+                    'vendor': vendor,
+                    'evidence': record.split('=')[0].split(':')[0][:60],
+                    'confidence': 0.75,
+                })
 
     def _fingerprint_dmarc(self):
         """DMARC record analysis - policy and reporting"""

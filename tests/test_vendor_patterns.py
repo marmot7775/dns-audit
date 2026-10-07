@@ -63,6 +63,7 @@ def _fp(**prefetch):
     fp._fingerprint_spf()
     fp._fingerprint_mx()
     fp._fingerprint_dkim()
+    fp._fingerprint_verification_txt()
     return {v["vendor"]: v for v in fp._aggregate_and_score()["vendors"]}
 
 
@@ -98,3 +99,37 @@ def test_retired_keys_are_not_passed_to_fingerprinting():
         {"selector": "s1", "record": "v=DKIM1; k=rsa; p=MIGfMA0G"},
     ]})
     assert [s["selector"] for s in live] == ["s1"]
+
+
+def test_verification_tokens_name_mail_services_only():
+    from vendor_patterns import match_verification_txt as m
+    assert m("MS=6BF03E6AF5CB689E315FB6199603BABF2C88D805") == "Microsoft 365"
+    assert m("MS=ms12345678") == "Microsoft 365"
+    assert m("pardot1113342=ea9966a0") == "Salesforce Account Engagement"
+    assert m("brevo-code:7e6bbbf1") == "Brevo"
+    assert m("amazonses:KsIm8akt") == "Amazon SES"
+    assert m("google-site-verification=UTM-3akM") is None
+    assert m("stripe-verification=f88ef1") is None
+    assert m("ms=hello") is None
+
+
+def test_verification_txt_feeds_the_panel_without_a_side():
+    vendors = _fp(apex_txt=["MS=ms12345678", "google-site-verification=x", "mgverify=2738a5123a"])
+    assert set(vendors) == {"Microsoft 365", "Mailgun"}
+    out = audit_engine._format_vendors([vendors["Mailgun"]])
+    assert out[0]["sources"] == ["TXT"] and out[0]["detected_via"] is None
+
+
+def test_only_authorizing_includes_name_a_vendor():
+    vendors = _fp(spf_record="v=spf1 include:_spf.google.com -include:sendgrid.net "
+                             "~include:mailgun.org +include:spf.mtasv.net -all")
+    assert set(vendors) == {"Google Workspace", "Postmark"}
+
+
+def test_verification_prefix_needs_a_token():
+    from vendor_patterns import match_verification_txt as m
+    assert m("mgverify=") is None
+    assert m("amazonses:") is None
+    assert m("pardot123=") is None
+    assert m("MS=") is None
+    assert m("MS=ms12345678") == "Microsoft 365"
