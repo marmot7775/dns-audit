@@ -89,7 +89,7 @@
         <article class="dbis-article">
             <h1 class="dbis-article-title">What RFC 9989 changes for your DMARC record</h1>
             <p class="dbis-article-sub">DMARC is on the Standards Track. The Public Suffix List is out, the DNS tree walk is in, and your record needs a few small edits.</p>
-            <p class="article-card-meta">Published <time datetime="2026-05-20">May 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
+            <p class="article-card-meta">By <a href="/about#neil" rel="author">Neil Anuskiewicz</a><span class="article-card-meta-dot">&middot;</span>Published <time datetime="2026-05-20">May 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
             <aside class="short-version" aria-labelledby="short-version-title">
                 <h2 id="short-version-title">The short version</h2>
                 <p>In May 2026 the rules for DMARC, the record that tells receivers what to do with mail pretending to be from you, became an official internet standard, RFC 9989. Receivers will slowly change how they find your main domain, asking DNS directly instead of reading a shared list. For most domains nothing breaks and there is no deadline. Your record may need small edits: remove three retired settings (<code>pct</code>, <code>rf</code>, <code>ri</code>), drop any size limit on a report address, and confirm your report service accepts your reports.</p>
