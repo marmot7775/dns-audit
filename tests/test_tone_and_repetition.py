@@ -155,7 +155,8 @@ PAGE_BANNED = BANNED + ["So I built it", "built for you", "Worth knowing", "as w
                         "That isn't stubbornness", "armored car", "wax seals"]
 PROSE_PAGES = ("about.html", "privacy.html", "articles/dmarcbis.html",
                "articles/dnssec.html", "articles/dane.html",
-               "articles/spf-lookups.html", "articles/p-reject.html")
+               "articles/spf-lookups.html", "articles/p-reject.html",
+               "articles/postmaster-tools.html")
 
 
 @pytest.mark.parametrize("page", PROSE_PAGES)
