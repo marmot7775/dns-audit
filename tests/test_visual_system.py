@@ -209,7 +209,8 @@ def test_the_focus_ring_is_the_primary_token_in_both_themes(browser):
 # ---------------------------------------------------------------
 
 ARTICLE_PATHS = ["/articles", "/articles/dmarcbis", "/articles/dnssec", "/articles/dane",
-                 "/articles/spf-lookups", "/articles/p-reject"]
+                 "/articles/spf-lookups", "/articles/p-reject",
+                 "/articles/postmaster-tools"]
 
 OVERFLOW_JS = """() => {
     const vw = window.innerWidth;
