@@ -144,6 +144,7 @@ def test_p_reject_article_links_only_the_provider_requirement_pages():
     # Doc 84 linked two other articles; Doc 89 removed the SPF lookups one,
     # because that article is not about DKIM signing.
     assert [a for a in anchors if a[0].startswith("/")] == [
+        ("/about#neil", "Neil Anuskiewicz"),
         ("/articles/dmarcbis", "RFC 9989"),
     ]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989", "7960", "7505",
@@ -171,7 +172,7 @@ def test_postmaster_tools_article_links_its_sources():
     anchors = _anchors(article)
     assert [h for h, _ in anchors if h.startswith("http")] == _POSTMASTER_LINKS
     assert [h for h, _ in anchors if h.startswith("/")] == [
-        "/articles/spf-lookups", "/articles/dmarcbis"]
+        "/about#neil", "/articles/spf-lookups", "/articles/dmarcbis"]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989"}
 
 
