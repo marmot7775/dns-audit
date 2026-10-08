@@ -89,7 +89,7 @@
         <article class="dbis-article">
             <h1 class="dbis-article-title">SPF permerror from too many lookups: how to get back under 10</h1>
             <p class="dbis-article-sub">The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough.</p>
-            <p class="article-card-meta">Published <time datetime="2026-09-29">September 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
+            <p class="article-card-meta">By <a href="/about#neil" rel="author">Neil Anuskiewicz</a><span class="article-card-meta-dot">&middot;</span>Published <time datetime="2026-09-29">September 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
             <aside class="short-version" aria-labelledby="short-version-title">
                 <h2 id="short-version-title">The short version</h2>
                 <p>Your SPF record lists the services allowed to send mail as you, and receivers stop reading it after 10 lookups. Past that point some of your mail fails SPF, and which mail depends on the order of the record. Mail with a DKIM signature for your own domain can still pass DMARC, so the damage is often smaller than it looks, but it is real. The fix is usually cleanup: remove unused services, drop old <code>a</code>, <code>mx</code> and <code>ptr</code> entries, and move bulk senders to a subdomain.</p>

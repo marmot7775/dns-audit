@@ -7463,6 +7463,11 @@ h3.services-sub,
     line-height: 1.5;
 }
 .article-card-meta-dot { margin: 0 var(--space-xs); color: var(--text-muted); }
+/* Article byline: the author link reads as part of the meta line */
+.article-card-meta a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.article-card-meta a:hover { color: var(--text-secondary); }
+/* /about#neil lands below the sticky header */
+#neil { scroll-margin-top: 5rem; }
 .articles-empty {
     display: none;
     margin: 0;
