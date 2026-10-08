@@ -144,6 +144,7 @@ def test_p_reject_article_links_only_the_provider_requirement_pages():
     # Doc 84 linked two other articles; Doc 89 removed the SPF lookups one,
     # because that article is not about DKIM signing.
     assert [a for a in anchors if a[0].startswith("/")] == [
+        ("/about#neil", "Neil Anuskiewicz"),
         ("/articles/dmarcbis", "RFC 9989"),
     ]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989", "7960", "7505",
@@ -171,5 +172,19 @@ def test_postmaster_tools_article_links_its_sources():
     anchors = _anchors(article)
     assert [h for h, _ in anchors if h.startswith("http")] == _POSTMASTER_LINKS
     assert [h for h, _ in anchors if h.startswith("/")] == [
-        "/articles/spf-lookups", "/articles/dmarcbis"]
+        "/about#neil", "/articles/spf-lookups", "/articles/dmarcbis"]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989"}
+
+
+# Every article carries a visible byline linked to the About section the
+# JSON-LD author @id names, and that section exists.
+def test_every_article_has_a_byline_linking_about_neil():
+    for path in _article_files():
+        if path.endswith("index.html"):
+            continue
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert ('By <a href="/about#neil" rel="author">Neil Anuskiewicz</a>'
+                in content), os.path.relpath(path, REPO_ROOT)
+    with open(os.path.join(REPO_ROOT, "static", "about.html"), encoding="utf-8") as f:
+        assert '<h2 id="neil">Who built this</h2>' in f.read()

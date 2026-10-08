@@ -22,8 +22,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=a2dacd1">
-    <script src="/static/theme.js?v=a2dacd1"></script>
+    <link rel="stylesheet" href="/static/style.css?v=b478757">
+    <script src="/static/theme.js?v=b478757"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -89,7 +89,7 @@
         <article class="dbis-article">
             <h1 class="dbis-article-title">What to check before you publish p=reject</h1>
             <p class="dbis-article-sub">You have been at p=none for months and the reports look clean. The DMARC standard adds one requirement before the last step, and it is the one small setups miss.</p>
-            <p class="article-card-meta">Published <time datetime="2026-09-29">September 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
+            <p class="article-card-meta">By <a href="/about#neil" rel="author">Neil Anuskiewicz</a><span class="article-card-meta-dot">&middot;</span>Published <time datetime="2026-09-29">September 2026</time>, updated <time datetime="2026-10-01">October 2026</time></p>
             <aside class="short-version" aria-labelledby="short-version-title">
                 <h2 id="short-version-title">The short version</h2>
                 <p><code>p=reject</code> asks receivers to refuse mail that fails DMARC, and it is where most domains should end up. Since May 2026 the standard adds one condition: every service that sends mail as you must sign it with DKIM rather than rely on SPF alone, because forwarding breaks SPF and leaves DKIM intact. Your DMARC reports show which services pass on DKIM. Move to reject when all of them do and the list has stopped changing; there is no deadline.</p>
