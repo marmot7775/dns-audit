@@ -577,6 +577,7 @@ def test_the_three_contrast_failures_now_pass(browser, fixture_result, theme):
                                   "/articles/dmarcbis", "/articles/dnssec",
                                   "/articles/dane", "/articles/spf-lookups",
                                   "/articles/p-reject",
+                                  "/articles/postmaster-tools",
                                   "/static/404.html"])
 def test_every_page_renders_a_skip_link_and_one_main_landmark(browser, path):
     ctx, page, errors = _page(browser, "dark", 390, path)

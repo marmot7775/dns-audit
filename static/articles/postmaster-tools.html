@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail Postmaster Tools without the reputation ratings | dns-audit.com</title>
+    <meta name="description" content="Postmaster Tools V2 drops the High, Medium, Low and Bad ratings. How to read the compliance checklist and the one sentence verdict that replace them, and who fixes what.">
+    <meta name="keywords" content="Gmail Postmaster Tools, Postmaster Tools V2, domain reputation, compliance status, deliverability analysis, Gmail sender requirements, spam rate, Gmail bounce codes, SPF, DKIM, DMARC">
+    <meta name="author" content="Neil Anuskiewicz">
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="DNS Security Auditor" />
+    <meta property="og:url" content="https://dns-audit.com/articles/postmaster-tools" />
+    <meta property="og:title" content="Gmail Postmaster Tools without the reputation ratings" />
+    <meta property="og:description" content="Postmaster Tools V2 drops the High, Medium, Low and Bad ratings. How to read the compliance checklist and the one sentence verdict that replace them, and who fixes what." />
+    <meta property="og:image" content="https://dns-audit.com/static/og-image.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Gmail Postmaster Tools without the reputation ratings" />
+    <meta name="twitter:description" content="Postmaster Tools V2 drops the High, Medium, Low and Bad ratings. How to read the compliance checklist and the one sentence verdict that replace them, and who fixes what." />
+    <link rel="canonical" href="https://dns-audit.com/articles/postmaster-tools">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/style.css?v=a2dacd1">
+    <script src="/static/theme.js?v=a2dacd1"></script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "Gmail Postmaster Tools without the reputation ratings",
+        "description": "Postmaster Tools V2 drops the High, Medium, Low and Bad ratings. How to read the compliance checklist and the one sentence verdict that replace them, and who fixes what.",
+        "url": "https://dns-audit.com/articles/postmaster-tools",
+        "author": { "@id": "https://dns-audit.com/about#neil" },
+        "publisher": { "@id": "https://dns-audit.com/about#neil" },
+        "mainEntityOfPage": "https://dns-audit.com/articles/postmaster-tools",
+        "image": "https://dns-audit.com/static/og-image.png",
+        "isPartOf": { "@id": "https://dns-audit.com/#website" },
+        "datePublished": "2026-10-07",
+        "dateModified": "2026-10-07"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://dns-audit.com/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Articles",
+                "item": "https://dns-audit.com/articles/"
+            },
+            {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "Gmail Postmaster Tools without the reputation ratings",
+                "item": "https://dns-audit.com/articles/postmaster-tools"
+            }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <a href="#main-content" class="skip-to-content">Skip to content</a>
+    <header class="site-header">
+        <div class="container header-inner">
+            <a href="/" class="logo"><span class="logo-text">dns<span class="logo-accent">-audit</span>.com</span></a>
+            <div class="header-right">
+                <nav class="site-nav" aria-label="Main navigation">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/articles/" class="nav-link nav-link-active">Articles</a>
+                    <a href="/about" class="nav-link">About</a>
+                    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
+                        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+    <main class="dbis-page" id="main-content">
+        <article class="dbis-article">
+            <h1 class="dbis-article-title">Gmail Postmaster Tools without the reputation ratings</h1>
+            <p class="dbis-article-sub">Google retired the one word rating. What replaced it says more, once you know how to read it.</p>
+            <p class="article-card-meta">Published <time datetime="2026-10-07">October 2026</time></p>
+            <aside class="short-version" aria-labelledby="short-version-title">
+                <h2 id="short-version-title">The short version</h2>
+                <p>Postmaster Tools V2 has no High, Medium, Low, or Bad rating. In its place are two things: the Compliance status checklist, which shows whether your setup meets Google's sender requirements, and the Deliverability analysis, one sentence on how Gmail sees your domain. Read them together. A row marked Needs work on authentication, DNS, or encryption goes to whoever runs your email setup. A verdict about spam reports or people not responding is about your list and your sending habits.</p>
+            </aside>
+            <p class="dbis-lede">For years Gmail Postmaster Tools rated your domain in one word: High, Medium, Low, or Bad. If you only open it when the newsletter numbers fall off a cliff, you may open it this time and find that word gone. Google is retiring the Domain Reputation and IP Reputation dashboards, and the new Postmaster Tools, V2, doesn't have them. What you get instead is a short checklist and a one sentence verdict. Between them they answer a question the old rating never could. Is Gmail unhappy with how your mail is set up, or with how people treat it once it lands? Those are different problems, and different people fix them.</p>
+            <section class="dbis-section">
+                <h2>What changed and what didn't</h2>
+                <p>Less than the empty space suggests. <a href="https://support.google.com/mail/answer/16594218" target="_blank" rel="noopener">Google's help page</a> says the dashboards from the old interface carry over to V2, except Domain and IP Reputation. Spam rate, authentication, encryption, delivery errors, and the feedback loop view are all still there. The page also promises a new, more intuitive version of the reputation view, and says nothing about what it will show or when.</p>
+                <p>The timing is murkier. The same page says the retirement of the old interface is postponed, with no new date. <a href="https://www.spamresource.com/2026/08/gpt-v1-retirement-and-important-updates.html" target="_blank" rel="noopener">Al Iverson at Spam Resource reported in August 2026</a> that the pause has been lifted, that V1 is being phased out across domains and users over time, and that many senders already see only V2. If you still have V1, enjoy it while it lasts and plan around V2 anyway.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>The two things to look at</h2>
+                <p>The first is the <a href="https://support.google.com/mail/answer/14668346" target="_blank" rel="noopener">Compliance status dashboard</a>, a checklist of <a href="https://support.google.com/mail/answer/81126" target="_blank" rel="noopener">Google's sender requirements</a> with each row marked Compliant, Needs work, or No data found. Most rows are about setup. Three of them cover the DNS records that let Gmail confirm a message really came from you: SPF, which lists the servers allowed to send as your domain; DKIM, a signature your sending platform adds to each message; and DMARC, which ties the two to the address people see in the From line. Everyone needs SPF or DKIM. Large senders need both, plus DMARC. The other setup rows ask whether your sending IPs have working forward and reverse DNS, whether your mail travels over an encrypted connection, and whether it's formatted properly, and large senders also get checked on one click unsubscribe and on honoring those unsubscribes. One row, for everyone, covers the share of recipients who report your mail as spam.</p>
+                <p>Large has a precise meaning here. If you've ever sent close to 5,000 messages to personal Gmail accounts in a day, counting every subdomain of your main domain, Google counts you as a <a href="https://support.google.com/mail/answer/14229414" target="_blank" rel="noopener">bulk sender</a>, and the label doesn't come off.</p>
+                <p>Two details matter when you read the checklist. It reports on your main domain, but mail from any subdomain counts toward it, so a row marked Needs work can come from a system you'd forgotten sends mail in your name. And the status is an average gathered over several days, so a fix can take up to a week to show. Resist the urge to change something else on day three.</p>
+                <p>The second thing is the verdict. Under the checklist sits a diagnostic called Deliverability analysis, which gives you one sentence on how Gmail currently sees your domain. Every possible sentence points either at your setup or at your sending, and knowing which is most of the diagnosis.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>What each verdict means, and whose job it is</h2>
+                <h3>You don't meet our sender requirements</h3>
+                <p>Your mail is failing at least one of Google's mandatory requirements. Look at the checklist for the rows marked Needs work. If they're about authentication, DNS, or encryption, this belongs to whoever runs your email setup, whether that's your IT person, your email platform, or a consultant; the checks they need are <a href="#for-the-person-who-runs-your-email">at the end of this article</a>. If the rows are about formatting or unsubscribe handling, the fix is inside the platform you send from, and no DNS change will clear it. Either way, fix this before anything else. Gmail can delay or refuse mail that fails its requirements, and refused mail never reaches the people the other verdicts measure.</p>
+                <h3>Many messages with delivery errors</h3>
+                <p>A big share of your messages are bouncing, usually after a sudden jump in volume or because something in the sending setup is off. Google's advice is to slow down and read the bounce messages, which carry a code that says what Gmail objected to. That's a technical job, and the <a href="#bounce-codes">code list at the end of this article</a> is the key to it. One thing worth knowing even if you never open a bounce: if the Delivery errors dashboard shows more failures than your own records do, Google says the extra errors may belong to mail your recipients are auto forwarding, or to someone replaying your old messages, a trick known as a DKIM replay attack.</p>
+                <h3>Your spam rate is above 0.1%</h3>
+                <p>This one is about people, and no setup change will fix it. Google asks you to keep the share of recipients who report your mail as spam below 0.1%, and to keep it from ever reaching 0.3%. Above 0.3%, bulk senders lose access to mitigation, Google's process for lifting a block, until the rate stays under 0.3% for seven straight days. The questions to ask are the plain ones. Who are you sending to, how often, and did they ask for it? If your platform takes part in Google's feedback loop, the feedback loop dashboard shows which campaigns are drawing the complaints.</p>
+                <h3>Users signal that they don't want to get your email messages</h3>
+                <p>People keep marking your mail as spam, or leave it in the spam folder when they could rescue it. The remedy is the same review of who, how often, and what. Don't take comfort in a low number on the Spam rate dashboard. Google measures that rate against mail that reached the inbox, so once Gmail is already filing much of your mail as spam, fewer people see it and the rate looks better than it is.</p>
+                <h3>Users don't take action on your messages</h3>
+                <p>People aren't doing anything that tells Gmail whether they want your mail. This is the quiet version of the verdict above, and the answer is a smaller, warmer list. Start by suppressing addresses that haven't opened or clicked in a long time, or ask them to reconfirm.</p>
+                <h3>Not enough outgoing email</h3>
+                <p>You haven't sent enough mail to personal Gmail accounts for Google to decide. Common reasons are a new domain, a restart after a pause, or a lot of mail going to inactive accounts. Gmail hasn't judged you yet, which is different from judging you badly. Two cautions. At low volume a handful of complaints makes a high rate. And Google treats any domain that hasn't sent more than 5,000 messages a day to personal Gmail accounts since January 1, 2024 as new, and enforces its rules on new domains faster. Ramp up steadily, and get the setup right before you do.</p>
+                <h3>Users signal they want to get your email messages</h3>
+                <p>Your mail reaches the inbox with few complaints, or people consistently rescue it when Gmail misfiles it. This is the one you want. If your numbers still look wrong with this showing, compare results at other mailbox providers before blaming Gmail.</p>
+                <h3>Unspecified reason</h3>
+                <p>Google gives no further information. Fall back on the dashboards.</p>
+            </section>
+            <section class="dbis-section">
+                <h2>Setup problem or people problem</h2>
+                <p>The old rating folded everything into one word. A Low told you Gmail thought less of your mail and left you to guess why. V2 separates the causes, as long as you read the checklist and the verdict together.</p>
+                <p>If the checklist shows Needs work on authentication, DNS, or encryption, that comes first, whatever the verdict says, and it goes to whoever runs your email setup. If every row is Compliant and the verdict is about spam reports or people not responding, the setup is almost certainly fine and the work is in your list and your sending habits, which nobody can do for you. If every row is Compliant and the verdict reports delivery errors, remember the checklist is an average over all your mail, so one system can be failing while the rest passes; the bounce codes will name it.</p>
+                <p>Whichever case you're in, a screenshot of the checklist and the verdict, sent to whoever runs your email, saves a round of questions. It tells them where to look before they've looked anywhere.</p>
+            </section>
+            <section class="dbis-section">
+                <h2 id="for-the-person-who-runs-your-email">For the person who runs your email</h2>
+                <p>The checks behind a Needs work row, in the order to run them.</p>
+                <ol class="dbis-steps">
+                    <li><div><strong>SPF.</strong> One record, covering every platform that sends as the domain, needing no more than 10 of the terms that cause DNS lookups (<code>include</code>, <code>a</code>, <code>mx</code>, <code>ptr</code>, <code>exists</code>, and <code>redirect</code>). A second record or an eleventh such term is a <a href="/articles/spf-lookups">permanent error</a>, and SPF fails. Softfail (<code>~all</code>) and hardfail (<code>-all</code>) count the same here, because DMARC counts only a pass.</div></li>
+                    <li><div><strong>DKIM.</strong> Each platform signs with a selector whose public key is published at <code>selector._domainkey</code> under your domain, and the signing domain is yours.</div></li>
+                    <li><div><strong>DMARC.</strong> A record at <code>_dmarc</code> with a <code>p=</code> tag. <a href="/articles/dmarcbis">RFC 9989</a>, the current DMARC standard, which obsoletes RFCs 7489 and 9091, makes the tag recommended rather than required, but Gmail defers mail with <code>4.7.31</code> when the record names no policy, so name one. Google's requirement is <code>p=none</code> or stronger; it doesn't require quarantine or reject.</div></li>
+                    <li><div><strong>Reverse DNS.</strong> Each sending IP has a PTR record, and the hostname it returns resolves back to the same IP. PTR records belong to whoever controls the IP, so on a provider's shared IPs this one is the provider's to fix.</div></li>
+                    <li><div><strong>TLS.</strong> Mail to Gmail arrives over a TLS connection. If the Encryption dashboard shows authenticated mail arriving without it, find the system sending in the clear.</div></li>
+                </ol>
+                <p>The first three share a trap, and it's alignment. DMARC needs SPF or DKIM to pass for a domain that matches the From address, and a setup can look perfect while neither does: the platform passes SPF for its own bounce domain, signs DKIM with its own domain, and nothing in either result is yours.</p>
+                <p id="bounce-codes"><a href="https://support.google.com/a/answer/3726730" target="_blank" rel="noopener">Gmail's bounce codes</a> map onto the same list. A temporary <code>4.7.23</code> and a permanent <code>5.7.25</code> mean the sending IP has no PTR record, or the PTR hostname doesn't resolve back to that IP. The pairs <code>4.7.27</code> and <code>5.7.27</code> mean SPF didn't pass, <code>4.7.29</code> and <code>5.7.29</code> mean the connection wasn't TLS, and <code>4.7.30</code> and <code>5.7.30</code> mean DKIM didn't pass. A <code>4.7.31</code> means there's no DMARC record or the record has no policy, and <code>4.7.32</code> or <code>5.7.32</code> means the From domain isn't aligned with the domain SPF or DKIM authenticated. In this list, codes that start with 4 are rate limiting and codes that start with 5 are rejections. When one source is failing while the rest of the domain passes, the DMARC aggregate reports (the <code>rua</code> tag) will name it.</p>
+                <h3>If you pull this data by script</h3>
+                <p>The <a href="https://developers.google.com/workspace/gmail/postmaster/guides/migration-v2" target="_blank" rel="noopener">V2 API</a> covers everything V1 did except Domain and IP reputation, and adds compliance status, domain management, and batch calls. The schema is different, so existing scripts need work. Google says the V1 API will be retired and names no date.</p>
+                <p>Three changes cover most migrations. The <code>trafficStats</code> resource becomes <code>domainStats</code>, and one method, <code>domains.domainStats.query</code>, replaces <code>trafficStats.get</code> and <code>trafficStats.list</code>. <code>domains.getComplianceStatus</code> is new and returns SPF, DKIM, and DMARC compliance for a domain. <code>domainStats.batchQuery</code> pulls statistics for several domains in one call.</p>
+                <p>The verdicts arrive as constants.</p>
+                <figure class="dbis-table-fig" aria-label="Deliverability analysis verdicts and their API values">
+                    <div class="dbis-table-wrap">
+                        <table class="dbis-table dbis-table-api">
+                            <thead>
+                                <tr>
+                                    <th>Verdict in Postmaster Tools</th>
+                                    <th>API value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>You don't meet our sender requirements</td><td><code>SENDER_<wbr>NOT_<wbr>COMPLIANT</code></td></tr>
+                                <tr><td>Many messages with delivery errors</td><td><code>SMTP_<wbr>ERRORS_<wbr>HIGH</code></td></tr>
+                                <tr><td>Your spam rate is above 0.1%</td><td><code>SPAM_<wbr>RATE_<wbr>HIGH</code></td></tr>
+                                <tr><td>Users signal that they don't want to get your email messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>NEGATIVE</code></td></tr>
+                                <tr><td>Users don't take action on your messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>LOW</code></td></tr>
+                                <tr><td>Not enough outgoing email</td><td><code>MESSAGE_<wbr>VOLUME_<wbr>LOW</code></td></tr>
+                                <tr><td>Users signal they want to get your email messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>POSITIVE</code></td></tr>
+                                <tr><td>Unspecified reason</td><td><code>REASON_<wbr>UNSPECIFIED</code></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </figure>
+            </section>
+            <div class="dbis-closing">
+                <p>dns-audit.com reads a domain's SPF, DKIM, and DMARC records in one pass, which covers the setup half of this article.</p>
+            </div>
+        </article>
+    </main>
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div class="footer-left">
+                <div class="footer-brand-name">dns-audit.com</div>
+                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
+            </div>
+            <div class="footer-right">
+                <div class="footer-nav">
+                    <a href="/articles/" class="footer-link">Articles</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="/about" class="footer-link">About</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="/privacy" class="footer-link">Privacy</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+                </div>
+                <div class="footer-trust">
+                    <span class="footer-version">v2.0.0</span>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security Policy</a>
+                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
+                </div>
+                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <!--email_off--><a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a><!--/email_off--> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

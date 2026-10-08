@@ -7199,6 +7199,9 @@ h3.services-sub,
 }
 .dbis-table tr:last-child td { border-bottom: none; }
 .dbis-table code { white-space: nowrap; overflow-wrap: normal; }
+/* Long API constants break at their underscores (<wbr>) so the table fits a phone */
+.dbis-table-api th,
+.dbis-table-api code { white-space: normal; }
 
 /* Steps list (dmarcbis only) */
 .dbis-steps { counter-reset: step; list-style: none; padding: 0; margin: 1.25rem 0; }
