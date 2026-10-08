@@ -148,3 +148,28 @@ def test_p_reject_article_links_only_the_provider_requirement_pages():
     ]
     assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989", "7960", "7505",
                                                          "8617", "7489"}
+
+
+# The Postmaster Tools article cites Google's own help and API pages and one
+# Spam Resource report, links two other articles, and names only the RFCs
+# its DMARC step discusses.
+_POSTMASTER_LINKS = [
+    "https://support.google.com/mail/answer/16594218",
+    "https://www.spamresource.com/2026/08/gpt-v1-retirement-and-important-updates.html",
+    "https://support.google.com/mail/answer/14668346",
+    "https://support.google.com/mail/answer/81126",
+    "https://support.google.com/mail/answer/14229414",
+    "https://support.google.com/a/answer/3726730",
+    "https://developers.google.com/workspace/gmail/postmaster/guides/migration-v2",
+]
+
+
+def test_postmaster_tools_article_links_its_sources():
+    with open(os.path.join(ARTICLES_DIR, "postmaster-tools.html"), encoding="utf-8") as f:
+        content = f.read()
+    article = content[content.index("<article"):content.index("</article>")]
+    anchors = _anchors(article)
+    assert [h for h, _ in anchors if h.startswith("http")] == _POSTMASTER_LINKS
+    assert [h for h, _ in anchors if h.startswith("/")] == [
+        "/articles/spf-lookups", "/articles/dmarcbis"]
+    assert set(re.findall(r"RFC\s+(\d+)", article)) == {"9989"}

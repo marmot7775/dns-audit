@@ -35,30 +35,36 @@
                 {
                     "@type": "ListItem",
                     "position": 1,
+                    "url": "https://dns-audit.com/articles/postmaster-tools",
+                    "name": "Gmail Postmaster Tools without the reputation ratings"
+                },
+                {
+                    "@type": "ListItem",
+                    "position": 2,
                     "url": "https://dns-audit.com/articles/p-reject",
                     "name": "What to check before you publish p=reject"
                 },
                 {
                     "@type": "ListItem",
-                    "position": 2,
+                    "position": 3,
                     "url": "https://dns-audit.com/articles/spf-lookups",
                     "name": "SPF permerror from too many lookups: how to get back under 10"
                 },
                 {
                     "@type": "ListItem",
-                    "position": 3,
+                    "position": 4,
                     "url": "https://dns-audit.com/articles/dane",
                     "name": "DANE for email in 2026"
                 },
                 {
                     "@type": "ListItem",
-                    "position": 4,
+                    "position": 5,
                     "url": "https://dns-audit.com/articles/dmarcbis",
                     "name": "What RFC 9989 changes for your DMARC record"
                 },
                 {
                     "@type": "ListItem",
-                    "position": 5,
+                    "position": 6,
                     "url": "https://dns-audit.com/articles/dnssec",
                     "name": "DNSSEC in 2026: what changed and whether you need it"
                 }
@@ -98,9 +104,25 @@
                     <button type="button" class="tag tag-hit articles-filter" data-filter="dnssec" aria-pressed="false">DNSSEC</button>
                     <button type="button" class="tag tag-hit articles-filter" data-filter="dane" aria-pressed="false">DANE</button>
                     <button type="button" class="tag tag-hit articles-filter" data-filter="spf" aria-pressed="false">SPF</button>
+                    <button type="button" class="tag tag-hit articles-filter" data-filter="gmail" aria-pressed="false">Gmail</button>
                 </div>
             </div>
             <div class="articles-list">
+                <article class="article-card article-card-postmaster" data-tags="gmail">
+                    <div class="article-card-accent"></div>
+                    <div class="article-card-content">
+                        <div class="article-card-labels">
+                            <span class="tag">Gmail</span>
+                        </div>
+                        <h2 class="article-card-title"><a href="/articles/postmaster-tools">Gmail Postmaster Tools without the reputation ratings</a></h2>
+                        <p class="article-card-description">Postmaster Tools V2 drops the High, Medium, Low and Bad ratings. How to read the compliance checklist and the one sentence verdict that replace them, and who fixes what.</p>
+                        <p class="article-card-meta">
+                            Published <time datetime="2026-10-07">October 2026</time>
+                            <span class="article-card-meta-dot">&middot;</span>
+                            11 min read
+                        </p>
+                    </div>
+                </article>
                 <article class="article-card article-card-p-reject" data-tags="dmarc">
                     <div class="article-card-accent"></div>
                     <div class="article-card-content">
