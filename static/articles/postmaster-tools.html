@@ -115,7 +115,7 @@
                 <p>A big share of your messages are bouncing, usually after a sudden jump in volume or because something in the sending setup is off. Google's advice is to slow down and read the bounce messages, which carry a code that says what Gmail objected to. That's a technical job, and the <a href="#bounce-codes">code list at the end of this article</a> is the key to it. One thing worth knowing even if you never open a bounce: if the Delivery errors dashboard shows more failures than your own records do, Google says the extra errors may belong to mail your recipients are auto forwarding, or to someone replaying your old messages, a trick known as a DKIM replay attack.</p>
                 <h3>Your spam rate is above 0.1%</h3>
                 <p>This one is about people, and no setup change will fix it. Google asks you to keep the share of recipients who report your mail as spam below 0.1%, and to keep it from ever reaching 0.3%. Above 0.3%, bulk senders lose access to mitigation, Google's process for lifting a block, until the rate stays under 0.3% for seven straight days. The questions to ask are the plain ones. Who are you sending to, how often, and did they ask for it? If your platform takes part in Google's feedback loop, the feedback loop dashboard shows which campaigns are drawing the complaints.</p>
-                <h3>Users signal that they don't want to get your email messages</h3>
+                <h3>Users signal they don't want to get your email messages</h3>
                 <p>People keep marking your mail as spam, or leave it in the spam folder when they could rescue it. The remedy is the same review of who, how often, and what. Don't take comfort in a low number on the Spam rate dashboard. Google measures that rate against mail that reached the inbox, so once Gmail is already filing much of your mail as spam, fewer people see it and the rate looks better than it is.</p>
                 <h3>Users don't take action on your messages</h3>
                 <p>People aren't doing anything that tells Gmail whether they want your mail. This is the quiet version of the verdict above, and the answer is a smaller, warmer list. Start by suppressing addresses that haven't opened or clicked in a long time, or ask them to reconfirm.</p>
@@ -161,7 +161,7 @@
                                 <tr><td>You don't meet our sender requirements</td><td><code>SENDER_<wbr>NOT_<wbr>COMPLIANT</code></td></tr>
                                 <tr><td>Many messages with delivery errors</td><td><code>SMTP_<wbr>ERRORS_<wbr>HIGH</code></td></tr>
                                 <tr><td>Your spam rate is above 0.1%</td><td><code>SPAM_<wbr>RATE_<wbr>HIGH</code></td></tr>
-                                <tr><td>Users signal that they don't want to get your email messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>NEGATIVE</code></td></tr>
+                                <tr><td>Users signal they don't want to get your email messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>NEGATIVE</code></td></tr>
                                 <tr><td>Users don't take action on your messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>LOW</code></td></tr>
                                 <tr><td>Not enough outgoing email</td><td><code>MESSAGE_<wbr>VOLUME_<wbr>LOW</code></td></tr>
                                 <tr><td>Users signal they want to get your email messages</td><td><code>USER_<wbr>FEEDBACK_<wbr>POSITIVE</code></td></tr>
