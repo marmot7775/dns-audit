@@ -986,7 +986,8 @@ function renderResults(data) {
     const draftList = document.getElementById('draft-standards-list');
     draftList.innerHTML = '';
     const drafts = data.draft_standards || [];
-    drafts.forEach((card, i) => draftList.appendChild(createResultCard(card, checks.length + i)));
+    drafts.forEach((card, i) => draftList.appendChild(
+        card.collapsed_line ? createDraftLine(card) : createResultCard(card, checks.length + i)));
     draftSection.classList.toggle('is-hidden', drafts.length === 0);
 
     // Every card renders collapsed, so the button offers Expand All. It has
@@ -1152,6 +1153,27 @@ function setCardExpanded(card, open) {
     if (header) header.setAttribute('aria-expanded', open ? 'true' : 'false');
     const body = card.querySelector('.result-body');
     if (body) body.inert = !open;
+}
+
+// A draft standard that is not published (nearly every domain) is one
+// collapsed line, not a card. It reuses the subdomain table's details and
+// summary toggle; the note and the advice sit only inside the expanded body.
+function createDraftLine(card) {
+    const el = document.createElement('details');
+    el.className = 'sua-details draft-line';
+    el.id = 'draft-' + card.name.toLowerCase();
+    const found = (card.paragraphs || [])
+        .map(p => `<p class="explanation">${escapeHtml(p)}</p>`).join('');
+    el.innerHTML = `
+        <summary class="sua-toggle draft-line-summary">
+            <span class="sua-toggle-icon">${ICON.chevron}</span>
+            ${escapeHtml(card.collapsed_line)}
+        </summary>
+        <div class="draft-line-body">
+            <div class="what-this-is">${escapeHtml(card.what_this_is)}</div>
+            ${found}
+        </div>`;
+    return el;
 }
 
 function createResultCard(check, index) {

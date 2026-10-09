@@ -1479,6 +1479,10 @@ def _draft_standards(data, S):
         return []
     els = [Spacer(1, SP_MD), Paragraph("Draft standards", S["heading"])]
     for card in cards:
+        # Not published: the web page's collapsed line and nothing else.
+        if card.get("collapsed_line"):
+            els.append(Paragraph(_safe(card["collapsed_line"]), S["body"]))
+            continue
         title = card.get("plain_name") or card.get("name", "")
         pill = card.get("pill_label") or STATUS_LBL.get(card.get("status"), "")
         hdr = Table([
