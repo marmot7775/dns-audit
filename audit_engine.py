@@ -4643,7 +4643,9 @@ _shared_executor = ThreadPoolExecutor(
 # was fine for one audit at a time, but 8 concurrent audits each probing
 # len(_SUBDOMAIN_PREFIXES) subdomains queues far more than 20 workers can hold,
 # so the tail waits out its own timeout budget before a probe ever runs.
-_PROBE_WIDTH = 20  # len(_SUBDOMAIN_PREFIXES), defined below
+# len(_SUBDOMAIN_PREFIXES) (20, defined below) plus the vendor CNAME wave
+# (23 labels and a wildcard canary), which can overlap with it in one audit.
+_PROBE_WIDTH = 44
 _probe_executor = ThreadPoolExecutor(
     max_workers=max(20, _MAX_CONCURRENT_AUDITS * _PROBE_WIDTH),
     thread_name_prefix="probe",
@@ -4833,6 +4835,55 @@ def _sends_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
     if _publishes_null_spf(raw_spf):
         return True
     return _publishes_null_mx(raw_mx) and not _has_sending_spf(raw_spf)
+
+
+def _probe_vendor_cname(name: str) -> Optional[str]:
+    """The CNAME target at name, or None for no CNAME or no answer."""
+    try:
+        answer = _get_resolver(_SUBDOMAIN_TIMEOUT).resolve(name, "CNAME")
+        return str(answer[0].target).rstrip(".").lower()
+    except (dns.exception.DNSException, OSError):
+        # Only DNS outcomes mean "no CNAME". Anything else is a bug, and is
+        # logged by the caller rather than read as an empty answer.
+        return None
+
+
+def _probe_vendor_cnames(domain: str, budget: float) -> Dict[str, str]:
+    """{label: target} for the vendor return path, tracking and autodiscover
+    labels (vendor_patterns.VENDOR_CNAME_LABELS) that are CNAMEs.
+
+    One parallel wave on _probe_executor, never _shared_executor (the
+    fingerprinting that reads it runs there) or _dkim_executor. A random
+    label is asked too: a wildcard CNAME answers every name, so a label that
+    returns the wildcard's own target is not evidence of anything.
+    """
+    from vendor_patterns import VENDOR_CNAME_LABELS
+    futures = {_probe_executor.submit(_probe_vendor_cname, f"{label}.{domain}"): label
+               for label in VENDOR_CNAME_LABELS}
+    canary = _probe_executor.submit(_probe_vendor_cname, f"dnsaudit{secrets.token_hex(6)}.{domain}")
+    try:
+        for _ in as_completed([*futures, canary], timeout=budget):
+            pass
+    except FuturesTimeoutError:
+        log.warning("Vendor CNAME probe for %s hit its %.1fs budget", domain, budget)
+    if not canary.done():
+        # Without the canary's answer a wildcard cannot be ruled out, so no
+        # label's answer can be trusted.
+        canary.cancel()
+        for future in futures:
+            future.cancel()
+        log.warning("Vendor CNAME canary for %s did not finish; discarding the wave", domain)
+        return {}
+    wildcard = canary.result()
+    found = {}
+    for future, label in futures.items():
+        if not future.done():
+            future.cancel()
+            continue
+        target = future.result()
+        if target and target != wildcard:
+            found[label] = target
+    return found
 
 
 def _audit_subdomains(domain: str) -> Dict[str, Any]:
@@ -5900,6 +5951,17 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             "dkim_selectors": _live_dkim_selectors(raw_results.get("dkim")),
             "apex_txt": _raw_spf.get("apex_txt") or [],
         }
+        # Return path, tracking and autodiscover CNAMEs: the one signal here
+        # that needs its own queries. A short budget inside the audit's.
+        _cname_budget = 3.0
+        if deadline is not None:
+            _cname_budget = min(_cname_budget, deadline - time.monotonic())
+        try:
+            # Past the deadline, skip the wave rather than overrun it.
+            if _cname_budget > 0:
+                _fp_prefetch["label_cnames"] = _probe_vendor_cnames(domain, _cname_budget)
+        except Exception:
+            log.warning("Vendor CNAME probe failed for %s", domain, exc_info=True)
         # Every probe now reads from prefetch, so this makes no DNS query of
         # its own. The ceiling stays as a guard for any signal added later.
         try:
@@ -6196,16 +6258,19 @@ def _live_dkim_selectors(raw_dkim: Optional[Dict]) -> List[Dict]:
 # report address used to be counted but never named, so a vendor found only
 # that way read "Detected via DNS records" at 90 percent, as if it sent mail.
 _VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DKIM"),
-                   ("Verification TXT", "TXT"), ("DMARC Reporting", "DMARC reports"),
-                   ("TLS-RPT", "TLS-RPT reports"))
+                   ("Return path CNAME", "return path CNAME"),
+                   ("Tracking CNAME", "tracking CNAME"),
+                   ("Verification TXT", "TXT"), ("Autodiscover CNAME", "autodiscover CNAME"),
+                   ("DMARC Reporting", "DMARC reports"), ("TLS-RPT", "TLS-RPT reports"))
 _REPORTING_TECHNIQUES = {"DMARC Reporting", "TLS-RPT"}
 
 # The sender discovery script's four tiers, strongest first, in place of a
 # percentage that read 99 for nearly every vendor. In use: MX, mail is
-# delivered there now. Configured: an SPF include or a DKIM key the vendor
-# hosts through a CNAME. Likely: a DKIM key known only by its selector name.
-# Account only: a verification token or a report address, a trace of an
-# account with nothing set up to send through it.
+# delivered there now. Configured: an SPF include, a DKIM key the vendor
+# hosts through a CNAME, or a return path or tracking CNAME. Likely: a DKIM
+# key known only by its selector name. Account only: a verification token,
+# an autodiscover CNAME or a report address, a trace of an account with
+# nothing set up to send through it.
 VENDOR_TIERS = ("In use", "Configured", "Likely", "Account only")
 
 
@@ -6224,7 +6289,8 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
             sides = []
             # A DKIM key is the vendor signing mail as you: outbound, the
             # same side as an SPF include.
-            if techniques & {"SPF Include", "DKIM Key"}:
+            # A return path or tracking CNAME is the vendor sending as you.
+            if techniques & {"SPF Include", "DKIM Key", "Return path CNAME", "Tracking CNAME"}:
                 sides.append("outbound")
             if "MX Record" in techniques:
                 sides.append("inbound")
@@ -6236,7 +6302,7 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
             by_cname = dkim_label == "DKIM CNAME"
             if "MX Record" in techniques:
                 tier = "In use"
-            elif "SPF Include" in techniques or by_cname:
+            elif (techniques & {"SPF Include", "Return path CNAME", "Tracking CNAME"}) or by_cname:
                 tier = "Configured"
             elif "DKIM Key" in techniques:
                 tier = "Likely"
