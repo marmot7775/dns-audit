@@ -71,8 +71,14 @@ def nested_spf_vendor_includes(chain) -> list:
             top_redirect = depth == 1 and any(
                 t.lower().startswith("redirect=") and t[9:].lower().rstrip(".") == name
                 for t in (parent.get("record") or "").split())
-            if vendor and wrappers_only and (depth >= 2 or top_redirect) \
-                    and _authorizes(parent.get("record") or "", name):
+            # Every edge from the domain down must authorize the next name:
+            # spf_recursive drops qualifiers, so a ~include: wrapper still
+            # appears in the chain with its children.
+            path = [e for _, e, _ in stack] + [entry]
+            path_authorized = all(
+                _authorizes(a.get("record") or "", (b.get("domain") or ""))
+                for a, b in zip(path, path[1:]))
+            if vendor and wrappers_only and (depth >= 2 or top_redirect) and path_authorized:
                 out.append({"host": name, "parent": parent.get("domain"), "vendor": vendor})
         stack.append((depth, entry, vendor))
     return out

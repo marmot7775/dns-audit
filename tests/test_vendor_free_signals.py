@@ -144,3 +144,15 @@ def test_a_full_audit_finds_the_vendor_behind_a_wrapper_include(audit):
     by_name = {v["name"]: v for v in result["vendors"]}
     assert by_name["SendGrid"]["sources"] == ["SPF"] and by_name["SendGrid"]["role"] == "sender"
     assert by_name["EasyDMARC"]["role"] == "reporting"
+
+
+def test_a_softfail_wrapper_does_not_authorize_what_it_includes():
+    chain = _chain((0, DOMAIN, "v=spf1 ~include:_spf.free.test -all"),
+                   (1, "_spf.free.test", "v=spf1 include:sendgrid.net -all"),
+                   (2, "sendgrid.net", "v=spf1 ip4:167.89.0.0/17 ~all"))
+    assert nested_spf_vendor_includes(chain) == []
+
+
+def test_mailto_header_fields_are_not_the_recipient():
+    rec = "v=DMARC1; p=none; rua=mailto:r@free.test?subject=x@dmarcian.com"
+    assert report_address_domains(rec) == ["free.test"]

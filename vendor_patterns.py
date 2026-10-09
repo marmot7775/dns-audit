@@ -312,7 +312,12 @@ def report_address_domains(record: Optional[str], tags=("rua",)):
         for uri in value.split(","):
             uri = uri.strip()
             if uri.lower().startswith("mailto:") and "@" in uri:
-                domain = uri[7:].split("!")[0].rsplit("@", 1)[1].strip().rstrip(".").lower()
+                # RFC 6068: header fields after "?" are not the recipient,
+                # and "!" starts a DMARC size limit.
+                recipient = uri[7:].split("?")[0].split("!")[0]
+                if "@" not in recipient:
+                    continue
+                domain = recipient.rsplit("@", 1)[1].strip().rstrip(".").lower()
                 if domain and domain not in out:
                     out.append(domain)
     return out
