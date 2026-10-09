@@ -194,36 +194,36 @@ from dns_snapshots import store_audit_snapshots, get_all_history, purge_old_snap
 # Vendor SPF Include Mapping (for remediation suggestions)
 # ============================================================
 
+# Only vendors whose own setup docs require an include in the domain's SPF
+# record, per the footprints in Neil's sender discovery vendors.json
+# (Toolkit/templates, read 2026-10-08). The ESPs that send with their own
+# return path (Mailchimp, Postmark, SparkPost, Brevo) need none, and the ones
+# whose include is optional (SendGrid, Amazon SES, HubSpot, Salesforce,
+# Zendesk, Freshdesk, Intercom) authorize through a CNAME on a subdomain:
+# suggesting their include spent a lookup out of ten on nothing.
 VENDOR_SPF_INCLUDES = {
     "Google Workspace": "include:_spf.google.com",
     "Microsoft 365": "include:spf.protection.outlook.com",
-    "Zoho Mail": "include:zoho.com",
-    "Fastmail": "include:spf.fastmail.com",
-    "ProtonMail": "include:_spf.protonmail.ch",
+    "Zoho Mail": "include:zohomail.com",
+    "Fastmail": "include:spf.messagingengine.com",
+    "Proton Mail": "include:_spf.protonmail.ch",
     "Rackspace Email": "include:emailsrvr.com",
-    "SendGrid": "include:sendgrid.net",
-    "Mailchimp": "include:servers.mcsv.net",
     "Mailgun": "include:mailgun.org",
-    "Amazon SES": "include:amazonses.com",
-    "Postmark": "include:spf.mtasv.net",
-    "SparkPost": "include:sparkpostmail.com",
-    "Brevo (Sendinblue)": "include:sendinblue.com",
-    "HubSpot": "include:hubspotemail.net",
-    "Salesforce": "include:_spf.salesforce.com",
-    "Zendesk": "include:mail.zendesk.com",
-    "Freshdesk": "include:email.freshdesk.com",
-    "Intercom": "include:intercom-mail.com",
     "Mimecast": "include:_netblocks.mimecast.com",
-    "Barracuda": "include:spf.barracudanetworks.com",
+    "Barracuda": "include:spf.ess.barracudanetworks.com",
     "Omnivery/Mailkit": "include:spf.mailkit.eu",
 }
 
-# Hosted SPF services publish a vendor's ranges under their own zone instead
-# of through the vendor's usual include. A name in one of these zones anywhere
-# in the SPF tree means the vendor is already covered. Mimecast's hosted SPF
+# Other names that already cover a vendor anywhere in the SPF tree: older or
+# alternative includes (zoho.com, spf.fastmail.com, Barracuda's regional and
+# pre-ESS names, Mimecast's regional _netblocks), and hosted SPF zones that
+# publish a vendor's ranges under their own name. Mimecast's hosted SPF
 # (servicenow.com redirects to a mim.ec name) is the case seen in the wild.
 VENDOR_SPF_HOSTED_ZONES = {
-    "Mimecast": ("mim.ec",),
+    "Mimecast": ("mim.ec", "mimecast.com"),
+    "Zoho Mail": ("zoho.com", "zoho.eu", "zoho.in", "zoho.com.au"),
+    "Fastmail": ("spf.fastmail.com",),
+    "Barracuda": ("barracudanetworks.com",),
 }
 
 
