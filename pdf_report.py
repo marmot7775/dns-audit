@@ -1465,6 +1465,50 @@ def _protocol_card(check, S, pointer=None):
     return [KeepTogether(els)]
 
 
+def _draft_standards(data, S):
+    """The Draft standards section, after Checks: informational cards only.
+
+    Unnumbered and left out of the contents, because the cover and the plan
+    rows hard code the section numbers. The cards come from
+    data["draft_standards"], never from checks, so _tally and every other
+    count stay as they are. The words are the card's own, the same ones the
+    web page prints.
+    """
+    cards = data.get("draft_standards") or []
+    if not cards:
+        return []
+    els = [Spacer(1, SP_MD), Paragraph("Draft standards", S["heading"])]
+    for card in cards:
+        title = card.get("plain_name") or card.get("name", "")
+        pill = card.get("pill_label") or STATUS_LBL.get(card.get("status"), "")
+        hdr = Table([
+            [Paragraph(f"<b>{_safe(title)}</b>", S["card_title"]),
+             Paragraph(f'<font color="{NEUTRAL_CLR.hexval()}" size="10"><b> {_safe(pill)} </b></font>', S["body"])],
+        ], colWidths=[5.0*inch, 1.5*inch])
+        hdr.setStyle(TableStyle([
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("ALIGN", (1,0), (1,0), "RIGHT"),
+            ("TOPPADDING", (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ]))
+        body = [hdr]
+        if card.get("verdict"):
+            body.append(Paragraph(_safe(card["verdict"]), S["verdict"]))
+        if card.get("what_this_is"):
+            body.append(Paragraph("What this is", S["part_label"]))
+            body.append(Paragraph(_safe(card["what_this_is"]), S["body_small"]))
+        paragraphs = card.get("paragraphs") or []
+        if paragraphs:
+            body.append(Paragraph("What we found", S["part_label"]))
+            for text in paragraphs:
+                body.append(Paragraph(_safe(text), S["body_small"]))
+        if card.get("record"):
+            body.extend(_record_block(card["record"], S))
+        body.extend([Spacer(1, SP_SM), HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=SP_MD)])
+        els.append(KeepTogether(body))
+    return els
+
+
 def _record_block(record, S, small=False):
     """Render a DNS record in a dark code block."""
     rec = _safe(record)
@@ -2072,6 +2116,7 @@ def _build_sections(audit_result: dict, S):
         number += 1
         toc_items.append(f"{number}. {title}")
         sections.extend(els)
+    sections.extend(_draft_standards(audit_result, S))
 
     if appendix_els:
         toc_items.append("<b>Part 2: Appendix</b>")

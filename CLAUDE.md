@@ -71,7 +71,10 @@
 - Cache key format: "domain:selector:scope" (5 min TTL)
 - Audit log: audit.log (JSON-lines, GDPR-safe). Fields: ts, domain, scope,
   duration_s, checks, ua, bot, source, status, vid, plus error when status is
-  not "ok" and ref when a Referer was sent. Fields are added, never renamed or
+  not "ok", ref when a Referer was sent, and aprf (none, published, ignored,
+  unavailable) when the APRF check ran (complete and email_full scopes). It is
+  the one per card status the log records, kept for an adoption count. Fields
+  are added, never renamed or
   removed, so older entries carry fewer of them.
   - `ua` is coarse labels only, "<browser family> / <OS family>", never a raw
     user-agent string and never a version number. Browser families: Chrome,

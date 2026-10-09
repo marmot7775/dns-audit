@@ -11,6 +11,7 @@ import ipaddress
 import logging
 import os
 import re
+import secrets
 import threading as _ct_threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
@@ -155,6 +156,7 @@ from dns_tools import (
 )
 
 from result_transformer import (
+    transform_aprf,
     _registry_suffix,
     attach_reject_dkim_note,
     attach_what_this_is,
@@ -485,6 +487,30 @@ DMARC_REPORT_SERVICES = {
 # DMARC Report Authorization Check (RFC 7489 S7.1)
 # ============================================================
 
+def _report_org_domain(domain: str, tree_walk_result: Optional[Dict] = None) -> str:
+    """The organizational domain a report destination is compared against.
+
+    Tree walk takes priority; fall back to the PSL-aware _get_org_domain so
+    two-part TLDs like co.uk and com.au resolve correctly (an inline
+    last-two-labels heuristic would yield "co.uk" for example.co.uk and
+    falsely flag rua=mailto:dmarc@example.co.uk as external).
+
+    Shared by the DMARC external destination check and the APRF destination
+    check, so the two can never disagree about what counts as external.
+    """
+    if tree_walk_result and tree_walk_result.get("org_domain"):
+        return tree_walk_result["org_domain"].lower().rstrip(".")
+    psl_org = _get_org_domain(domain)
+    if psl_org:
+        return psl_org.lower().rstrip(".")
+    return domain.lower().rstrip(".")
+
+
+def _is_external_destination(dest_domain: str, org_domain: str) -> bool:
+    """True when a report address is outside the organizational domain."""
+    return dest_domain != org_domain and not dest_domain.endswith("." + org_domain)
+
+
 def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: Optional[Dict] = None) -> Optional[Dict]:
     """Check whether external DMARC report destinations are authorized.
 
@@ -498,20 +524,7 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
     issues = []
     ruf_present = False
 
-    # Determine org domain for external check. Tree walk takes priority;
-    # fall back to the PSL-aware _get_org_domain so two-part TLDs like
-    # co.uk and com.au resolve correctly (an inline last-two-labels
-    # heuristic would yield "co.uk" for example.co.uk and falsely flag
-    # rua=mailto:dmarc@example.co.uk as external).
-    org_domain = None
-    if tree_walk_result and tree_walk_result.get("org_domain"):
-        org_domain = tree_walk_result["org_domain"].lower().rstrip(".")
-    else:
-        psl_org = _get_org_domain(domain)
-        if psl_org:
-            org_domain = psl_org.lower().rstrip(".")
-        else:
-            org_domain = domain.lower().rstrip(".")
+    org_domain = _report_org_domain(domain, tree_walk_result)
 
     # Pass 1: build the destination list. No DNS happens here, so every
     # probe below can be issued at once.
@@ -532,8 +545,7 @@ def _check_report_authorization(domain: str, raw_dmarc: Dict, tree_walk_result: 
                 continue
             dest_domain = email.split("@", 1)[1].lower().rstrip(".")
 
-            # External?
-            is_external = dest_domain != org_domain and not dest_domain.endswith("." + org_domain)
+            is_external = _is_external_destination(dest_domain, org_domain)
 
             dest_info = {
                 "type": tag_type,
@@ -4403,6 +4415,198 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
 
 
 # ============================================================
+# APRF (draft-brotman-aggregate-performance-reporting-01)
+# ============================================================
+#
+# Informational only. The card goes in the response's draft_standards list,
+# never in checks, so no tally, score, plan or summary can see it.
+
+APRF_SCOPES = {"complete", "email_full"}
+APRF_SELECTOR_CAP = 10
+APRF_DESTINATION_CAP = 4
+
+_APRF_KIND_ORDER = {"selector": 0, "wildcard": 1, "bare": 2}
+
+
+def _aprf_random_label() -> str:
+    """A label no one publishes, fresh per audit, so an answer means a wildcard."""
+    return "dnsaudit" + secrets.token_hex(6)
+
+
+def _aprf_tags(txt: str) -> Dict[str, str]:
+    tags = {}
+    for part in txt.split(";"):
+        key, sep, value = part.partition("=")
+        if sep:
+            tags.setdefault(key.strip().lower(), value.strip())
+    return tags
+
+
+def _aprf_candidate(txt: str) -> bool:
+    """Whether a TXT answer is meant as an APRF record.
+
+    A DKIM wildcard (*._domainkey) or an apex wildcard answers these names
+    too, with a record that has nothing to do with APRF. Only a v tag that
+    starts APRF, or no v tag and an rua tag, is read as an attempt at one.
+    """
+    tags = _aprf_tags(txt)
+    if "v" in tags:
+        return tags["v"].upper().startswith("APRF")
+    return "rua" in tags
+
+
+def _parse_aprf(txt: str) -> Dict[str, Any]:
+    """Apply the section 4.1 rules to one record.
+
+    v must be APRFv1 and rua must hold at least one mailto: destination, or a
+    provider ignores the record. sdi is shown as published, not validated.
+    """
+    tags = _aprf_tags(txt)
+    destinations = []
+    for item in (tags.get("rua") or "").split(","):
+        item = item.strip()
+        if item[:7].lower() != "mailto:":
+            continue
+        address = item[7:].split("!", 1)[0].strip()
+        if "@" in address:
+            destinations.append(address)
+    ignored_reason = None
+    if tags.get("v") != "APRFv1":
+        ignored_reason = "v_tag"
+    elif not destinations:
+        ignored_reason = "no_rua"
+    return {
+        "record": txt,
+        "valid": ignored_reason is None,
+        "ignored_reason": ignored_reason,
+        "rua": destinations,
+        "sdi": tags.get("sdi") or None,
+    }
+
+
+def _aprf_lookup(name: str) -> List[str]:
+    """APRF candidates at one name. Raises when the lookup did not complete."""
+    return [t for t in _lookup_txt(name, raise_on_failure=True) if _aprf_candidate(t)]
+
+
+def _raw_check_aprf(domain: str, raw_dkim: Optional[Dict],
+                    tree_walk_result: Optional[Dict] = None) -> Dict[str, Any]:
+    """Look for APRF records keyed on this domain's DKIM signatures.
+
+    Section 4 names the record <s>._aprf._domainkey.<d>, a wildcard to the
+    left of _aprf, or the bare _aprf._domainkey.<d>; the most specific match
+    wins. Section 4.2 of draft 01 writes the selector form as
+    selector1._domainkey.email.example.org, without the _aprf label. That
+    reads as a typo against section 4, so section 4 is what is queried.
+
+    Any failure on those names sets lookup_failed: a failed query is not an
+    absent record. A failure on a section 9 authorization lookup only marks
+    that destination as not checked.
+    """
+    domain = domain.lower().rstrip(".")
+    bare = f"_aprf._domainkey.{domain}"
+    probe = f"{_aprf_random_label()}.{bare}"
+
+    # None means the DKIM check produced nothing (it raised); that is as
+    # incomplete as a timeout, not a finding that no selector exists.
+    dkim_incomplete = (raw_dkim is None or raw_dkim.get("timed_out")
+                       or raw_dkim.get("status") == "unavailable")
+    raw_dkim = raw_dkim or {}
+    live = _live_dkim_selectors(raw_dkim)
+    selectors = sorted({s.get("selector") for s in live if s.get("selector")})
+    if dkim_incomplete:
+        selectors = []
+        selectors_skipped = "dkim_incomplete"
+    elif not selectors:
+        selectors_skipped = "no_live_selectors"
+    else:
+        selectors_skipped = None
+    selectors_total = len(selectors)
+    selectors = selectors[:APRF_SELECTOR_CAP]
+
+    result: Dict[str, Any] = {
+        "domain": domain,
+        "bare_name": bare,
+        "records": [],
+        "selectors_checked": selectors,
+        "selectors_total": selectors_total,
+        "selectors_skipped": selectors_skipped,
+        "destinations": [],
+        "lookup_failed": False,
+    }
+
+    names = [("bare", None, bare), ("wildcard", None, probe)]
+    names += [("selector", s, f"{s}._aprf._domainkey.{domain}") for s in selectors]
+
+    def _query(item):
+        kind, selector, name = item
+        try:
+            return item, _aprf_lookup(name), None
+        except Exception as e:  # SERVFAIL, REFUSED, timeout, anything else
+            return item, None, e
+
+    # _probe_executor, not _shared_executor (this runs on that pool) and not
+    # _dkim_executor, which the DKIM starvation fix needs kept light.
+    answers = list(_probe_executor.map(_query, names))
+    for (kind, selector, name), found, error in answers:
+        if error is not None:
+            log.info("APRF lookup did not complete for %s: %s", name, error)
+            result["lookup_failed"] = True
+            result["lookup_target"] = name
+            return result
+
+    wildcard_records = next(found for (kind, _s, _n), found, _e in answers if kind == "wildcard")
+    for (kind, selector, name), found, _err in answers:
+        if not found:
+            continue
+        # Under a wildcard, every selector name answers with the wildcard's
+        # own record. Only a different record is a selector-specific one.
+        if kind == "selector" and sorted(found) == sorted(wildcard_records):
+            continue
+        location = f"*._aprf._domainkey.{domain}" if kind == "wildcard" else name
+        parsed = _parse_aprf(found[0])
+        parsed.update({"kind": kind, "selector": selector, "location": location,
+                       "records_at_name": len(found)})
+        result["records"].append(parsed)
+    result["records"].sort(key=lambda r: (_APRF_KIND_ORDER[r["kind"]], r["selector"] or ""))
+
+    # Section 9: a destination outside the organizational domain should
+    # publish <selector>.<DKIM domain>._aprf.<destination domain>.
+    org_domain = _report_org_domain(domain, tree_walk_result)
+    seen = set()
+    for rec in result["records"]:
+        if not rec["valid"]:
+            continue
+        for address in rec["rua"]:
+            dest_domain = address.split("@", 1)[1].lower().rstrip(".")
+            if not _is_external_destination(dest_domain, org_domain):
+                continue
+            key = (rec["selector"], dest_domain)
+            if key in seen:
+                continue
+            seen.add(key)
+            result["destinations"].append({
+                "address": address, "domain": dest_domain, "selector": rec["selector"],
+                "authorized": None, "check_failed": False,
+            })
+    result["destinations_total"] = len(result["destinations"])
+    result["destinations"] = result["destinations"][:APRF_DESTINATION_CAP]
+
+    def _authorize(dest):
+        label = dest["selector"] or _aprf_random_label()
+        dest["auth_name"] = f"{label}.{domain}._aprf.{dest['domain']}"
+        try:
+            records = _lookup_txt(dest["auth_name"], raise_on_failure=True)
+            dest["authorized"] = any(_aprf_tags(r).get("v") == "APRFv1" for r in records)
+        except Exception:
+            dest["check_failed"] = True
+
+    if result["destinations"]:
+        list(_probe_executor.map(_authorize, result["destinations"]))
+    return result
+
+
+# ============================================================
 # Main Audit Orchestrator
 # ============================================================
 
@@ -5362,6 +5566,31 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         if key in _p2_cards:
             checks.append(_p2_cards[key])
 
+    # --- APRF (draft standard) ---
+    # After Phase 2 because the selector names come from the DKIM result.
+    # Informational: the card goes in draft_standards, never in checks, so
+    # the tallies, Protocol Coverage, the plan, the executive summary and the
+    # biggest risk callout cannot see it.
+    draft_standards = []
+    if (scope or "complete") in APRF_SCOPES:
+        _aprf_bare = {"lookup_failed": True,
+                      "lookup_target": f"_aprf._domainkey.{domain.lower().rstrip('.')}"}
+        _aprf_budget = CHECK_TIMEOUT
+        if deadline is not None:
+            _aprf_budget = min(_aprf_budget, deadline - time.monotonic())
+        if _aprf_budget <= 0:
+            raw_aprf = _aprf_bare
+        else:
+            try:
+                raw_aprf = _run_with_timeout(
+                    _raw_check_aprf, domain, raw_results.get("dkim"),
+                    tree_walk_result, timeout=_aprf_budget,
+                )
+            except Exception as e:
+                log.info("APRF check did not complete for %s: %s", domain, e)
+                raw_aprf = _aprf_bare
+        draft_standards.append(transform_aprf(raw_aprf, domain))
+
     # --- Detect Defensive DNS pattern (moved early -- roadmap needs it) ---
     defensive_signals = []
     is_defensive = False  # Already declared at top, reassign here after data is ready
@@ -5942,6 +6171,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "change_detection": change_detection,
         "consistency_findings": consistency,
         "advisories": advisories if advisories else None,
+        "draft_standards": draft_standards,
     }
 
 
