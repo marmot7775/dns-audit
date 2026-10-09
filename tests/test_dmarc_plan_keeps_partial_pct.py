@@ -44,7 +44,7 @@ def test_optional_np_row_keeps_pct_5(audit):
 def test_sp_row_keeps_pct_75(audit):
     rows = _rows(_run(audit, "illinois.test",
                       "v=DMARC1; p=reject; sp=none; pct=75; rua=mailto:d@illinois.test"))
-    sp_row = rows["Bring the subdomain policy up to p=reject"]
+    sp_row = rows["Raise the subdomain policy to sp=reject"]
     tags = _parse_record_tags(sp_row["record"])
     assert tags["pct"] == "75" and tags["sp"] == "reject", sp_row["record"]
     assert "pct=75" in sp_row["host_note"]

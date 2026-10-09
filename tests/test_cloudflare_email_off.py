@@ -1,22 +1,19 @@
-"""Every email address in the static HTML sits inside Cloudflare's
-<!--email_off--> ... <!--/email_off--> markers.
+"""No email_off markers anywhere in the static HTML (report copy part 1).
 
-Cloudflare's Email Address Obfuscation (Scrape Shield) rewrites any address
-it finds in an HTML response into a [email protected] span and a link to
-/cdn-cgi/l/email-protection, decoded by a script it injects. Without that
-script the contact address cannot be read, and example addresses inside
-<code> become links. Doc 26 asked for a plain address with no JavaScript.
-The markers tell Cloudflare to leave the address alone; the zone setting
-cannot be changed from the repo. Addresses that app.js renders are added
-after the response, so Cloudflare never sees them.
+PR #148 wrapped every address in <!--email_off--> so Cloudflare's Email
+Address Obfuscation would leave it as plain text. The address on the live
+homepage was then readable by any scraper. The markers are gone: Cloudflare
+rewrites each address in an HTML response into a /cdn-cgi/l/email-protection
+link that its script decodes. app.js is not an HTML response and Cloudflare
+never rewrites it, so app.js carries no address at all; the results note
+links to LinkedIn and the footer carries the protected email link.
 """
 import glob
 import os
 import re
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ADDRESS_RE = re.compile(r"[\w.+!-]+@[\w-]+(?:\.[\w-]+)+")
-WRAPPED_RE = re.compile(r"<!--email_off-->.*?<!--/email_off-->", re.DOTALL)
+ALIAS = "dns" + "@" + "dns-audit" + ".com"
 
 
 def _html_files():
@@ -25,17 +22,15 @@ def _html_files():
     return sorted(files)
 
 
-def test_every_address_is_inside_email_off():
-    bare = []
+def test_no_email_off_markers():
+    marked = []
     for path in _html_files():
         with open(path, encoding="utf-8") as f:
-            outside = WRAPPED_RE.sub("", f.read())
-        bare += [f"{os.path.relpath(path, REPO_ROOT)}: {m.group(0)}" for m in ADDRESS_RE.finditer(outside)]
-    assert not bare, "addresses Cloudflare would obfuscate:\n" + "\n".join(bare)
+            if re.search(r"<!--/?email_off-->", f.read()):
+                marked.append(os.path.relpath(path, REPO_ROOT))
+    assert not marked, marked
 
 
-def test_markers_are_balanced():
-    for path in _html_files():
-        with open(path, encoding="utf-8") as f:
-            src = f.read()
-        assert src.count("<!--email_off-->") == src.count("<!--/email_off-->"), path
+def test_no_address_in_app_js():
+    with open(os.path.join(REPO_ROOT, "static", "app.js"), encoding="utf-8") as f:
+        assert ALIAS not in f.read()

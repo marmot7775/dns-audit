@@ -49,7 +49,7 @@ def test_a_warn_card_does_not_get_the_properly_set_up_sentence():
     checks = _auth_cards(spf="warn")
     es = build_executive_summary(checks, build_security_roadmap(checks))
     assert es["deliverability_summary"] == (
-        "SPF, DKIM, and DMARC are all in place. The plan below has what to tighten.")
+        "SPF, DKIM, and DMARC are all in place. What to do lists what to tighten.")
     assert "looks solid" not in es["deliverability_summary"]
     assert "properly set up" not in es["deliverability_summary"]
     assert "set up correctly" not in es["deliverability_summary"]
@@ -72,11 +72,11 @@ def _dmarc_only(record):
 
 def test_sp_none_under_p_reject_gets_a_high_row_and_no_np_row():
     rows = build_security_roadmap(_dmarc_only("v=DMARC1; p=reject; sp=none"))["items"]
-    sp_rows = [i for i in rows if i["action"].startswith("Bring the subdomain policy")]
+    sp_rows = [i for i in rows if i["action"].startswith("Raise the subdomain policy")]
 
     assert len(sp_rows) == 1, rows
     assert sp_rows[0]["priority"] == "high"
-    assert sp_rows[0]["action"] == "Bring the subdomain policy up to p=reject"
+    assert sp_rows[0]["action"] == "Raise the subdomain policy to sp=reject"
     assert sp_rows[0]["impact"].startswith("With sp=none, mail from any subdomain that fails")
     assert not [i for i in rows if "np=" in i["action"]], (
         "the np= note claims subdomains inherit the enforcing policy, which "
@@ -85,7 +85,7 @@ def test_sp_none_under_p_reject_gets_a_high_row_and_no_np_row():
 
 def test_sp_quarantine_under_p_reject_does_not_call_subdomains_unprotected():
     rows = build_security_roadmap(_dmarc_only("v=DMARC1; p=reject; sp=quarantine"))["items"]
-    row = next(i for i in rows if i["action"].startswith("Bring the subdomain policy"))
+    row = next(i for i in rows if i["action"].startswith("Raise the subdomain policy"))
 
     assert row["priority"] == "high"
     assert "unprotected" not in row["impact"]
@@ -97,13 +97,13 @@ def test_p_reject_with_no_sp_keeps_the_low_np_row():
     np_rows = [i for i in rows if "np=" in i["action"]]
 
     assert len(np_rows) == 1 and np_rows[0]["priority"] == "low"
-    assert not [i for i in rows if i["action"].startswith("Bring the subdomain policy")]
+    assert not [i for i in rows if i["action"].startswith("Raise the subdomain policy")]
 
 
 def test_p_reject_with_sp_reject_gets_no_subdomain_policy_row():
     rows = build_security_roadmap(_dmarc_only("v=DMARC1; p=reject; sp=reject"))["items"]
 
-    assert not [i for i in rows if i["action"].startswith("Bring the subdomain policy")]
+    assert not [i for i in rows if i["action"].startswith("Raise the subdomain policy")]
     # np is still absent, so its low note keeps its own gate.
     assert [i["priority"] for i in rows if "np=" in i["action"]] == ["low"]
 
@@ -113,7 +113,7 @@ def test_p_reject_with_sp_and_np_set_gets_neither_row():
         _dmarc_only("v=DMARC1; p=reject; sp=reject; np=reject"))["items"]
 
     assert not [i for i in rows if "np=" in i["action"]]
-    assert not [i for i in rows if i["action"].startswith("Bring the subdomain policy")]
+    assert not [i for i in rows if i["action"].startswith("Raise the subdomain policy")]
 
 
 # ---------------------------------------------------------------
@@ -304,13 +304,13 @@ def test_the_pdf_roadmap_rows_carry_the_reworded_actions(audit):
     })
     result = audit(zone, DOMAIN)
     actions = [i["action"] for i in result["security_roadmap"]["items"]]
-    assert "Bring the subdomain policy up to p=reject" in actions, actions
+    assert "Raise the subdomain policy to sp=reject" in actions, actions
 
     text = "\n".join(p.extract_text() or "" for p in
                      PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages)
     text = " ".join(text.split())
 
-    assert "Bring the subdomain policy up to p=reject" in text
+    assert "Raise the subdomain policy to sp=reject" in text
     assert "Address:" not in text
     # The biggest-risk callout leads with the action and keeps the impact.
     es = result["executive_summary"]

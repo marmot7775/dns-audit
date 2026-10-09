@@ -464,7 +464,7 @@ def test_complete_pdf_has_priorities_and_no_priority_fixes(audit):
     text = "\n".join(p.extract_text() or "" for p in
                      PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages)
 
-    assert "2. The plan" in text
+    assert "2. What to do" in text
     assert "Priority Fixes" not in text
     assert "Email Security Roadmap" not in text
     assert "priority_fixes" not in result, "Doc 49 removed the field after its last release"

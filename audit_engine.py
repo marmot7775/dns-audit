@@ -1393,39 +1393,24 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
             if rec_kind == "missing":
                 _add_issue(
                     "warning",
-                    "Missing p= tag. Spec recovery: RFC 9989 treats "
-                    "record as p=none, RFC 7489 receivers ignore.",
-                    "This record has no explicit policy tag. Per "
-                    "RFC 9989 section 4.10.1, because rua= contains at "
-                    "least one syntactically valid reporting URI, "
-                    "RFC 9989-compliant receivers MUST act as if a "
-                    "record containing p=none was retrieved and "
-                    "continue processing. RFC 7489 has no such "
-                    "fallback; older receivers (still common) will "
-                    "ignore the record entirely. Same record, two "
-                    "different behaviors.",
-                    "Add an explicit p=none (or p=quarantine / "
-                    "p=reject). Explicit policy works under both "
-                    "specs and removes the ambiguity.",
+                    "Missing p= tag. Receiving mail servers treat the "
+                    "record as p=none.",
+                    "This record has no p= tag. Because it has a report "
+                    "address, receiving mail servers treat it as p=none "
+                    "(RFC 9989 section 4.10.1, RFC 7489 section 6.6.3).",
+                    "Add p= so the record states its policy.",
                 )
             else:
                 _add_issue(
                     "warning",
                     f"Invalid {rec_tag_name}= value: {rec_tag_name}="
-                    f"{rec_tag_value}. Spec recovery: RFC 9989 treats "
-                    f"record as p=none, RFC 7489 receivers may ignore.",
-                    "Per RFC 9989 section 4.10.1, because rua= contains "
-                    "at least one syntactically valid reporting URI, "
-                    "RFC 9989-compliant receivers MUST act as if a "
-                    "record containing p=none was retrieved and "
-                    "continue processing. RFC 7489 has no such "
-                    "recovery rule; older receivers may instead "
-                    "ignore the record entirely. This is an interop "
-                    "hazard: fix the value rather than relying on "
-                    "this fallback.",
+                    f"{rec_tag_value}. Receiving mail servers treat the "
+                    f"record as p=none.",
+                    "The value is not valid. Because the record has a report "
+                    "address, receiving mail servers treat it as p=none "
+                    "(RFC 9989 section 4.10.1, RFC 7489 section 6.6.3).",
                     f"Set {rec_tag_name}= to one of: none, quarantine, "
-                    f"reject. Do not rely on the RFC 9989 recovery "
-                    f"fallback to mask the invalid value.",
+                    f"reject, so the record states its policy.",
                 )
         else:
             if rec_kind == "missing":
@@ -4207,15 +4192,15 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
             certs = resp.json()
     except requests.exceptions.Timeout:
         _add_issue("warning", "CT data temporarily unavailable",
-                   "Certificate Transparency data is sourced from crt.sh, which was temporarily unavailable. "
-                   "This does not affect the audit results.")
+                   "The certificate log service (crt.sh) didn't respond, so this check is "
+                   "incomplete. The other checks are unaffected.")
         result["status"] = "warning"
         result["unavailable_reason"] = "timeout"
         return result
     except (requests.exceptions.RequestException, ValueError):
         _add_issue("warning", "CT data temporarily unavailable",
-                   "Certificate Transparency data is sourced from crt.sh, which was temporarily unavailable. "
-                   "This does not affect the audit results.")
+                   "The certificate log service (crt.sh) didn't respond, so this check is "
+                   "incomplete. The other checks are unaffected.")
         result["status"] = "warning"
         result["unavailable_reason"] = "request_error"
         return result
@@ -6719,9 +6704,12 @@ def _build_resilience_analysis(
             "SPF is broken (PermError) and no DKIM was detected. This domain has no reliable "
             "path to DMARC pass. Messages may be rejected or junked depending on the DMARC policy."
         )
+        # A PermError is not always a lookup overflow: two SPF records, a
+        # syntax error or too many void lookups end the same way.
         risk = (
-            "Fix SPF first by reducing the record to 10 or fewer DNS lookups "
-            "(remove includes for services you no longer use)."
+            "Fix the SPF error shown on the SPF check first. Until SPF works, this domain "
+            + ("can pass DMARC only through DKIM, which this audit could not confirm."
+               if dkim_inconclusive else "has no way to pass DMARC.")
         )
     elif not spf_functional and not dkim_functional:
         level = "low"
@@ -6770,8 +6758,8 @@ def _build_resilience_analysis(
             "This is a single point of failure: if DKIM fails for any message, there is no fallback."
         )
         risk = (
-            "Fix the SPF record by reducing it to 10 or fewer DNS lookups to restore the second "
-            "alignment path. With only DKIM available, the domain depends entirely on every sending "
+            "Fix the SPF error shown on the SPF check to restore the second way to pass DMARC. "
+            "With only DKIM available, the domain depends entirely on every sending "
             "service signing messages correctly. SPF provides a useful safety net even though DKIM is "
             "the more resilient mechanism."
         )

@@ -1,5 +1,6 @@
-"""Doc 41: the contact alias appears in the eight footers and the results
-note, and in no other tracked file.
+"""Doc 41: the contact alias appears in the footers, and in no other tracked
+file. Report copy part 1 (Doc 99) took it out of the results note: app.js
+is not an HTML response, so Cloudflare never obfuscates an address there.
 
 The alias is assembled from pieces so this file does not itself contain it.
 docs/history/doc-41.md is an extra file: the doc is saved verbatim and names
@@ -31,13 +32,14 @@ FOOTER_FILES = [
     "static/articles/aprf.html",
     "static/articles/index.html",
 ]
-SITE_FILES = FOOTER_FILES + ["static/app.js"]
+SITE_FILES = FOOTER_FILES
 OTHER_FILES = [
     "SECURITY.md",
     "docs/history/doc-41.md",
     "docs/history/doc-51.md",
     "docs/history/doc-88.md",
     "docs/history/doc-90.md",
+    "docs/history/doc-99.md",
 ]
 
 
@@ -61,20 +63,21 @@ def test_alias_is_in_every_footer():
         assert f'href="{LINKEDIN}"' in block.group(0), rel
 
 
-def test_alias_is_in_the_results_note_beside_linkedin():
+def test_the_results_note_links_to_linkedin_only():
     src = _read("static/app.js")
     start = src.index("function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail)")
     body = src[start:src.index("\n}\n", start)]
     assert "if (failCount > 0 || warnCount > 0)" in body
     # Doc 90: a clean audit of a domain that sends mail gets its own note.
     assert "} else if (sendsMail && !unavailableCount) {" in body
-    assert "Everything here checks out." in body
+    assert "No problems found in this domain's DNS." in body
+    assert "If you'd like help with these changes, I do this work for clients. " in body
     # A domain that declares it sends no mail never gets the clean note.
     caller = src[src.index("const sendsMail"):src.index("_renderContactNote(failCount, warnCount, unavailableCount, sendsMail);")]
     for signal in ("defensive_dns", "'null_mx'", "'null_spf'"):
         assert signal in caller, signal
-    assert f'<a href="mailto:{ALIAS}">Email {ALIAS}</a> or ' in body
-    assert f'<a href="{LINKEDIN}" target="_blank" rel="noopener">message me on LinkedIn</a>.' in body
+    assert ALIAS not in body and "mailto:" not in body
+    assert f'<a href="{LINKEDIN}" target="_blank" rel="noopener">Message me on LinkedIn</a>.' in body
 
 
 def test_alias_appears_in_no_other_tracked_file():

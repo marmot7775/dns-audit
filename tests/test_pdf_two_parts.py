@@ -104,9 +104,9 @@ def test_the_contents_page_lists_both_parts_in_order(complete):
     # Doc 92 moved the contents from the cover to the start of Part 2.
     pages = _pages(complete)
     cover = pages[_divider_index(pages)]
-    expected = ["1. The short answer", "2. The plan", "3. Checks",
+    expected = ["1. The short answer", "2. What to do", "3. Checks",
                 "Part 2", "A. DMARC in depth", "B. Attack surface and subdomains",
-                "C. SPF and DKIM in depth", "D. Migration path", "E. About this report"]
+                "C. SPF and DKIM in depth", "D. Path to enforcement", "E. About this report"]
     # The contents follow the Part 2 heading on the same page (Doc 92).
     start = cover.find("Part 1: The report")
     assert start >= 0
@@ -125,7 +125,7 @@ def test_a_section_that_did_not_render_gets_no_contents_line(key_record):
 
     assert "A. What each check means" in cover
     assert "B. About this report" in cover
-    for absent in ("DMARC in depth", "Attack surface and subdomains", "Migration path"):
+    for absent in ("DMARC in depth", "Attack surface and subdomains", "Path to enforcement"):
         assert absent not in cover, absent
 
 
@@ -225,7 +225,7 @@ def test_the_appendix_labels_both_dmarc_records(complete):
 
     assert "End state: enforcement" in text
     assert "Next edit: clean up the record, same policy" in text
-    assert ("Reach this through the migration steps, moving only when your "
+    assert ("Reach this through the steps in Path to enforcement, moving only when your "
             "aggregate reports show every legitimate sender aligned.") in text
     assert "Recommended RFC 9989-Ready record" not in text
 

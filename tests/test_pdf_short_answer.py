@@ -130,11 +130,11 @@ def test_do_these_first_uses_the_backend_list_when_present(monitoring):
 def test_an_empty_do_first_list_says_nothing_is_urgent(monitoring):
     result = copy.deepcopy(monitoring)
     result["executive_summary"]["do_first"] = []
-    result["executive_summary"]["biggest_risk"] = "Nothing urgent. The plan has smaller improvements."
+    result["executive_summary"]["biggest_risk"] = "No urgent problems. Smaller improvements are under What to do."
     first = _pages(result)[0]
 
     assert "Do these first" not in first
-    assert "Nothing urgent. The plan has smaller improvements." in first
+    assert "No urgent problems. Smaller improvements are under What to do." in first
 
 
 def test_the_box_is_amber_for_a_missing_rua(monitoring):
@@ -157,7 +157,7 @@ def test_the_box_is_red_only_for_a_critical_item(no_dmarc):
 def test_page_two_is_the_plan_with_the_tally_once(monitoring):
     pages = _pages(monitoring)
 
-    assert "2 The plan" in pages[1]
+    assert "2 What to do" in pages[1]
     assert re.search(r"Across \d+ checks: \d+ needs? fixing, \d+ could be stronger, \d+ pass, "
                      r"\d+ optional and not set up", pages[1]), pages[1][:600]
     assert sum(p.count("Across ") for p in pages) == 1
@@ -192,7 +192,7 @@ def test_part_two_opens_with_the_tiles_the_attack_surface_and_the_contents(monit
     for part in ("Part 2: Appendix", "Technical summary", "Forged mail blocked",
                  "Ready for the 2026 DMARC standard (RFC 9989)", "Records published",
                  "Attack surface overview", "Contents", "1. The short answer",
-                 "2. The plan", "3. Checks"):
+                 "2. What to do", "3. Checks"):
         assert part in page, part
     assert page.index("Technical summary") < page.index("Attack surface overview") < page.index("Contents")
 

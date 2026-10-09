@@ -36,6 +36,8 @@ _FIXTURE = "user" + "@" + "gmail" + ".com"
 # Doc 88 added a mailbox note under Accounts on the privacy page (a file
 # already listed), and its doc names it. Doc 90 put it in the About page
 # body and a second results note (both files already listed); its doc names it.
+# Doc 99 took it out of app.js (Cloudflare never obfuscates a script), and
+# its doc names it.
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
 ALIAS_FILES = (
     "static/index.html",
@@ -50,11 +52,11 @@ ALIAS_FILES = (
     "static/articles/postmaster-tools.html",
     "static/articles/aprf.html",
     "static/articles/index.html",
-    "static/app.js",
     "docs/history/doc-41.md",
     "docs/history/doc-51.md",
     "docs/history/doc-88.md",
     "docs/history/doc-90.md",
+    "docs/history/doc-99.md",
     "SECURITY.md",
 )
 

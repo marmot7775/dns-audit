@@ -228,7 +228,7 @@ GOLDEN_VERDICTS = {
     "DKIM": ("pass", "1 DKIM public key published in DNS"),
     "DMARC": ("pass", "p=reject (authentication failures are rejected)"),
     "DNSSEC": ("absent", "DNSSEC not configured"),
-    "MTA-STS": ("pass", "Inbound email must use encryption"),
+    "MTA-STS": ("pass", "Enforced: senders that support MTA-STS must use encryption"),
     "MX Records": ("warn", "Single MX host"),
     "Nameservers": ("pass", "2 nameservers"),
     "SPF": ("pass", "SPF record configured"),

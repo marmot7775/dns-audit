@@ -171,7 +171,7 @@ STATUS_LBL = {"pass": "Pass", "warn": "Could be stronger", "fail": "Needs fixing
 # filled .notdef box on every warning line. A bold "!" needs no font.
 WARN_ICON = "<b>!</b>"
 # The same sentence the site prints under an end-state record (Doc 64).
-END_STATE_NOTE = ("Reach this through the migration steps, moving only when your "
+END_STATE_NOTE = ("Reach this through the steps in Path to enforcement, moving only when your "
                   "aggregate reports show every legitimate sender aligned. There is "
                   "no date on that.")
 DETAIL_ICON = {"good": "\u2713", "error": "\u2717", "warning": WARN_ICON, "info": "\u2022"}
@@ -357,7 +357,7 @@ class _PageTpl:
 
 # The line under "Do these first". It names where the plan and the evidence
 # are, so a reader who stops after page 1 knows what the rest is for.
-SHORT_ANSWER_POINTER = ("Page 2 is the plan for whoever manages your DNS. "
+SHORT_ANSWER_POINTER = ("Page 2, What to do, is for whoever manages your DNS. "
                         "Part 2 holds the evidence.")
 
 
@@ -754,7 +754,7 @@ def _plan_what_to_change(data, item, card, S):
         # No appendix letter: the migration path's letter depends on which
         # sections rendered, and a fixed "Appendix A" pointed at the wrong one.
         els.append(Paragraph(
-            "This is the next edit at your current policy. The migration path "
+            "This is the next edit at your current policy. Path to enforcement "
             "in the appendix carries the steps and the enforcement end state.",
             S["body_tiny"]))
         return els
@@ -856,7 +856,7 @@ def _roadmap_page(data, S, number=2):
     roadmap = data.get("security_roadmap", {})
     items = roadmap.get("items", [])
     els = [PageBreak()]
-    els.extend(_section_header(str(number), "The plan", S))
+    els.extend(_section_header(str(number), "What to do", S))
 
     # Summary
     summary = roadmap.get("summary", "")
@@ -2003,7 +2003,7 @@ def _about_page(data, S, number=7):
     if _performed and pc_total:
         els.append(Spacer(1, SP_SM))
         els.append(Paragraph(
-            f"The Protocol Coverage figure on the cover scores {pc_total} of the "
+            f"The Records published figure at the start of Part 2 scores {pc_total} of the "
             f"{len(_performed)} checks performed, the ones a domain owner configures. "
             "The rest observe what is already published rather than something to "
             "switch on, so they are reported here but not scored.", S["body_small"]
@@ -2094,7 +2094,7 @@ def _build_sections(audit_result: dict, S):
         ("DMARC in depth", _dmarc_deep_dive, ("DMARC",)),
         ("Attack surface and subdomains", _attack_surface_page, ()),
         (_deep_analysis_title(audit_result), _deep_analysis_page, tuple(PROTOCOL_SECTION_ORDER)),
-        ("Migration path", _migration_page, ()),
+        ("Path to enforcement", _migration_page, ()),
         ("About this report", _about_page, ()),
     ]
     letters = "ABCDEFGH"
@@ -2124,7 +2124,7 @@ def _build_sections(audit_result: dict, S):
     # ahead of everything else; it is numbered here so the contents and
     # the section badges agree.
     part1_specs = [
-        ("The plan", _roadmap_page),
+        ("What to do", _roadmap_page),
         (f"Checks ({_protocols})" if _protocols else "Checks",
          lambda d, st, n: _protocol_details(d, st, n, appendix=pointer_lines)),
     ]
