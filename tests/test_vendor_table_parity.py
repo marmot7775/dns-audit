@@ -36,6 +36,10 @@ def test_ordinary_words_and_generic_names_name_nobody():
         assert vp.dkim_key_vendor(name, None) is None, name
 
 
+def test_a_zone_shared_by_a_product_suite_names_no_one_product():
+    assert vp.match_host("x.freshemail.io", vp.DKIM_CNAME_VENDORS) is None
+
+
 def test_one_host_names_one_vendor_across_the_tables():
     seen = {}
     for table in (vp.SPF_INCLUDE_VENDORS, vp.MX_VENDORS, vp.DKIM_CNAME_VENDORS):
