@@ -5931,6 +5931,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         missing_includes = []
         matched_vendors = []
         for v in vendors:
+            # A reporting service (found only as a DMARC or TLS-RPT report
+            # address) receives reports; it does not send as the domain.
+            if v.get("role") == "reporting":
+                continue
             spf_inc = VENDOR_SPF_INCLUDES.get(v["name"])
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
                 missing_includes.append(spf_inc)

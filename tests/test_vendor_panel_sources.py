@@ -67,3 +67,17 @@ def test_the_fingerprinter_makes_no_dns_query_with_prefetch():
         "tls_rpt_record": None, "apex_txt": [], "dkim_selectors": []})
     fp._resolver = NoDns()
     assert fp.fingerprint_all() == {"vendors": []}
+
+
+def test_a_reporting_service_gets_no_spf_include_suggestion(audit):
+    domain = "rep.test"
+    zone = {
+        domain: {"TXT": ["v=spf1 ip4:203.0.113.0/24 -all"], "MX": [(10, f"mail.{domain}")],
+                 "A": ["203.0.113.1"]},
+        "_dmarc." + domain: {"TXT": ["v=DMARC1; p=reject; rua=mailto:reports@mimecast.com"]},
+        "_netblocks.mimecast.com": {"TXT": ["v=spf1 ip4:205.139.110.0/24 ~all"]},
+    }
+    result = audit(zone, domain, scope="email_full")
+    assert [(v["name"], v["role"]) for v in result["vendors"]] == [("Mimecast", "reporting")]
+    fix = next(c for c in result["checks"] if c["name"] == "SPF").get("fix") or ""
+    assert "mimecast" not in fix.lower(), fix
