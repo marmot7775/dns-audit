@@ -162,7 +162,7 @@ def test_article_links_to_person_and_site(page):
         assert art[role] == {"@type": "Person", "@id": PERSON,
                              "name": "Neil Anuskiewicz", "url": f"{SITE}/about"}, role
     assert art["mainEntityOfPage"] == url
-    assert art["image"] == f"{SITE}/static/og-card.png"
+    assert art["image"] == f"{SITE}/static/og-card.png?v=1"
     assert art["isPartOf"] == {"@id": WEBSITE}
     for field in ("headline", "description", "datePublished", "dateModified"):
         assert art[field], field
