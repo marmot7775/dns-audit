@@ -4866,7 +4866,15 @@ def _probe_vendor_cnames(domain: str, budget: float) -> Dict[str, str]:
             pass
     except FuturesTimeoutError:
         log.warning("Vendor CNAME probe for %s hit its %.1fs budget", domain, budget)
-    wildcard = canary.result() if canary.done() else None
+    if not canary.done():
+        # Without the canary's answer a wildcard cannot be ruled out, so no
+        # label's answer can be trusted.
+        canary.cancel()
+        for future in futures:
+            future.cancel()
+        log.warning("Vendor CNAME canary for %s did not finish; discarding the wave", domain)
+        return {}
+    wildcard = canary.result()
     found = {}
     for future, label in futures.items():
         if not future.done():
@@ -5947,9 +5955,11 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         # that needs its own queries. A short budget inside the audit's.
         _cname_budget = 3.0
         if deadline is not None:
-            _cname_budget = min(_cname_budget, max(deadline - time.monotonic(), 0.1))
+            _cname_budget = min(_cname_budget, deadline - time.monotonic())
         try:
-            _fp_prefetch["label_cnames"] = _probe_vendor_cnames(domain, _cname_budget)
+            # Past the deadline, skip the wave rather than overrun it.
+            if _cname_budget > 0:
+                _fp_prefetch["label_cnames"] = _probe_vendor_cnames(domain, _cname_budget)
         except Exception:
             log.warning("Vendor CNAME probe failed for %s", domain, exc_info=True)
         # Every probe now reads from prefetch, so this makes no DNS query of

@@ -73,3 +73,22 @@ def test_label_order_decides_tracking_or_return_path():
     assert label_cname_vendor("bnc3", "bnc3.mailjet.com") == ("Mailjet", "return path")
     assert label_cname_vendor("links", "r.mailjet.com") == ("Mailjet", "tracking")
     assert label_cname_vendor("autodiscover", "autodiscover.example.net") == (None, None)
+
+
+def test_an_unfinished_canary_discards_the_wave(monkeypatch):
+    import threading
+    domain = "slow.test"
+    release = threading.Event()
+    real = audit_engine._probe_vendor_cname
+
+    def probe(name):
+        if name.startswith("dnsaudit"):
+            release.wait(5)  # the canary outlives the budget
+            return None
+        return "pm.mtasv.net" if name.startswith("pm-bounces.") else None
+    monkeypatch.setattr(audit_engine, "_probe_vendor_cname", probe)
+    try:
+        assert audit_engine._probe_vendor_cnames(domain, 0.3) == {}
+    finally:
+        release.set()
+        monkeypatch.setattr(audit_engine, "_probe_vendor_cname", real)
