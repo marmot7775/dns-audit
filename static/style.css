@@ -6853,33 +6853,6 @@ h3.services-sub,
     gap: 0.35rem;
 }
 
-/* ==========================================================================
-   Real-time Input Validation Indicator (Prompt 10)
-   ========================================================================== */
-
-.domain-valid-indicator {
-    position: absolute;
-    z-index: 11;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: var(--font-lg);
-    line-height: 1;
-    opacity: 0;
-    transition: opacity 0.2s var(--ease);
-    pointer-events: none;
-}
-
-.domain-valid-indicator.valid {
-    color: var(--pass);
-    opacity: 1;
-}
-
-.domain-valid-indicator.invalid {
-    color: var(--fail-text);
-    opacity: 0.6;
-}
-
 .cache-rerun-btn {
     background: none;
     border: 1px solid currentColor;
@@ -7003,10 +6976,6 @@ h3.services-sub,
 
     .toast {
         font-size: var(--font-xs);
-    }
-
-    .domain-valid-indicator {
-        right: 4.5rem;
     }
 
 }
