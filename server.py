@@ -269,16 +269,29 @@ def _audit_status(result):
     return _STATUS_BY_ERROR.get(err, "error"), err
 
 
+def _aprf_log_state(result) -> Optional[str]:
+    """The APRF card's state for the log: none, published, ignored or
+    unavailable. None when the card did not run (scope, or an error)."""
+    if not isinstance(result, dict):
+        return None
+    for card in result.get("draft_standards") or []:
+        if card.get("name") == "APRF":
+            return card.get("aprf_state")
+    return None
+
+
 def _log_audit(request: Request, domain: str, scope: str,
                duration: float, checks: int, source: str = "web",
-               status: str = "ok", error: Optional[str] = None):
+               status: str = "ok", error: Optional[str] = None,
+               aprf: Optional[str] = None):
     """Write a GDPR-safe JSON-lines audit log entry.
 
     Logged: domain, timestamp, scope, duration, check count, outcome
             (status, plus an error code when the outcome is not "ok"),
             browser and OS family, whether the caller is a bot, source
-            (web/sse/pdf), a daily-rotating visitor hash, and the
-            referring host if one was sent.
+            (web/sse/pdf), a daily-rotating visitor hash, the
+            referring host if one was sent, and the APRF card's state
+            (none, published, ignored, unavailable) when that check ran.
     NOT logged: the raw user-agent string, IP address, geolocation,
             cookies, referring URL path, personal data.
 
@@ -309,6 +322,10 @@ def _log_audit(request: Request, domain: str, scope: str,
     }
     if status != "ok" and error:
         entry["error"] = error
+    # Per card status is not otherwise logged; this one is, so APRF adoption
+    # can be counted later. Present only when the check ran.
+    if aprf:
+        entry["aprf"] = aprf
     ref = _referer_host(request)
     if ref:
         entry["ref"] = ref
@@ -912,7 +929,8 @@ async def audit_domain(
         log_status, log_error = _audit_status(result)
         _log_audit(request, domain, scope,
                    elapsed, len(result.get("checks", [])), source="web",
-                   status=log_status, error=log_error)
+                   status=log_status, error=log_error,
+                   aprf=_aprf_log_state(result))
 
         # Cache result (skip caching errors -- they may be transient)
         if "error" not in result:
@@ -1151,7 +1169,8 @@ async def audit_stream(
                         log_status, log_error = _audit_status(result)
                         _log_audit(request, domain, scope,
                                    elapsed, len(result.get("checks", [])), source="sse",
-                                   status=log_status, error=log_error)
+                                   status=log_status, error=log_error,
+                                   aprf=_aprf_log_state(result))
                         outcome_logged = True
                         result["request_id"] = request_id
                         yield f"data: {json.dumps({'done': True, 'result': result, 'request_id': request_id})}\n\n"
