@@ -2811,10 +2811,13 @@ details.st-node>summary:hover {
 
 .vendors-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 0.65rem;
 }
 
+/* Name over its detail line: the detail is a phrase ("Detected via SPF, MX,
+   DKIM CNAME", "Receives your DMARC reports"), and beside the name it
+   squeezed both into a narrow column with no space between them. */
 .vendor-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -2822,8 +2825,9 @@ details.st-node>summary:hover {
     padding: 0.95rem 1.1rem;
     box-shadow: var(--shadow-sm);
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
     transition: box-shadow var(--duration) var(--ease);
 }
 

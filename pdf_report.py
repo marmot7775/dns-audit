@@ -1675,10 +1675,16 @@ def _vendors(data, S):
         if v.get("sources"):
             side = (f"{', '.join(v['sources'])} ({side})" if v.get("detected_via")
                     else ", ".join(v["sources"]))
+        # A reporting service gets no sender confidence: the web page says
+        # the same, "a reporting service, not a sender".
+        reporting = v.get("role") == "reporting"
+        if reporting:
+            side = f"Receives your {', '.join(v.get('sources') or ['reports'])}"
         rows.append([
             Paragraph(f"<b>{_safe(v.get('name', ''))}</b>", S["body"]),
             Paragraph(_safe(side), S["body_small"]),
-            Paragraph(f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body"]),
+            Paragraph("Reporting service" if reporting
+                      else f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body_small" if reporting else "body"]),
         ])
     vt = Table(rows, colWidths=[3.3*inch, 2.2*inch, 1.0*inch])
     cmds = [
