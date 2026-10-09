@@ -161,7 +161,7 @@ def test_tab_skips_every_closed_block(browser, fixture_result):  # noqa: F811
 
 
 @pytest.mark.parametrize("width", [390, 1280])
-def test_counters_sit_on_one_line_above_the_cards_and_ids_at_the_bottom(
+def test_counters_sit_on_one_line_above_the_cards_and_no_debug_details(
         browser, fixture_result, width):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", width)
     try:
@@ -171,17 +171,23 @@ def test_counters_sit_on_one_line_above_the_cards_and_ids_at_the_bottom(
             return {
                 heading: document.getElementById('results-heading').textContent,
                 grid: top('#summary-grid'), plan: top('#priority-section'),
-                list: top('#results-list'), meta: top('#results-meta'),
-                badgeIn: !!document.querySelector('#results-meta #cache-status-badge'),
-                bannerBadge: !!document.querySelector('#domain-banner #cache-status-badge'),
+                list: top('#results-list'),
+                debug: ['#cache-status-badge', '#request-id-display', '.session-audit-count',
+                        '#results-meta'].filter(s => document.querySelector(s)),
+                noteBeforeServices: document.getElementById('results-contact-note')
+                    .nextElementSibling.id,
                 gridHeight: document.getElementById('summary-grid').getBoundingClientRect().height,
                 services: document.getElementById('services-section').compareDocumentPosition(
                     document.getElementById('results-list')) & Node.DOCUMENT_POSITION_PRECEDING,
             };
         }""")
         assert m["heading"] == "Technical details: all 12 checks"
-        assert m["plan"] < m["grid"] < m["list"] < m["meta"], m
-        assert m["badgeIn"] and not m["bannerBadge"]
+        assert m["plan"] < m["grid"] < m["list"], m
+        # The cache badge, Request ID and session count told a visitor
+        # nothing. request_id stays in the API response and the logs.
+        assert m["debug"] == [], m["debug"]
+        # "Some of these" reads as the findings, not the services list.
+        assert m["noteBeforeServices"] == "services-section"
         if width == 1280:
             assert m["gridHeight"] < 40, m["gridHeight"]
         assert m["services"], "the services section is not below the cards"

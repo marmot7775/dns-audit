@@ -82,3 +82,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [APRF own record](aprf-own-record.md): APRF check verified against the draft and dns-audit.com's own record
 - [Doc 96](doc-96.md): Three additions to the APRF article
 - [Doc 97](doc-97.md): Headline box at the top of the results, no validity mark on the input
+- [Doc 98](doc-98.md): Results page cleanup, contact note placement, centered buttons, no debug details

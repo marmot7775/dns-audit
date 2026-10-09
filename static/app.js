@@ -142,7 +142,6 @@ let auditStartTime = 0;
 let auditController = null;
 let auditReader = null;
 let auditInFlight = false;
-let sessionAuditCount = 0;
 // Ids for the collapsible sections, so each toggle can name what it controls.
 let _cdSectionSeq = 0;
 let _piGuidanceSeq = 0;
@@ -702,9 +701,6 @@ function renderResults(data) {
         window.history.replaceState({}, '', url);
     }, 300);
 
-    // Track session audit count
-    sessionAuditCount++;
-
     // Domain banner
     document.getElementById('result-domain').textContent = data.domain;
 
@@ -718,13 +714,6 @@ function renderResults(data) {
     const tsText = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
         + ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
     document.getElementById('result-timestamp').textContent = `${tsText}  \u00b7  ${auditDuration}s`;
-
-    // Prompt 12: Cache status badge. Doc 92 moved it and the Request ID to
-    // the bottom of the results.
-    _renderCacheBadge(data);
-
-    // Prompt 14: Request ID display
-    _renderRequestId(data.request_id);
 
     // Prompt 2: Record to recent audits in localStorage
     _recordRecentAudit(data.domain);
@@ -1074,13 +1063,11 @@ function renderResults(data) {
                     <span>Export CSV</span>
                 </button>
             </div>
-            <div class="session-audit-count">Audits this session: ${sessionAuditCount}</div>
         `;
         resultsSection.appendChild(runAnother);
         runAnother.querySelector('.run-another-btn').addEventListener('click', _resetAndFocusInput);
         runAnother.querySelector('.export-csv-btn').addEventListener('click', () => _exportToCSV(data));
     } else {
-        runAnother.querySelector('.session-audit-count').textContent = `Audits this session: ${sessionAuditCount}`;
         // Re-bind CSV export to latest data
         const csvBtn = runAnother.querySelector('.export-csv-btn');
         const newCsvBtn = csvBtn.cloneNode(true);
@@ -4456,40 +4443,6 @@ function _renderRecentAudits() {
 document.addEventListener('DOMContentLoaded', _renderRecentAudits);
 
 // ============================================================
-// Cache status badge (Prompt 12)
-// ============================================================
-
-function _renderCacheBadge(data) {
-    let badge = document.getElementById('cache-status-badge');
-    if (!badge) {
-        badge = document.createElement('div');
-        badge.id = 'cache-status-badge';
-        badge.className = 'tag';
-        // Doc 92: with the Request ID at the bottom of the results, not
-        // between the domain and the short answer.
-        const meta = document.getElementById('results-meta');
-        if (meta) meta.insertBefore(badge, meta.firstChild);
-    }
-
-    if (data._cached || data.cached) {
-        badge.className = 'tag';
-        badge.innerHTML = `
-            <span>Cached result</span>
-            <button class="cache-rerun-btn" type="button" title="Run again. Results are cached for five minutes, so a re-run inside that window returns this same result.">Re-run</button>
-        `;
-        badge.style.display = 'inline-flex';
-        badge.querySelector('.cache-rerun-btn').addEventListener('click', () => {
-            // Force fresh audit by running again (server will return fresh if cache expires)
-            runAudit(data.domain);
-        });
-    } else {
-        badge.className = 'tag tag-pass';
-        badge.innerHTML = '<span>Fresh result</span>';
-        badge.style.display = 'inline-flex';
-    }
-}
-
-// ============================================================
 // Contact note (Prompt 26)
 // ============================================================
 
@@ -4512,27 +4465,6 @@ function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
         note.innerHTML = '';
         note.classList.add('is-hidden');
     }
-}
-
-// ============================================================
-// Request ID display (Prompt 14)
-// ============================================================
-
-function _renderRequestId(requestId) {
-    if (!requestId) return;
-    let el = document.getElementById('request-id-display');
-    if (!el) {
-        el = document.createElement('button');
-        el.type = 'button';
-        el.id = 'request-id-display';
-        el.className = 'request-id-display';
-        const meta = document.getElementById('results-meta');
-        if (meta) meta.appendChild(el);
-    }
-    el.innerHTML = `<span class="request-id-label">Request ID:</span> <code class="request-id-value">${escapeHtml(requestId)}</code>`;
-    el.title = 'Click to copy';
-    el.setAttribute('aria-label', `Copy request ID ${requestId}`);
-    el.onclick = () => _copyToClipboard(requestId, null, '');
 }
 
 // ============================================================

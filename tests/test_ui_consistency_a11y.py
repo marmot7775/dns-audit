@@ -549,13 +549,11 @@ def test_no_font_or_radius_falls_back_on_an_undefined_variable(browser, theme):
                 return {font: cs.fontFamily, radius: cs.borderTopLeftRadius};
             };
             return {ttl: probe('ttl-value', 'span'), diff: probe('cd-diff'),
-                    clear: probe('recent-audits-clear', 'button'),
-                    rerun: probe('cache-rerun-btn', 'button'),
-                    rid: probe('request-id-value', 'code')};
+                    clear: probe('recent-audits-clear', 'button')};
         }""")
         assert got["ttl"]["font"].startswith('"JetBrains Mono"'), got["ttl"]
         assert got["diff"]["font"].startswith('"JetBrains Mono"'), got["diff"]
-        for k in ("clear", "rerun", "rid"):
+        for k in ("clear",):
             assert got[k]["radius"] == "4px", (k, got[k])
     finally:
         ctx.close()
