@@ -9556,3 +9556,147 @@ def _build_provider_intelligence(
         "sending_services": sending_services,
         "gateway_upstream": gateway_upstream,
     }
+
+
+# ============================================================
+# APRF (draft standard), informational only
+# ============================================================
+
+# Opens every state of the card, on the web and in the PDF. It states facts
+# about provider support that go stale: tests/test_aprf.py fails 90 days
+# after APRF_NOTE_REVIEWED, and the fix is to recheck support, then update
+# the note and this date together.
+APRF_NOTE_REVIEWED = "2026-10-08"
+APRF_NOTE = (
+    "APRF is a proposed standard that is not yet adopted. A mail provider "
+    "that supports it sends you a daily report on how much of your mail "
+    "reached the inbox and how recipients reacted to it. As of October 2026, "
+    "only Comcast sends these reports, in beta, and only for mail delivered "
+    "to Comcast addresses. This check is for information and does not affect "
+    "your results."
+)
+APRF_TITLE = "APRF (draft standard)"
+
+_APRF_IGNORED_REASONS = {
+    "v_tag": "its v tag is missing or is not APRFv1",
+    "no_rua": "its rua tag has no mailto destination",
+}
+
+
+def _aprf_list(items: List[str]) -> str:
+    items = list(items)
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _aprf_card(state: str, pill: str, verdict: str, paragraphs: List[str],
+               record: Optional[str] = None, location: Optional[str] = None) -> Dict:
+    return {
+        "name": "APRF",
+        "plain_name": APRF_TITLE,
+        # Not a new status string: "absent" is the existing neutral grey. The
+        # card never enters checks, so no count reads it either way.
+        "status": "absent",
+        "informational": True,
+        "aprf_state": state,
+        "pill_label": pill,
+        "verdict": verdict,
+        "what_this_is": APRF_NOTE,
+        "paragraphs": paragraphs,
+        "explanation": "<br><br>".join(_e(p) for p in paragraphs),
+        "record": record,
+        "record_location": location,
+        "configured": state == "published",
+        "details": [],
+        "fix": None,
+        "fix_records": None,
+    }
+
+
+def transform_aprf(raw: Dict, domain: str) -> Dict:
+    """The APRF card. Informational in every state: no fix, no plan row."""
+    if raw.get("lookup_failed"):
+        card = _lookup_unavailable_card("APRF", raw, "APRF record")
+        card.update({
+            "plain_name": APRF_TITLE,
+            "informational": True,
+            "aprf_state": "unavailable",
+            "what_this_is": APRF_NOTE,
+            "paragraphs": [re.sub(r"<[^>]+>", "", card["explanation"])],
+        })
+        return card
+
+    records = raw.get("records") or []
+    paragraphs: List[str] = []
+    if not records:
+        paragraphs.append(
+            "No APRF record found. You aren't missing anything yet. With one "
+            "provider sending reports in beta, publishing a record is worth it "
+            "only if a meaningful share of your mail goes to Comcast addresses."
+        )
+        state, pill, verdict = "none", "Not published", "No APRF record found"
+        record = location = None
+    else:
+        valid = [r for r in records if r.get("valid")]
+        for r in records:
+            if r.get("valid"):
+                text = (f"An APRF record is published at {r['location']}. "
+                        f"Reports go to {_aprf_list(r['rua'])}.")
+                if r.get("sdi"):
+                    text += f" The record sets sdi to {r['sdi']}."
+            else:
+                reason = _APRF_IGNORED_REASONS.get(r.get("ignored_reason"), "it breaks a rule of the draft")
+                text = (f"A record exists at {r['location']}, but a provider "
+                        f"following the draft would ignore it because {reason}.")
+            paragraphs.append(text)
+        if valid:
+            paragraphs.append(
+                f"Reports cover only mail signed with DKIM as {domain}. If an "
+                "email service signs your mail with its own domain, reports for "
+                "that mail go to the service, not to you."
+            )
+            for dest in raw.get("destinations") or []:
+                lead = (f"Reports are set to go to {dest['address']}, which is on "
+                        "a different domain.")
+                if dest.get("check_failed"):
+                    paragraphs.append(
+                        f"{lead} The lookup for a record there allowing reports "
+                        f"for {domain} did not complete, so this was not checked.")
+                elif dest.get("authorized"):
+                    paragraphs.append(
+                        f"{lead} That domain publishes a record allowing reports "
+                        f"for {domain}.")
+                else:
+                    paragraphs.append(
+                        f"{lead} Under the draft, that domain should publish a "
+                        f"record allowing reports for {domain}. None was found, so "
+                        "providers may not send reports there.")
+            total = raw.get("destinations_total", 0)
+            shown = len(raw.get("destinations") or [])
+            if total > shown:
+                paragraphs.append(
+                    f"Only the first {shown} of {total} destinations on other "
+                    "domains were checked.")
+            state, pill = "published", "Published"
+            winner = valid[0]
+            verdict = f"Published at {winner['location']}"
+        else:
+            state, pill = "ignored", "Ignored"
+            winner = records[0]
+            verdict = "Record found, but providers would ignore it"
+        record, location = winner["record"], winner["location"]
+
+    skipped = raw.get("selectors_skipped")
+    if skipped == "dkim_incomplete":
+        paragraphs.append("Selector specific records were not checked, because "
+                          "the DKIM check did not finish.")
+    elif skipped == "no_live_selectors":
+        paragraphs.append("Selector specific records were not checked, because "
+                          "the DKIM check found no live selectors.")
+    elif raw.get("selectors_total", 0) > len(raw.get("selectors_checked") or []):
+        paragraphs.append(
+            f"Selector specific records were checked for the first "
+            f"{len(raw['selectors_checked'])} of {raw['selectors_total']} DKIM selectors.")
+
+    return _aprf_card(state, pill, verdict, paragraphs, record, location)

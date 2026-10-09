@@ -86,7 +86,10 @@ def _found(card):
 
 
 def _dkim_queries(zone):
-    return [q for q in zone.queries if "._domainkey." in q[0] and "_dkimwildcardtest" not in q[0]]
+    # _aprf._domainkey names are the APRF check's own few lookups, not
+    # DKIM selector probes.
+    return [q for q in zone.queries if "._domainkey." in q[0] and "_dkimwildcardtest" not in q[0]
+            and "_aprf._domainkey." not in q[0]]
 
 
 def test_a_zone_that_drops_queries_finishes_in_budget_and_reads_not_confirmed():

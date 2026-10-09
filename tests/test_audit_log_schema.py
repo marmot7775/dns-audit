@@ -129,6 +129,39 @@ def test_successful_audit_logs_status_ok_and_no_error_field(monkeypatch, audit_e
 
 
 # ------------------------------------------------------------------
+# aprf: the one per card status the log records, for an adoption count
+# ------------------------------------------------------------------
+
+def _aprf_audit(state):
+    def _audit(domain, dkim_selector=None, scope=None, progress_callback=None, deadline=None):
+        result = _ok_audit(domain)
+        result["draft_standards"] = [{"name": "APRF", "aprf_state": state}]
+        return result
+    return _audit
+
+
+@pytest.mark.parametrize("state", ["none", "published", "ignored", "unavailable"])
+def test_aprf_state_is_logged(monkeypatch, audit_entries, state):
+    monkeypatch.setattr(server_module, "_preflight_dns_check", lambda domain: None)
+    monkeypatch.setattr(server_module, "run_full_audit", _aprf_audit(state))
+    client = TestClient(server_module.app)
+
+    client.get("/api/audit", params={"domain": f"logschema-aprf-{state}.example.com"})
+
+    assert audit_entries[-1]["aprf"] == state
+
+
+def test_aprf_is_absent_when_the_check_did_not_run(monkeypatch, audit_entries):
+    monkeypatch.setattr(server_module, "_preflight_dns_check", lambda domain: None)
+    monkeypatch.setattr(server_module, "run_full_audit", _ok_audit)
+    client = TestClient(server_module.app)
+
+    client.get("/api/audit", params={"domain": "logschema-noaprf.example.com", "scope": "dmarc"})
+
+    assert "aprf" not in audit_entries[-1]
+
+
+# ------------------------------------------------------------------
 # abandonment
 # ------------------------------------------------------------------
 

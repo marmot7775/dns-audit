@@ -979,6 +979,16 @@ function renderResults(data) {
         resultsList.appendChild(createResultCard(check, i));
     });
 
+    // Draft standards (APRF): informational cards from their own list, never
+    // from data.checks, so statusCounts, the tiles, the heading count and the
+    // share text cannot see them.
+    const draftSection = document.getElementById('draft-standards-section');
+    const draftList = document.getElementById('draft-standards-list');
+    draftList.innerHTML = '';
+    const drafts = data.draft_standards || [];
+    drafts.forEach((card, i) => draftList.appendChild(createResultCard(card, checks.length + i)));
+    draftSection.classList.toggle('is-hidden', drafts.length === 0);
+
     // Every card renders collapsed, so the button offers Expand All. It has
     // to say what the next click will do.
     syncToggleAllLabel();

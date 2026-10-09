@@ -75,3 +75,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 93](doc-93.md): ESP selectors in the first DKIM wave
 - [Doc 94](doc-94.md): DKIM key records receivers cannot use
 - [Postmaster Tools article](article-postmaster-tools.md): New article, Gmail Postmaster Tools without the reputation ratings
+- [APRF check](aprf-check.md): APRF detection, informational only
