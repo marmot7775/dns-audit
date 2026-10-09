@@ -263,3 +263,14 @@ def test_d17_and_d18_pdf_names(audit):
     assert "Protocol Coverage figure on the cover" not in text
     assert "Migration path" not in text and "migration steps" not in text
     assert "Path to enforcement" in text
+
+
+def test_a_record_taller_than_a_page_does_not_break_the_pdf(audit):
+    """github.com publishes enough DKIM selectors that its key list, in one
+    table cell, was taller than a page: the PDF endpoint returned 500."""
+    result = json.loads(json.dumps(audit(_zone(), D), default=str))
+    card = _card(result, "DKIM")
+    card["record"] = "\n".join(f"sel{i}._domainkey: {KEY}" for i in range(12))
+    reader = PdfReader(io.BytesIO(pdf_report.generate_pdf(result)))
+    text = " ".join((p.extract_text() or "") for p in reader.pages)
+    assert "sel0._domainkey" in text and "sel11._domainkey" in text
