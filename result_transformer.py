@@ -6567,7 +6567,8 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         # the vendor discovery tagged from SPF or MX, then the name.
         # selector1 and selector2 need Microsoft's CNAME, and a generic
         # name needs the tag. "Generic" is not a sender.
-        vendor = dkim_key_vendor(selector, sel.get("cname_target"), sel.get("vendor"))
+        vendor = dkim_key_vendor(selector, sel.get("cname_target"), sel.get("vendor"),
+                                 sel.get("cname_chain"))
         key_type = sel.get("key_type", "")
 
         # Analyze key strength
@@ -7027,7 +7028,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             dkim_tags.append(tag_info)
 
         # Provider from selector name
-        provider = dkim_key_vendor(selector, sel.get("cname_target"), vendor)
+        provider = dkim_key_vendor(selector, sel.get("cname_target"), vendor, sel.get("cname_chain"))
         if not provider and selector.lower() in ("selector1", "selector2"):
             provider = "Vendor: unknown"
 

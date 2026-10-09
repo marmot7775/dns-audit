@@ -240,12 +240,22 @@ def is_generic_selector(selector: Optional[str]) -> bool:
     return s in GENERIC_SELECTORS or (len(s) <= 2 and s not in SHORT_SELECTORS_ALLOWED)
 
 
+def dkim_cname_vendor(cname_target: Optional[str], chain=None) -> Optional[str]:
+    """Vendor whose zone a DKIM CNAME points into: the first hop that names
+    one, else the final target."""
+    for hop in list(chain or []) + [cname_target]:
+        vendor = match_host(hop, DKIM_CNAME_VENDORS)
+        if vendor:
+            return vendor
+    return None
+
+
 def dkim_key_vendor(selector: Optional[str], cname_target: Optional[str],
-                    backed: Optional[str] = None) -> Optional[str]:
+                    backed: Optional[str] = None, chain=None) -> Optional[str]:
     """Vendor for a found DKIM key, the one rule the DKIM card, its key table
     and the vendor panel share. Never "Generic".
 
-    1. The CNAME target, always: the vendor hosts the key.
+    1. The CNAME, always: the vendor hosts the key. Any hop counts.
     2. selector1 and selector2 name nobody without that CNAME.
     3. backed: the vendor discovery tagged the key with, one whose SPF
        include or MX this domain publishes and whose selector list has this
@@ -253,7 +263,7 @@ def dkim_key_vendor(selector: Optional[str], cname_target: Optional[str],
        credited to Mailchimp on the name.
     4. The name table, unless the name is generic.
     """
-    vendor = match_host(cname_target, DKIM_CNAME_VENDORS)
+    vendor = dkim_cname_vendor(cname_target, chain)
     if vendor:
         return vendor
     s = (selector or "").lower()
@@ -265,3 +275,51 @@ def dkim_key_vendor(selector: Optional[str], cname_target: Optional[str],
         return None
     vendor = DKIM_SELECTOR_VENDORS.get(s)
     return None if vendor == "Generic" else vendor
+
+
+# Report address domain -> the reporting service that receives DMARC or
+# TLS-RPT reports there. From the app's original five and the rua_suffixes
+# in Neil's sender discovery vendors.json. A vendor named only here is a
+# reporting service, not a sender.
+REPORTING_VENDORS: Dict[str, str] = {
+    "dmarcian.com": "DMARCian",
+    "agari.com": "Agari",
+    "valimail.com": "Valimail",
+    "vali.email": "Valimail",
+    "proofpoint.com": "Proofpoint",
+    "mimecast.com": "Mimecast",
+    "dmarcanalyzer.com": "Mimecast DMARC Analyzer",
+    "dmarc-reports.cloudflare.net": "Cloudflare DMARC Management",
+    "easydmarc.com": "EasyDMARC",
+    "easydmarc.eu": "EasyDMARC",
+    "easydmarc.us": "EasyDMARC",
+    "glockapps.com": "GlockApps",
+    "dmarc.postmarkapp.com": "Postmark",
+    "powerdmarc.com": "PowerDMARC",
+    "ondmarc.com": "Red Sift OnDMARC",
+    "uriports.com": "URIports",
+}
+
+
+def report_address_domains(record: Optional[str], tags=("rua",)):
+    """Domains of every mailto: address in the given tags of a DMARC or
+    TLS-RPT record, in order, without repeats."""
+    out = []
+    for part in (record or "").split(";"):
+        key, sep, value = part.partition("=")
+        if not sep or key.strip().lower() not in tags:
+            continue
+        for uri in value.split(","):
+            uri = uri.strip()
+            if uri.lower().startswith("mailto:") and "@" in uri:
+                # RFC 6068: header fields after "?" are not the recipient,
+                # and "!" starts a DMARC size limit.
+                recipient = uri[7:].split("?")[0].split("!")[0].strip()
+                local, at, domain = recipient.partition("@")
+                # Exactly one "@", with something on both sides.
+                if not at or not local or not domain or "@" in domain:
+                    continue
+                domain = domain.rstrip(".").lower()
+                if domain and domain not in out:
+                    out.append(domain)
+    return out
