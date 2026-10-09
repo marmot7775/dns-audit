@@ -397,3 +397,74 @@ def report_address_domains(record: Optional[str], tags=("rua",)):
                 if domain and domain not in out:
                     out.append(domain)
     return out
+
+
+# CNAMEs at fixed labels under the domain that name a sending vendor, from
+# Neil's sender discovery vendors.json (2026-10-08). A return path (bounce)
+# CNAME lets the vendor's bounces align with the domain for SPF; a tracking
+# CNAME serves its click and open links. Vendors whose label is set per
+# account (SendGrid's em1234, Amazon SES, ActiveCampaign) cannot be probed by
+# name, so only the fixed labels are here, plus the script's general ones.
+VENDOR_CNAME_LABELS = (
+    "bounce", "bounces", "em", "email", "mail", "send", "mta", "rp",
+    "pm-bounces", "links", "link", "click", "track", "tracking", "url", "go",
+    "autodiscover", "cf-bounce", "eversrv", "fwdkim1", "bnc3",
+    "bounces.cloud.em", "bounces.cloud2.em",
+)
+TRACKING_LABELS = frozenset({"links", "link", "click", "track", "tracking", "url", "go"})
+
+RETURN_PATH_VENDORS: Dict[str, str] = {
+    "amazonses.com": "Amazon SES",
+    "mx.cloudflare.net": "Cloudflare Email Routing",
+    "eversrv.com": "Everlytic",
+    "freshdesk.com": "Freshdesk",
+    "em.secureserver.net": "GoDaddy Websites + Marketing",
+    "klaviyodns.com": "Klaviyo",
+    "mailjet.com": "Mailjet",
+    "mandrillapp.com": "Mandrill",
+    "mktomail.com": "Marketo",
+    "mtasv.net": "Postmark",
+    "sailthrudkim.com": "Sailthru",
+    "sendgrid.net": "SendGrid",
+    "sparkpostmail.com": "SparkPost",
+    "mail.e.sparkpost.com": "SparkPost",
+}
+
+TRACKING_VENDORS: Dict[str, str] = {
+    "customeriomail.com": "Customer.io",
+    "elasticemail.com": "Elastic Email",
+    "iterable.com": "Iterable",
+    "mailgun.org": "Mailgun",
+    "mailjet.com": "Mailjet",
+    "mandrillapp.com": "Mandrill",
+    "resend-dns.com": "Resend",
+    "sailthru.com": "Sailthru",
+    "pardot.com": "Salesforce Account Engagement",
+    "sendgrid.net": "SendGrid",
+    "spgo.io": "SparkPost",
+    "et.e.sparkpost.com": "SparkPost",
+}
+
+# A CNAME at a label one vendor names for itself: an account trace, not a
+# sending setup (autodiscover finds Outlook mailbox settings).
+OTHER_CNAME_VENDORS: Dict[str, Dict[str, str]] = {
+    "autodiscover": {"autodiscover.outlook.com": "Microsoft 365"},
+}
+
+
+def label_cname_vendor(label: str, target: Optional[str]):
+    """(vendor, kind) for a CNAME at label.<domain> pointing at target, kind
+    being "return path", "tracking" or "autodiscover"; (None, None) when no
+    vendor's zone matches."""
+    label = (label or "").lower()
+    if label in OTHER_CNAME_VENDORS:
+        vendor = match_host(target, OTHER_CNAME_VENDORS[label])
+        return (vendor, label) if vendor else (None, None)
+    order = (("tracking", TRACKING_VENDORS), ("return path", RETURN_PATH_VENDORS))
+    if label not in TRACKING_LABELS:
+        order = order[::-1]
+    for kind, table in order:
+        vendor = match_host(target, table)
+        if vendor:
+            return vendor, kind
+    return None, None
