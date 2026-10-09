@@ -3216,7 +3216,6 @@ details.st-node>summary:hover {
 
 .run-another-btn {
     display: inline-flex;
-    margin: 0 auto;
 }
 
 /* ==========================================================================
@@ -4395,19 +4394,6 @@ h3.services-sub,
     font-weight: 600;
     color: var(--text-secondary);
     margin: var(--space-md) 0 var(--space-sm);
-}
-
-/* Cache badge and Request ID, at the bottom of the results (Doc 92). */
-.results-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-sm);
-    margin-top: var(--space-lg);
-}
-
-.results-meta:empty {
-    display: none;
 }
 
 @media (max-width: 640px) {
@@ -6904,63 +6890,8 @@ h3.services-sub,
     gap: 0.35rem;
 }
 
-.cache-rerun-btn {
-    background: none;
-    border: 1px solid currentColor;
-    border-radius: var(--radius-sm);
-    color: inherit;
-    font-size: var(--font-xs);
-    padding: 0.1rem 0.4rem;
-    cursor: pointer;
-    font-family: var(--font-body);
-    transition: background var(--duration) var(--ease);
-}
-
-.cache-rerun-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
 /* ==========================================================================
-   Request ID Display (Prompt 14)
-   ========================================================================== */
-
-.request-id-display {
-    display: block;
-    background: none;
-    border: 0;
-    padding: 0;
-    font-family: inherit;
-    text-align: left;
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: color var(--duration) var(--ease);
-}
-
-.request-id-display:hover {
-    color: var(--text-secondary);
-}
-
-.request-id-display:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-}
-
-.request-id-label {
-    font-weight: 500;
-}
-
-.request-id-value {
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-    background: var(--surface);
-    padding: 0.1rem 0.3rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-}
-
-/* ==========================================================================
-   Run Another / CSV Export / Session Count (Prompts 9, 15)
+   Run Another / CSV Export (Prompts 9, 15)
    ========================================================================== */
 
 .run-another-inner {
@@ -6983,13 +6914,6 @@ h3.services-sub,
     color: var(--text-primary);
 }
 
-.session-audit-count {
-    text-align: center;
-    font-size: var(--font-xs);
-    color: var(--text-tertiary);
-    margin-top: 0.5rem;
-}
-
 /* Sticky run-another when scrolled past (Prompt 9) */
 #run-another-btn.sticky {
     position: fixed;
@@ -7001,10 +6925,6 @@ h3.services-sub,
     padding: 0.75rem 1rem;
     z-index: 100;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
-}
-
-#run-another-btn.sticky .session-audit-count {
-    display: none;
 }
 
 /* ==========================================================================
@@ -7659,31 +7579,6 @@ h3.services-sub,
     display: flex;
     gap: 0.5rem;
     align-items: center;
-}
-
-/* ==========================================================================
-   TOUCH TARGETS
-   CLAUDE.md requires 44px minimum on mobile. .copy-btn and .back-to-top are
-   44px at every width above. These two are compact controls where a mouse is
-   available, so they grow on the widths a finger actually uses.
-   ========================================================================== */
-@media (max-width: 768px) {
-    .cache-rerun-btn {
-        min-height: 44px;
-        padding: 0.5rem 0.9rem;
-        font-size: var(--font-xs);
-    }
-
-    /* The badge is a 22px tag; without this the 44px button's border sticks
-       out above and below it. */
-    #cache-status-badge {
-        height: auto;
-    }
-
-    .request-id-display {
-        min-height: 44px;
-    }
-
 }
 
 /* ==========================================================================
