@@ -55,8 +55,8 @@ def test_malformed_subdomain_record_still_inherits_the_parent_policy(audit):
 # ---------------------------------------------------------------
 
 @pytest.mark.parametrize("dmarc, row", [
-    (f"v=DMARC1; p=quarantine; sp=none; {RUA}", "Bring the subdomain policy up to p=quarantine"),
-    (f"v=DMARC1; p=reject; sp=quarantine; {RUA}", "Bring the subdomain policy up to p=reject"),
+    (f"v=DMARC1; p=quarantine; sp=none; {RUA}", "Raise the subdomain policy to sp=quarantine"),
+    (f"v=DMARC1; p=reject; sp=quarantine; {RUA}", "Raise the subdomain policy to sp=reject"),
     (f"v=DMARC1; p=reject; np=none; {RUA}", "Set np=reject to match the domain's policy"),
     (f"v=DMARC1; p=quarantine; np=none; {RUA}", "Set np=quarantine to match the domain's policy"),
     (f"v=DMARC1; p=reject; np=quarantine; {RUA}", "Set np=reject to match the domain's policy"),

@@ -163,8 +163,8 @@ def test_every_vector_protected_gets_the_all_vectors_verdict():
         _DKIM_ASSESSED,
     ]
     verdict = _es(checks)["verdict"]
-    assert verdict.startswith("Receivers are asked to refuse mail that pretends to be "
-                              "from this domain"), (
+    assert verdict.startswith("Receiving mail servers are asked to refuse mail that fails "
+                              "authentication for this domain"), (
         f"every vector is protected but the verdict says something short of "
         f"that: {verdict!r}"
     )

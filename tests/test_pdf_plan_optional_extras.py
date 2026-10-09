@@ -25,7 +25,7 @@ from test_status_semantics import DOMAIN, MONITORING, _js_functions, _zone  # no
 def _plan_text(result):
     pages = [" ".join((p.extract_text() or "").split()) for p in
              PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages]
-    start = next(i for i, p in enumerate(pages) if "The plan" in p and "Across " in p)
+    start = next(i for i, p in enumerate(pages) if "What to do" in p and "Across " in p)
     end = next(i for i, p in enumerate(pages) if "Part 2: Appendix" in p)
     return " ".join(pages[start:end])
 

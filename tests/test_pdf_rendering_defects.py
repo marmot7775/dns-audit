@@ -178,21 +178,21 @@ def test_scoped_pdf_toc_lists_only_the_sections_it_contains(audit, zone):
     # letters close up behind them.
     text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN, scope="dns_infra"))
     assert "1. The short answer" in text
-    assert "2. The plan" in text
+    assert "2. What to do" in text
     assert "3. Checks" in text
     assert "A. What each check means" in text
     assert "B. About this report" in text
-    for absent in ("DMARC in depth", "Attack surface and subdomains", "Migration path",
+    for absent in ("DMARC in depth", "Attack surface and subdomains", "Path to enforcement",
                    "SPF and DKIM in depth", "4. Checks", "E. About this report"):
         assert absent not in text, absent
 
 
 def test_complete_pdf_toc_lists_both_parts_in_order(audit, zone):
     text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN))
-    expected = ["1. The short answer", "2. The plan", "3. Checks",
+    expected = ["1. The short answer", "2. What to do", "3. Checks",
                 "Part 2: Appendix", "A. DMARC in depth",
                 "B. Attack surface and subdomains", "C. SPF and DKIM in depth",
-                "D. Migration path", "E. About this report"]
+                "D. Path to enforcement", "E. About this report"]
     # The contents follow the Part 2 heading on the same page (Doc 92).
     start = text.find("Part 1: The report")
     assert start >= 0
