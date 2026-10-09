@@ -248,7 +248,7 @@ def test_the_card_changes_no_count_in_the_result_or_the_pdf(with_and_without):
     text_on, text_off = " ".join(pages_on), " ".join(pages_off)
     assert "Draft standards" in text_on and "Draft standards" not in text_off
     card = on["draft_standards"][0]
-    for words in [card["verdict"], "APRF is a proposed standard that is not yet adopted.",
+    for words in [card["verdict"], "APRF is a working group draft, not yet a standard.",
                   f"Reports go to r@{UI_DOMAIN}."]:
         assert words in text_on, words
     contents = text_on[text_on.index("Part 1"):][:600] if "Part 1" in text_on else text_on
