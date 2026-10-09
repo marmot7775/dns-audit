@@ -33,11 +33,17 @@ def _meta(html, key):
     return m.group(1) if m else None
 
 
+# An article with its own preview card; every other page uses the site card.
+OWN_CARD = {"/articles/aprf": "og-card-aprf.png"}
+
+
 def test_every_page_previews_the_same_site_name_image_and_card():
     for loc, html in _pages():
         assert "DNS Security Auditor" not in html, loc
         assert _meta(html, "og:site_name") == "dns-audit.com", loc
-        assert _meta(html, "og:image") == "https://dns-audit.com/static/og-card.png?v=1", loc
+        card = OWN_CARD.get(loc, "og-card.png")
+        assert _meta(html, "og:image") == f"https://dns-audit.com/static/{card}?v=1", loc
+        assert _meta(html, "twitter:image") == _meta(html, "og:image"), loc
         assert (_meta(html, "og:image:width"), _meta(html, "og:image:height")) == ("1200", "630"), loc
         assert _meta(html, "og:image:alt"), loc
         assert _meta(html, "twitter:card") == "summary_large_image", loc
@@ -46,10 +52,11 @@ def test_every_page_previews_the_same_site_name_image_and_card():
 
 
 def test_the_preview_image_is_the_size_the_tags_say():
-    with open(os.path.join(STATIC, "og-card.png"), "rb") as f:
-        head = f.read(24)
-    assert head[:8] == b"\x89PNG\r\n\x1a\n"
-    assert struct.unpack(">II", head[16:24]) == (1200, 630)
+    for card in {"og-card.png", *OWN_CARD.values()}:
+        with open(os.path.join(STATIC, card), "rb") as f:
+            head = f.read(24)
+        assert head[:8] == b"\x89PNG\r\n\x1a\n", card
+        assert struct.unpack(">II", head[16:24]) == (1200, 630), card
 
 
 def test_article_dates_agree_in_meta_jsonld_and_sitemap():
