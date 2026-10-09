@@ -9566,9 +9566,9 @@ def _build_provider_intelligence(
 # about provider support that go stale: tests/test_aprf.py fails 90 days
 # after APRF_NOTE_REVIEWED, and the fix is to recheck support, then update
 # the note and this date together.
-APRF_NOTE_REVIEWED = "2026-10-08"
+APRF_NOTE_REVIEWED = "2026-10-09"
 APRF_NOTE = (
-    "APRF is a proposed standard that is not yet adopted. A mail provider "
+    "APRF is a working group draft, not yet a standard. A mail provider "
     "that supports it sends you a daily report on how much of your mail "
     "reached the inbox and how recipients reacted to it. As of October 2026, "
     "only Comcast sends these reports, in beta, and only for mail delivered "
