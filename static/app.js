@@ -1008,14 +1008,18 @@ function renderResults(data) {
             // names who receives its mail (inbound). Naming the vendor
             // alone reads as "handles your mail" when it may be one side.
             const via = (v.sources && v.sources.length) ? v.sources.join(', ') : '';
-            // Found only as a report address: say what it is, not "detected".
+            // Found only as a report address or a verification token: say
+            // what it is, not "detected".
             const detail = v.role === 'reporting'
                 ? `Receives your ${escapeHtml(via || 'reports')}. A reporting service, not a sender.`
+                : v.role === 'account'
+                ? `A trace of an account (${escapeHtml(via || 'TXT')}), with nothing set up to send through it.`
                 : v.detected_via
                 ? `Detected via ${escapeHtml(via || 'SPF/MX')} (${escapeHtml(v.detected_via)})`
                 : via ? `Detected via ${escapeHtml(via)}` : 'Detected via DNS records';
+            const tier = v.role === 'reporting' ? 'Reporting service' : (v.tier || '');
             card.innerHTML = `
-                <div class="vendor-name">${escapeHtml(v.name)}</div>
+                <div class="vendor-name">${escapeHtml(v.name)}${tier ? ` <span class="tag vendor-tier">${escapeHtml(tier)}</span>` : ''}</div>
                 <div class="vendor-confidence">${detail}</div>
             `;
             vendorsGrid.appendChild(card);
