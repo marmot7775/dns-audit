@@ -9562,10 +9562,11 @@ def _build_provider_intelligence(
 # APRF (draft standard), informational only
 # ============================================================
 
-# Opens every state of the card, on the web and in the PDF. It states facts
-# about provider support that go stale: tests/test_aprf.py fails 90 days
-# after APRF_NOTE_REVIEWED, and the fix is to recheck support, then update
-# the note and this date together.
+# Opens every full card state, and the expanded web view of the not
+# published line. It states facts about provider support that go stale:
+# tests/test_aprf.py warns (never fails) 90 days after APRF_NOTE_REVIEWED,
+# and the fix is to recheck support, then update the note and this date
+# together.
 APRF_NOTE_REVIEWED = "2026-10-08"
 APRF_NOTE = (
     "APRF is a proposed standard that is not yet adopted. A mail provider "
@@ -9576,6 +9577,9 @@ APRF_NOTE = (
     "your results."
 )
 APRF_TITLE = "APRF (draft standard)"
+# Not published is the state for nearly every domain, so it renders as this
+# one collapsed line instead of a full card, on the web and in the PDF.
+APRF_NONE_LINE = "APRF, a draft reporting standard, is not published for this domain."
 
 _APRF_IGNORED_REASONS = {
     "v_tag": "its v tag is missing or is not APRFv1",
@@ -9631,7 +9635,7 @@ def transform_aprf(raw: Dict, domain: str) -> Dict:
     paragraphs: List[str] = []
     if not records:
         paragraphs.append(
-            "No APRF record found. You aren't missing anything yet. With one "
+            "You aren't missing anything yet. With one "
             "provider sending reports in beta, publishing a record is worth it "
             "only if a meaningful share of your mail goes to Comcast addresses."
         )
@@ -9699,4 +9703,7 @@ def transform_aprf(raw: Dict, domain: str) -> Dict:
             f"Selector specific records were checked for the first "
             f"{len(raw['selectors_checked'])} of {raw['selectors_total']} DKIM selectors.")
 
-    return _aprf_card(state, pill, verdict, paragraphs, record, location)
+    card = _aprf_card(state, pill, verdict, paragraphs, record, location)
+    if state == "none":
+        card["collapsed_line"] = APRF_NONE_LINE
+    return card

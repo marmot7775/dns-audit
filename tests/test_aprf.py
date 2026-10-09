@@ -12,6 +12,7 @@ import io
 import json
 import os
 import sys
+import warnings
 from unittest.mock import patch
 
 import dns.resolver
@@ -200,6 +201,7 @@ def test_servfail_on_the_bare_name_is_unavailable_not_absent():
     assert card["pill_label"] == "Not checked"
     assert card["what_this_is"] == result_transformer.APRF_NOTE
     assert "No APRF record found" not in _text(card) + card["verdict"]
+    assert "collapsed_line" not in card
 
 
 def test_timeout_on_a_selector_name_is_unavailable():
@@ -214,12 +216,68 @@ def test_a_dkim_wildcard_answer_is_not_an_aprf_record():
     assert card["aprf_state"] == "none"
 
 
-# 11
+# 11 and 12
 def _ui_run(zone, aprf_on):
     scopes = audit_engine.APRF_SCOPES if aprf_on else set()
     with patch.object(audit_engine, "APRF_SCOPES", scopes), fake_dns(zone):
         result = audit_engine.run_full_audit(UI_DOMAIN, dkim_selector="s1", scope="complete")
     return json.loads(json.dumps(result, default=str))
+
+
+@pytest.fixture(scope="module")
+def not_published():
+    return _ui_run(_ui_zone(), True)
+
+
+_ADVICE = "You aren't missing anything yet."
+
+_LINE_JS = """() => {
+    const list = document.getElementById('draft-standards-list');
+    const line = list.querySelector('details.draft-line');
+    const body = line && line.querySelector('.draft-line-body');
+    return {
+        cards: list.querySelectorAll('.result-card').length,
+        children: list.children.length,
+        open: line ? line.open : null,
+        summary: line ? line.querySelector('summary').textContent.trim() : null,
+        bodyText: body ? body.textContent : '',
+        visible: document.getElementById('draft-standards-section').innerText,
+        outside: list.textContent.replace(body ? body.textContent : '', ''),
+    };
+}"""
+
+
+def test_not_published_is_one_collapsed_line(browser, not_published):  # noqa: F811
+    card = not_published["draft_standards"][0]
+    assert card["aprf_state"] == "none"
+    assert card["collapsed_line"] == result_transformer.APRF_NONE_LINE
+
+    ctx, pg, errors = _page(browser, "dark", 1280)
+    _render(pg, not_published)
+    m = pg.evaluate(_LINE_JS)
+    assert m["cards"] == 0 and m["children"] == 1 and m["open"] is False
+    assert m["summary"] == result_transformer.APRF_NONE_LINE
+    # Collapsed: the line shows, the note and the advice do not.
+    assert result_transformer.APRF_NONE_LINE in m["visible"]
+    for hidden in (result_transformer.APRF_NOTE, _ADVICE):
+        assert hidden not in m["visible"]
+        assert hidden not in m["outside"]
+        assert hidden in m["bodyText"]
+    # Expanded: the note first, then the advice.
+    pg.click("#draft-standards-list summary")
+    visible = pg.locator("#draft-standards-section").inner_text()
+    assert (visible.index(result_transformer.APRF_NOTE[:40])
+            < visible.index(_ADVICE))
+    assert not errors, errors
+    ctx.close()
+
+    text = " ".join(_pdf_pages(not_published))
+    section = text[text.index("Draft standards"):]
+    assert section.split("Draft standards", 1)[1].strip().startswith(
+        result_transformer.APRF_NONE_LINE)
+    assert result_transformer.APRF_NOTE[:40] not in text
+    assert _ADVICE not in text
+    assert "APRF (draft standard)" not in text
 
 
 @pytest.fixture(scope="module")
@@ -285,7 +343,7 @@ def test_the_card_changes_no_count_on_the_web_page(browser, with_and_without):  
     assert result_transformer.APRF_NOTE in on["draftText"]
 
 
-# 12
+# 13
 @pytest.mark.parametrize("scope", ["dmarc", "transport", "dns_infra", "security_scan"])
 def test_out_of_scope_runs_make_no_aprf_queries(scope):
     zone = _ui_zone(extra={f"_aprf._domainkey.{UI_DOMAIN}": {"TXT": ["v=APRFv1; rua=mailto:r@x.test"]}})
@@ -295,17 +353,38 @@ def test_out_of_scope_runs_make_no_aprf_queries(scope):
     assert result["draft_standards"] == []
 
 
-# 13
-def test_the_provider_support_note_has_been_reviewed_in_the_last_90_days():
-    reviewed = datetime.date.fromisoformat(result_transformer.APRF_NOTE_REVIEWED)
-    assert datetime.date.today() <= reviewed + datetime.timedelta(days=90), (
-        f"APRF_NOTE was last reviewed on {reviewed}. Recheck which mailbox "
-        "providers send APRF reports and the draft's status, then update "
-        "APRF_NOTE and APRF_NOTE_REVIEWED in result_transformer.py together."
-    )
-
-
 # 14
+class AprfNoteStale(UserWarning):
+    """APRF_NOTE is past its 90 day review. A warning, never a failure, so a
+    stale note cannot block an unrelated deploy."""
+
+
+def _warn_if_note_stale(today):
+    reviewed = datetime.date.fromisoformat(result_transformer.APRF_NOTE_REVIEWED)
+    if today > reviewed + datetime.timedelta(days=90):
+        warnings.warn(AprfNoteStale(
+            f"APRF_NOTE was last reviewed on {reviewed}. Recheck which mailbox "
+            "providers send APRF reports and the draft's status, then update "
+            "APRF_NOTE and APRF_NOTE_REVIEWED in result_transformer.py together."))
+
+
+def test_the_provider_support_note_warns_once_90_days_have_passed():
+    _warn_if_note_stale(datetime.date.today())
+
+
+@pytest.mark.parametrize("days, stale", [(0, False), (90, False), (91, True), (400, True)])
+def test_the_review_warning_starts_after_day_90(days, stale):
+    reviewed = datetime.date.fromisoformat(result_transformer.APRF_NOTE_REVIEWED)
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        _warn_if_note_stale(reviewed + datetime.timedelta(days=days))
+    stale_seen = [w for w in seen if issubclass(w.category, AprfNoteStale)]
+    assert bool(stale_seen) is stale
+    if stale:
+        assert "Recheck which mailbox providers send APRF reports" in str(stale_seen[0].message)
+
+
+# 15
 def _every_state():
     yield _check({})[1]
     yield _check({BARE: f"v=APRFv1; rua=mailto:a@{DOMAIN},mailto:r@reports.example.net"})[1]
@@ -321,7 +400,8 @@ def _every_state():
 def test_card_copy_has_no_dashes_and_no_quotation_marks():
     for card in _every_state():
         copy = " ".join([card["what_this_is"], card["verdict"], card["pill_label"],
-                         card["plain_name"]] + card["paragraphs"])
+                         card["plain_name"], card.get("collapsed_line", "")]
+                        + card["paragraphs"])
         for bad in ("—", "–", " - ", "--", '"', "“", "”", "‘", "’"):
             assert bad not in copy, (bad, copy)
 
