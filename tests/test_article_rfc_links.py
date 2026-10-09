@@ -188,3 +188,12 @@ def test_every_article_has_a_byline_linking_about_neil():
                 in content), os.path.relpath(path, REPO_ROOT)
     with open(os.path.join(REPO_ROOT, "static", "about.html"), encoding="utf-8") as f:
         assert '<h2 id="neil">Who built this</h2>' in f.read()
+
+
+# The APRF article cites no sources and links nowhere (Neil, 2026-10-09:
+# no citations).
+def test_aprf_article_has_no_links():
+    with open(os.path.join(ARTICLES_DIR, "aprf.html"), encoding="utf-8") as f:
+        content = f.read()
+    article = content[content.index("<article"):content.index("</article>")]
+    assert [h for h, _ in _anchors(article)] == ["/about#neil"]
