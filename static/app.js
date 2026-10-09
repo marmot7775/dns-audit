@@ -353,11 +353,10 @@ function _clearInlineError() {
     domainInput.classList.remove('input-error');
 }
 
-// Clear inline error and run real-time validation as user types (Prompt 10)
-domainInput.addEventListener('input', () => {
-    _clearInlineError();
-    _realtimeValidate();
-});
+// Clear the inline error as the user types. There is no live validity mark:
+// a format check passed dns-audit.comds with a green tick, which read as a
+// promise the domain exists.
+domainInput.addEventListener('input', _clearInlineError);
 
 function normalizeDomain(input) {
     if (!input) return '';
@@ -4409,41 +4408,6 @@ function _renderRecentAudits() {
 
 // Render recent audits on page load
 document.addEventListener('DOMContentLoaded', _renderRecentAudits);
-
-// ============================================================
-// Real-time input validation (Prompt 10)
-// ============================================================
-
-function _realtimeValidate() {
-    const raw = domainInput.value.trim();
-    let indicator = document.getElementById('domain-valid-indicator');
-    if (!indicator) {
-        indicator = document.createElement('span');
-        indicator.id = 'domain-valid-indicator';
-        indicator.className = 'domain-valid-indicator';
-        domainInput.parentNode.style.position = 'relative';
-        domainInput.parentNode.appendChild(indicator);
-    }
-
-    if (!raw) {
-        indicator.className = 'domain-valid-indicator';
-        indicator.textContent = '';
-        return;
-    }
-
-    const domain = normalizeDomain(raw);
-
-    if (domain && DOMAIN_RE.test(domain)) {
-        indicator.className = 'domain-valid-indicator valid';
-        indicator.innerHTML = ICON.pass;
-    } else if (raw.length > 2) {
-        indicator.className = 'domain-valid-indicator invalid';
-        indicator.innerHTML = ICON.fail;
-    } else {
-        indicator.className = 'domain-valid-indicator';
-        indicator.textContent = '';
-    }
-}
 
 // ============================================================
 // Cache status badge (Prompt 12)

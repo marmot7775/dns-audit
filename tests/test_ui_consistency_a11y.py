@@ -423,13 +423,28 @@ def _rects_overlap(a, b, tol=0.5):
             and a["top"] < b["bottom"] - tol and b["top"] < a["bottom"] - tol)
 
 
+def test_typing_a_domain_shows_no_validity_mark(browser):
+    """A format check gave dns-audit.comds a green tick while the results
+    below were for dns-audit.com. It validated nothing a visitor cares about,
+    so the input carries no mark at all."""
+    ctx, page, errors = _page(browser, "light", 1280)
+    try:
+        for value in ("dns-audit.comds", "not a domain"):
+            page.fill("#domain-input", value)
+            page.dispatch_event("#domain-input", "input")
+            page.wait_for_timeout(100)
+            assert page.locator("#domain-valid-indicator").count() == 0, value
+        assert errors == []
+    finally:
+        ctx.close()
+
+
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_nothing_overlaps_the_run_audit_button_at_1280(browser, theme):
     ctx, page, errors = _page(browser, theme, 1280)
     try:
         page.fill("#domain-input", "example.com")
         page.dispatch_event("#domain-input", "input")
-        page.wait_for_selector("#domain-valid-indicator.valid")
         hits = page.evaluate("""() => {
             const btn = document.getElementById('audit-btn');
             const b = btn.getBoundingClientRect();
