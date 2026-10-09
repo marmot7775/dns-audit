@@ -37,7 +37,7 @@ def test_every_page_previews_the_same_site_name_image_and_card():
     for loc, html in _pages():
         assert "DNS Security Auditor" not in html, loc
         assert _meta(html, "og:site_name") == "dns-audit.com", loc
-        assert _meta(html, "og:image") == "https://dns-audit.com/static/og-card.png", loc
+        assert _meta(html, "og:image") == "https://dns-audit.com/static/og-card.png?v=1", loc
         assert (_meta(html, "og:image:width"), _meta(html, "og:image:height")) == ("1200", "630"), loc
         assert _meta(html, "og:image:alt"), loc
         assert _meta(html, "twitter:card") == "summary_large_image", loc
