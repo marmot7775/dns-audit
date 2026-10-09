@@ -147,7 +147,8 @@ DKIM_CNAME_VENDORS: Dict[str, str] = {
     "klaviyodns.com": "Klaviyo",
     "custdkim.salesforce.com": "Salesforce",
     "eversrv.com": "Everlytic",
-    "freshemail.io": "Freshdesk",
+    # Not freshemail.io: every Freshworks product signs from it, so it does
+    # not say which one (Freshdesk, Freshsales, Freshservice).
 }
 
 # Selector name -> vendor, for a key published as TXT at the domain itself,
