@@ -220,10 +220,48 @@ def match_host(host: Optional[str], table: Dict[str, str]) -> Optional[str]:
     return best[1] if best else None
 
 
-def dkim_key_vendor(selector: Optional[str], cname_target: Optional[str]) -> Optional[str]:
-    """Vendor for a found DKIM key: the CNAME target when there is one, else
-    the selector name. Never "Generic"."""
+# Selector names too common to point at one vendor, from the sender
+# discovery script's vendors.json: listed here, or two characters or fewer
+# unless SHORT_SELECTORS_ALLOWED keeps them. Such a name names a vendor only
+# when other records already show that vendor (the backed tag below).
+GENERIC_SELECTORS = frozenset({
+    "mx", "pm", "dk", "sp", "mail", "email", "default", "dkim", "selector",
+    "key", "key1", "key2", "s", "k", "api", "smtp", "mta", "dkim1", "dkim2",
+})
+SHORT_SELECTORS_ALLOWED = frozenset({"k1", "k2", "k3", "s1", "s2", "cm", "kl"})
+
+# Microsoft 365 publishes these only as CNAMEs into its own zones, so the
+# name alone, or a vendor list that includes it, is never evidence.
+_CNAME_ONLY_SELECTORS = frozenset({"selector1", "selector2"})
+
+
+def is_generic_selector(selector: Optional[str]) -> bool:
+    s = (selector or "").lower()
+    return s in GENERIC_SELECTORS or (len(s) <= 2 and s not in SHORT_SELECTORS_ALLOWED)
+
+
+def dkim_key_vendor(selector: Optional[str], cname_target: Optional[str],
+                    backed: Optional[str] = None) -> Optional[str]:
+    """Vendor for a found DKIM key, the one rule the DKIM card, its key table
+    and the vendor panel share. Never "Generic".
+
+    1. The CNAME target, always: the vendor hosts the key.
+    2. selector1 and selector2 name nobody without that CNAME.
+    3. backed: the vendor discovery tagged the key with, one whose SPF
+       include or MX this domain publishes and whose selector list has this
+       name. It beats the name table, so k1 at a domain on Mailgun is not
+       credited to Mailchimp on the name.
+    4. The name table, unless the name is generic.
+    """
     vendor = match_host(cname_target, DKIM_CNAME_VENDORS)
-    if not vendor:
-        vendor = DKIM_SELECTOR_VENDORS.get((selector or "").lower())
+    if vendor:
+        return vendor
+    s = (selector or "").lower()
+    if s in _CNAME_ONLY_SELECTORS:
+        return None
+    if backed:
+        return backed
+    if is_generic_selector(s):
+        return None
+    vendor = DKIM_SELECTOR_VENDORS.get(s)
     return None if vendor == "Generic" else vendor

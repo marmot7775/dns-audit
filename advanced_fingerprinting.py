@@ -172,7 +172,7 @@ class AdvancedVendorFingerprinter:
             selector = sel.get('selector') or ''
             target = sel.get('cname_target')
             by_cname = match_host(target, DKIM_CNAME_VENDORS)
-            vendor = dkim_key_vendor(selector, target)
+            vendor = dkim_key_vendor(selector, target, sel.get('vendor'))
             if not vendor:
                 continue
             self.signals.append({
