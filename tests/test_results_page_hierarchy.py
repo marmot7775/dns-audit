@@ -52,7 +52,7 @@ def _open_details(page):
 
 
 # ---------------------------------------------------------------
-# 1. The page opens as twelve closed rows
+# 1. The page opens as closed rows: twelve checks and the APRF card
 # ---------------------------------------------------------------
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -73,7 +73,9 @@ def test_every_card_starts_collapsed_and_the_page_is_short(browser, fixture_resu
             height: document.documentElement.scrollHeight,
             toggle: document.querySelector('#toggle-all-btn span').textContent,
         })""")
-        assert m["cards"] == 12, m["cards"]
+        # Twelve checks, plus the informational APRF card under Draft
+        # standards, which starts closed like the rest.
+        assert m["cards"] == 13, m["cards"]
         assert m["expanded"] == 0, f"{m['expanded']} cards render open"
         assert m["headersOpen"] == 0
         assert m["headersClosed"] == m["cards"]
@@ -320,7 +322,7 @@ def test_copy_all_records_copies_the_same_text_open_or_closed(browser, fixture_r
             return {text: window.__copied,
                     open: document.querySelectorAll('.result-card.expanded').length};
         }""")
-        assert expanded["open"] == 12, "Expand All did not open every card"
+        assert expanded["open"] == 13, "Expand All did not open every card"
         assert collapsed, "Copy All Records copied nothing with the cards collapsed"
         assert collapsed != "No DNS records found."
         assert collapsed == expanded["text"]
