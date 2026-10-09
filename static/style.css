@@ -4746,6 +4746,16 @@ h3.services-sub,
     transform: rotate(180deg);
 }
 
+/* The not published APRF line (Draft standards): the subdomain toggle, at
+   body text size because it is the whole of the section. */
+.draft-line-summary {
+    font-size: var(--font-sm);
+}
+
+.draft-line-body {
+    padding: 0 0 0.4rem 1.3rem;
+}
+
 .sua-table-wrap {
     overflow-x: auto;
     margin-top: 0.4rem;
