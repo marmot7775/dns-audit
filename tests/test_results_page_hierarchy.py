@@ -147,11 +147,11 @@ def test_the_executive_summary_buttons_open_their_targets(browser, fixture_resul
     try:
         _render(page, fixture_result)
         targets = page.evaluate("""() => [...document.querySelectorAll(
-            '#executive-summary-slot [data-scroll-to]')].map(b => b.dataset.scrollTo)""")
+            '#tech-summary-slot [data-scroll-to]')].map(b => b.dataset.scrollTo)""")
         assert targets, "the fixture rendered no executive summary buttons"
         for target in targets:
             page.evaluate("""t => document.querySelector(
-                `#executive-summary-slot [data-scroll-to="${t}"]`).click()""", target)
+                `#tech-summary-slot [data-scroll-to="${t}"]`).click()""", target)
             page.wait_for_timeout(500)
             state = page.evaluate("""t => {
                 const el = document.getElementById(t);

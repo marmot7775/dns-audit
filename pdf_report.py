@@ -361,6 +361,17 @@ SHORT_ANSWER_POINTER = ("Page 2 is the plan for whoever manages your DNS. "
                         "Part 2 holds the evidence.")
 
 
+def _headline(es: dict) -> str:
+    """The short answer's first line, the same one the web page shows.
+
+    The verdict stands in when there is no headline: a result from before the
+    headline existed, or a run whose scope left DMARC out. The web shows the
+    subline alone there; a printed report keeps the sentence that says what
+    the run did not check.
+    """
+    return es.get("headline") or es.get("verdict") or ""
+
+
 def _do_first(data):
     """Up to three actions for page 1, the same ones the web shows.
 
@@ -410,7 +421,7 @@ def _do_first_box(data, S):
             return []
         # The no-mail verdict already ends "Nothing to fix.", and a second
         # line saying otherwise would contradict it. The web page skips it too.
-        if severity != "unknown" and "Nothing to fix" in (es.get("verdict") or ""):
+        if severity != "unknown" and "Nothing to fix" in _headline(es):
             return []
         if severity == "unknown":
             text, bg, rule = f"•  {_safe(message)}", SURFACE_BG, TEXT_TER
@@ -508,8 +519,8 @@ def _cover_page(data, S):
 
     els.extend(_section_header("1", "The short answer", S))
 
-    # The plain verdict.
-    verdict = es.get("verdict", "")
+    # The headline, as the web page prints it.
+    verdict = _headline(es)
     if verdict:
         vt = Table([[Paragraph(_safe(verdict), S["body_large"])]], colWidths=[6.5*inch])
         vt.setStyle(TableStyle([
