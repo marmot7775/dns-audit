@@ -48,6 +48,7 @@ ALIAS_FILES = (
     "static/articles/spf-lookups.html",
     "static/articles/p-reject.html",
     "static/articles/postmaster-tools.html",
+    "static/articles/aprf.html",
     "static/articles/index.html",
     "static/app.js",
     "docs/history/doc-41.md",
