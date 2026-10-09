@@ -422,7 +422,7 @@ _init_sentry()
 # ============================================================
 
 app = FastAPI(
-    title="DNS Security Auditor",
+    title="dns-audit.com",
     description=(
         "Comprehensive DNS and email security auditing API. "
         "Checks DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, Nameservers, and Certificate Transparency."
@@ -488,6 +488,36 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+class HeadAsGetMiddleware:
+    """Answer HEAD on a page the way GET answers it, without the body.
+
+    The page routes are GET only, so HEAD got 405 Method Not Allowed, and
+    link checkers, uptime monitors, SEO tools and some link preview fetchers
+    that send HEAD first saw every page as broken. RFC 9110 section 9.3.2:
+    HEAD is GET without the content. The /api/ paths are left alone: a HEAD
+    there must not start an audit.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (scope["type"] != "http" or scope["method"] != "HEAD"
+                or scope["path"].startswith("/api/")):
+            return await self.app(scope, receive, send)
+
+        async def send_without_body(message):
+            if message["type"] == "http.response.body":
+                message = {**message, "body": b""}
+            await send(message)
+
+        return await self.app({**scope, "method": "GET"}, receive, send_without_body)
+
+
+# Added last, so it runs first: every other layer sees an ordinary GET.
+app.add_middleware(HeadAsGetMiddleware)
 
 
 # ============================================================
@@ -1569,31 +1599,85 @@ else:
         return {"message": "DNS Security Auditor API. Put static files in ./static/"}
 
 
+# Every public page, for the sitemap and llms.txt alike.
+_SITE_PAGES = [
+    {"loc": "/", "file": "index.html", "changefreq": "weekly", "priority": "1.0"},
+    {"loc": "/articles/", "file": "articles/index.html", "changefreq": "weekly", "priority": "0.8"},
+    {"loc": "/articles/dmarcbis", "file": "articles/dmarcbis.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/articles/dnssec", "file": "articles/dnssec.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/articles/dane", "file": "articles/dane.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/articles/spf-lookups", "file": "articles/spf-lookups.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/articles/p-reject", "file": "articles/p-reject.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/articles/aprf", "file": "articles/aprf.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/articles/postmaster-tools", "file": "articles/postmaster-tools.html", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/about", "file": "about.html", "changefreq": "monthly", "priority": "0.5"},
+    {"loc": "/privacy", "file": "privacy.html", "changefreq": "yearly", "priority": "0.3"},
+]
+
+
+def _page_meta(file: str) -> Dict[str, str]:
+    """Title, description and dateModified from a page's own HTML, so the
+    sitemap and llms.txt can never disagree with what the page says."""
+    try:
+        html = (STATIC_DIR / file).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    meta = {}
+    m = re.search(r"<title>(.*?)</title>", html, re.S)
+    if m:
+        meta["title"] = m.group(1).strip().replace(" | dns-audit.com", "")
+    m = re.search(r'<meta name="description" content="([^"]*)"', html)
+    if m:
+        meta["description"] = m.group(1)
+    m = re.search(r'"dateModified":\s*"(\d{4}-\d{2}-\d{2})', html)
+    if m:
+        meta["modified"] = m.group(1)
+    return meta
+
+
 @app.get("/sitemap.xml")
 async def sitemap():
     """Generate a simple sitemap for search engines."""
     base = "https://dns-audit.com"
-    pages = [
-        {"loc": "/", "changefreq": "weekly", "priority": "1.0"},
-        {"loc": "/articles/", "changefreq": "weekly", "priority": "0.8"},
-        {"loc": "/articles/dmarcbis", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/articles/dnssec", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/articles/dane", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/articles/spf-lookups", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/articles/p-reject", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/articles/aprf", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/articles/postmaster-tools", "changefreq": "monthly", "priority": "0.8"},
-        {"loc": "/about", "changefreq": "monthly", "priority": "0.5"},
-        {"loc": "/privacy", "changefreq": "yearly", "priority": "0.3"},
-    ]
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for p in pages:
+    for p in _SITE_PAGES:
         xml += "  <url>\n"
         xml += f"    <loc>{base}{p['loc']}</loc>\n"
+        # Only a date the page itself states (an article's dateModified).
+        modified = _page_meta(p["file"]).get("modified")
+        if modified:
+            xml += f"    <lastmod>{modified}</lastmod>\n"
         xml += f"    <changefreq>{p['changefreq']}</changefreq>\n"
         xml += f"    <priority>{p['priority']}</priority>\n"
         xml += "  </url>\n"
     xml += '</urlset>'
     return Response(content=xml, media_type="application/xml")
+
+
+@app.get("/llms.txt", response_class=PlainTextResponse, tags=["SEO"])
+async def llms_txt():
+    """A plain text map of the site for AI assistants (llmstxt.org): what
+    the tool is, and every article with its own description."""
+    base = "https://dns-audit.com"
+    lines = [
+        "# dns-audit.com",
+        "",
+        "> Free DNS and email security audit by Neil Anuskiewicz. Twelve checks "
+        "(DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, "
+        "nameservers, Certificate Transparency) read from a domain's public "
+        "records, with findings in plain language and copy-paste fixes.",
+        "",
+        "## Articles",
+        "",
+    ]
+    for p in _SITE_PAGES:
+        if p["loc"].startswith("/articles/") and p["loc"] != "/articles/":
+            meta = _page_meta(p["file"])
+            lines.append(f"- [{meta.get('title', p['loc'])}]({base}{p['loc']}): "
+                         f"{meta.get('description', '')}")
+    lines += ["", "## About", "",
+              f"- [About]({base}/about): who built the tool and why",
+              f"- [Privacy]({base}/privacy): what an audit records"]
+    return "\n".join(lines) + "\n"
 

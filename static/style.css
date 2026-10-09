@@ -3831,6 +3831,20 @@ input[type="search"],
     }
 }
 
+/* On the smallest phones the icon, the validity tick's room and the button
+   left the field about forty pixels of text: "example.com" read "exampl".
+   Tighter padding and body-size text give the domain the room instead. */
+@media (max-width: 400px) {
+    .input-unified .audit-btn {
+        padding: 0 0.9rem;
+    }
+    .domain-input-wrap .domain-input {
+        font-size: var(--font-base);
+        padding-left: 2.4rem;
+        padding-right: 1.9rem;
+    }
+}
+
 @media (max-width: 320px) {
     .container {
         padding: 0 0.75rem;
