@@ -153,7 +153,7 @@ def test_article_links_to_person_and_site(page):
     assert art["author"] == {"@id": PERSON}
     assert art["publisher"] == {"@id": PERSON}
     assert art["mainEntityOfPage"] == url
-    assert art["image"] == f"{SITE}/static/og-image.png"
+    assert art["image"] == f"{SITE}/static/og-card.png"
     assert art["isPartOf"] == {"@id": WEBSITE}
     for field in ("headline", "description", "datePublished", "dateModified"):
         assert art[field], field
