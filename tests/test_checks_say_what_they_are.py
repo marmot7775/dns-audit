@@ -100,7 +100,9 @@ def test_each_card_opens_with_the_two_labelled_parts(browser, fixture_result, th
     ctx, page, errors = _page(browser, theme, 1280)
     try:
         _render(page, fixture_result)
-        cards = page.evaluate("""() => [...document.querySelectorAll('.result-card')].map(c => {
+        # The checks list only; the APRF card under Draft standards has its
+        # own note in place of a WHAT_THIS_IS line.
+        cards = page.evaluate("""() => [...document.querySelectorAll('#results-list .result-card')].map(c => {
             const inner = c.querySelector('.result-body-inner');
             const labels = [...inner.querySelectorAll('.check-part-label')]
                 .map(l => l.textContent.trim());
@@ -145,7 +147,7 @@ def test_a_check_with_no_line_renders_no_label_and_no_line(browser, fixture_resu
                 labels: caa.querySelectorAll('.check-part-label').length,
                 lines: caa.querySelectorAll('.what-this-is').length,
                 explanations: caa.querySelectorAll('.explanation').length,
-                others: document.querySelectorAll('.what-this-is').length,
+                others: document.querySelectorAll('#results-list .what-this-is').length,
             };
         }""")
         assert m["labels"] == 0 and m["lines"] == 0
@@ -171,7 +173,8 @@ def pdf_text(fixture_result):
 
 
 def test_the_checks_section_carries_the_label_once_per_check(pdf_text):
-    assert pdf_text.count("What this is") == 12
+    # Twelve checks, plus the APRF card in the Draft standards section.
+    assert pdf_text.count("What this is") == 13
 
 
 def test_every_line_reaches_the_pdf(pdf_text):
@@ -196,7 +199,7 @@ def test_a_check_with_no_line_prints_no_label_in_the_pdf(fixture_result):
         if check["name"] == "CAA":
             del check["what_this_is"]
     text = _pdf_text(data)
-    assert text.count("What this is") == 11
+    assert text.count("What this is") == 12  # eleven checks and the APRF card
     assert " ".join(WHAT_THIS_IS["CAA"].split()) not in text
 
 
