@@ -78,3 +78,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [APRF check](aprf-check.md): APRF detection, informational only
 - [Vendor gap report](vendor-gap-report.md): vendor identification, app against the sender discovery script
 - [APRF article](article-aprf.md): New article, APRF is now an IETF working group draft
+- [Doc 95](doc-95.md): Retitle the APRF article
