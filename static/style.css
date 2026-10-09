@@ -4103,7 +4103,69 @@ input[type="search"],
     font-weight: 700;
     line-height: 1.45;
     color: var(--text-primary);
+}
+
+/* The headline box: a 3px bar in the state colour on the left, square
+   corners on that side, and a 40px icon on a tint of the same colour.
+   Neutral uses --text-tertiary on --border, the unavailable treatment. */
+.es-block[class*="es-state-"] {
+    border-left-width: 3px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.es-state-pass { border-left-color: var(--pass); }
+.es-state-warn { border-left-color: var(--warn); }
+.es-state-fail { border-left-color: var(--fail); }
+.es-state-neutral { border-left-color: var(--text-tertiary); }
+
+.es-state-pass .es-icon { color: var(--pass); background: var(--pass-bg); }
+.es-state-warn .es-icon { color: var(--warn); background: var(--warn-bg); }
+.es-state-fail .es-icon { color: var(--fail); background: var(--fail-bg); }
+.es-state-neutral .es-icon { color: var(--text-tertiary); background: var(--border); }
+
+.es-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
     margin-bottom: 1.25rem;
+}
+
+.es-head:last-child,
+.es-head:has(+ .es-first:empty) {
+    margin-bottom: 0;
+}
+
+.es-icon {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.es-head-text {
+    min-width: 0;
+    flex: 1;
+    align-self: center;
+    overflow-wrap: anywhere;
+}
+
+.es-subline {
+    font-size: var(--font-base);
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0.25rem 0 0;
+}
+
+.es-first:empty {
+    display: none;
+}
+
+.es-tech-wrap {
+    margin-bottom: var(--space-lg);
 }
 
 .es-metrics {
@@ -4200,9 +4262,9 @@ input[type="search"],
     transform: scale(0.97);
 }
 
-/* Doc 92: the short answer. The verdict, any defensive signals, up to
-   three numbered actions, then See the plan and a closed Technical summary
-   holding the tiles, the deliverability line and the panel buttons. */
+/* Doc 92: the short answer. The headline and its subline, any defensive
+   signals, then up to three numbered actions. The closed Technical summary
+   (tiles, deliverability line, panel buttons) sits above the check cards. */
 .es-first {
     margin-bottom: 1.25rem;
 }
@@ -4260,17 +4322,6 @@ h2.es-first-label,
     color: var(--text-secondary);
     line-height: 1.6;
     margin-bottom: 0.5rem;
-}
-
-.es-action.es-action-primary {
-    background: var(--primary-solid);
-    border-color: var(--primary-solid);
-    color: var(--text-inverse);
-}
-
-.es-action.es-action-primary:hover {
-    background: var(--primary-solid-hover);
-    border-color: var(--primary-solid-hover);
 }
 
 .es-tech-toggle::after {

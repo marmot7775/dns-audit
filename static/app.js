@@ -732,19 +732,25 @@ function renderResults(data) {
     // -- Executive Summary (Prompt 16) -- render at the very top --
     _execSummary = data.executive_summary || null;
     const esSlot = document.getElementById('executive-summary-slot');
+    const techSlot = document.getElementById('tech-summary-slot');
     if (esSlot) {
         if (data.executive_summary) {
-            esSlot.innerHTML = renderExecutiveSummary(data.executive_summary, data.security_roadmap);
+            const es = renderExecutiveSummary(data.executive_summary, data.security_roadmap);
+            esSlot.innerHTML = es.box;
             esSlot.style.display = 'block';
-            // Wire up scroll buttons
-            esSlot.querySelectorAll('[data-scroll-to]').forEach(btn => {
-                btn.addEventListener('click', () => openCard(btn.dataset.scrollTo));
-            });
-            // Technical summary starts closed on every audit.
-            esSlot.querySelectorAll('.es-tech-toggle').forEach(wireDisclosure);
+            if (techSlot) {
+                techSlot.innerHTML = es.tech;
+                // Panel shortcuts open the DMARC card around their target.
+                techSlot.querySelectorAll('[data-scroll-to]').forEach(btn => {
+                    btn.addEventListener('click', () => openCard(btn.dataset.scrollTo));
+                });
+                // Technical summary starts closed on every audit.
+                techSlot.querySelectorAll('.es-tech-toggle').forEach(wireDisclosure);
+            }
         } else {
             esSlot.innerHTML = '';
             esSlot.style.display = 'none';
+            if (techSlot) techSlot.innerHTML = '';
         }
     }
 
@@ -2995,7 +3001,7 @@ function renderDmarcbisReadiness(readiness) {
 // ============================================================
 
 function renderExecutiveSummary(es, roadmap) {
-    if (!es) return '';
+    if (!es) return { box: '', tech: '' };
 
     const sp = es.spoofing_protection || {};
     const dr = es.dmarcbis_readiness || {};
@@ -3017,15 +3023,9 @@ function renderExecutiveSummary(es, roadmap) {
             stroke-linecap="round" transform="rotate(-90 22 22)"/>
     </svg>`;
 
-    // Action buttons. #priority-section is hidden when the roadmap is empty,
-    // so a button pointing at it would scroll to nothing.
-    const hasPriorities = !!(roadmap && roadmap.items && roadmap.items.length > 0);
-    const planBtn = hasPriorities
-        ? `<button class="es-action es-action-primary" data-scroll-to="priority-section">See the plan</button>` : '';
-    // Both point at the panel they name, which sits inside the DMARC card's
-    // collapsed Details; openCard opens every section around it. A run with
-    // no DMARC card (transport, dns_infra) gets neither button. Doc 92 moved
-    // them into the Technical summary with the tiles they belong to.
+    // The panel shortcuts point at panels inside the DMARC card's collapsed
+    // Details; openCard opens every section around them. A run with no DMARC
+    // card (transport, dns_infra) gets neither.
     let techActions = '';
     const dmarcCard = (lastAuditData && lastAuditData.checks || []).find(c => c.name === 'DMARC');
     if (dmarcCard && dmarcCard.attack_surface) {
@@ -3035,16 +3035,17 @@ function renderExecutiveSummary(es, roadmap) {
         techActions += `<button class="es-action" data-scroll-to="dmarc-record-builder">Copy Recommended Record</button>`;
     }
 
-    return `<div class="es-block" id="executive-summary">
-        <div class="es-verdict">${escapeHtml(es.verdict)}</div>
+    // The headline box answers the question; the tiles and the
+    // deliverability sentence are evidence, kept in a closed Technical
+    // summary at the top of the technical layer instead of in the box.
+    const box = `<div class="es-block es-state-${safeClass(es.headline_state || 'neutral')}" id="executive-summary">
+        ${_headlineHtml(es, roadmap)}
         ${_defensiveHtml(lastAuditData)}
         ${_doFirstHtml(es, roadmap)}
+    </div>`;
 
-        <div class="es-actions">
-            ${planBtn}
-            <button class="es-action es-tech-toggle" type="button" aria-expanded="false" aria-controls="es-tech">Technical summary</button>
-        </div>
-
+    const tech = `<div class="es-tech-wrap">
+        <button class="es-action es-tech-toggle" type="button" aria-expanded="false" aria-controls="es-tech">Technical summary</button>
         <div class="es-tech is-hidden" id="es-tech">
             <div class="es-metrics">
                 <div class="es-metric">
@@ -3068,6 +3069,61 @@ function renderExecutiveSummary(es, roadmap) {
             </div>` : ''}
 
             ${techActions ? `<div class="es-actions es-tech-actions">${techActions}</div>` : ''}
+        </div>
+    </div>`;
+
+    return { box, tech };
+}
+
+// One glyph per headline state. The headline carries the meaning, so the
+// icon is hidden from assistive technology.
+const HEADLINE_ICONS = {
+    'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+    'shield-x': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m14.5 9.5-5 5"/><path d="m9.5 9.5 5 5"/>',
+    'shield-half': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 2.6V21.9C8 20.5 5 18 5 13V6.2c2.4 0 5-1.3 7-3.6z" fill="currentColor" stroke="none"/>',
+    'warning': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    'refresh': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+};
+
+// Counts from the same tally the What to do heading uses, so the two
+// cannot disagree. Optional extras count once, as optional.
+function planCounts(rm) {
+    const n = { critical: 0, high: 0, medium: 0, low: 0 };
+    let optional = 0;
+    ((rm && rm.items) || []).forEach(i => {
+        if (isOptionalPlanItem(i)) optional += 1;
+        else if (Object.prototype.hasOwnProperty.call(n, i.priority)) n[i.priority] += 1;
+    });
+    return { n, fixes: n.critical + n.high + n.medium, optional: n.low + optional };
+}
+
+function headlineSubline(rm) {
+    const c = planCounts(rm);
+    if (c.fixes) return c.fixes === 1 ? '1 fix needed below.' : `${c.fixes} fixes needed below.`;
+    if (c.optional) {
+        return c.optional === 1 ? '1 optional improvement below.'
+            : `${c.optional} optional improvements below.`;
+    }
+    return 'Nothing to fix.';
+}
+
+function _headlineHtml(es, roadmap) {
+    const state = ['pass', 'warn', 'fail'].includes(es.headline_state) ? es.headline_state : 'neutral';
+    const paths = HEADLINE_ICONS[es.headline_icon];
+    const icon = paths
+        ? `<span class="es-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">${paths}</svg></span>`
+        : '';
+    const headline = es.headline || '';
+    // The no-mail headline already ends "Nothing to fix.", and the audit
+    // could not rank anything when a lookup failed: no subline for either.
+    const unread = es.biggest_risk_severity === 'unknown'
+        || (es.biggest_risk || '').startsWith('This audit could not read');
+    const sub = (unread || /Nothing to fix\.?$/.test(headline)) ? '' : headlineSubline(roadmap);
+    return `<div class="es-head es-head-${state}">
+        ${icon}
+        <div class="es-head-text">
+            ${headline ? `<div class="es-verdict">${escapeHtml(headline)}</div>` : ''}
+            ${sub ? `<p class="es-subline">${escapeHtml(sub)}</p>` : ''}
         </div>
     </div>`;
 }
@@ -3102,14 +3158,6 @@ function _doFirstHtml(es, roadmap) {
                 return `<li class="es-first-item"><span class="es-first-head">${escapeHtml(head)}</span>`
                     + (sub ? `<span class="es-first-title">${escapeHtml(sub)}</span>` : '') + '</li>';
             }).join('') + '</ol>';
-    } else if (!unread) {
-        const calm = (risk.startsWith('Nothing to fix') || !(roadmap && roadmap.items && roadmap.items.length))
-            ? (risk || 'Nothing to fix.')
-            : 'Nothing urgent. The plan has smaller improvements.';
-        // The no-mail verdict already ends "Nothing to fix.", and a second
-        // line saying otherwise would contradict it.
-        const said = (es.verdict || '').includes('Nothing to fix');
-        if (!said) html += `<p class="es-first-note">${escapeHtml(calm)}</p>`;
     }
     return `<div class="es-first">${html}</div>`;
 }
@@ -3139,17 +3187,12 @@ function _defensiveHtml(data) {
 // The count beside the heading, in the words the pills use. Optional extras
 // are counted once, as optional, whatever their tier.
 function priorityTierSummary(rm) {
-    const n = { critical: 0, high: 0, medium: 0, low: 0 };
-    let optional = 0;
-    ((rm && rm.items) || []).forEach(i => {
-        if (isOptionalPlanItem(i)) optional += 1;
-        else if (Object.prototype.hasOwnProperty.call(n, i.priority)) n[i.priority] += 1;
-    });
+    const { n, optional } = planCounts(rm);
     const parts = [];
     if (n.critical) parts.push(`${n.critical} to fix now`);
     if (n.high) parts.push(`${n.high} important`);
     if (n.medium) parts.push(`${n.medium} recommended`);
-    if (n.low + optional) parts.push(`${n.low + optional} optional`);
+    if (optional) parts.push(`${optional} optional`);
     return parts.join(', ');
 }
 

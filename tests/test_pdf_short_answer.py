@@ -95,7 +95,8 @@ def test_page_one_is_the_short_answer(monitoring):
     first = _pages(monitoring)[0]
 
     assert "The short answer" in first
-    assert " ".join(monitoring["executive_summary"]["verdict"].split()) in first
+    # The headline the web page shows, not the longer policy verdict.
+    assert " ".join(monitoring["executive_summary"]["headline"].split()) in first
     assert "Do these first" in first
     assert pdf_report.SHORT_ANSWER_POINTER in first
     # The tally, the tiles and the contents moved off it.
