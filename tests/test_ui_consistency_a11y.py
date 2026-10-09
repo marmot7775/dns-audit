@@ -673,17 +673,15 @@ def test_tree_walk_tells_a_failed_lookup_from_no_record(browser):
         ctx.close()
 
 
-def test_view_priorities_button_only_with_rows(browser, fixture_result):
+def test_the_headline_box_has_no_plan_button(browser, fixture_result):
+    """See the plan scrolled to What to do, which sits directly under the box."""
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
         es = fixture_result["executive_summary"]
-        with_rows = page.evaluate("([es, rm]) => renderExecutiveSummary(es, rm)",
-                                  [es, {"items": [{"protocol": "DMARC"}]}])
-        without = page.evaluate("([es, rm]) => renderExecutiveSummary(es, rm)",
-                                [es, {"items": []}])
-        # Doc 64 renamed the section; Doc 92 renamed the button that scrolls
-        # to it, which is part of the short answer at the top.
-        assert "See the plan" in with_rows
-        assert "See the plan" not in without
+        for items in ([{"protocol": "DMARC"}], []):
+            out = page.evaluate("([es, rm]) => renderExecutiveSummary(es, rm)",
+                                [es, {"items": items}])
+            assert "See the plan" not in out["box"] + out["tech"]
+            assert "<button" not in out["box"]
     finally:
         ctx.close()

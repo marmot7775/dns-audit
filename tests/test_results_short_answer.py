@@ -1,8 +1,8 @@
 """Doc 92: results people can read, the page layout.
 
-The first screen is the short answer: the verdict, up to three numbered
-actions ("Do these first"), See the plan, and a closed Technical summary
-holding the tiles. The plan leads each row with the plain consequence and
+The first screen is the short answer: the headline, its subline and up to
+three numbered actions ("Do these first"). The closed Technical summary
+holding the tiles sits above the check cards. The plan leads each row with the plain consequence and
 gathers optional extras at the end, closed. The counters are one line just
 above the cards, the cache badge and Request ID sit at the bottom, and the
 services found in DNS are one closed section. Every closed block is inert,
@@ -76,10 +76,10 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
             return {
                 label: es.querySelector('.es-first-label').textContent,
                 items: [...es.querySelectorAll('.es-first-item')].map(li => li.textContent.trim()),
-                buttons: [...es.querySelectorAll(':scope > .es-actions .es-action')].map(b => b.textContent.trim()),
+                buttons: [...es.querySelectorAll('button')].map(b => b.textContent.trim()),
                 riskBox: !!document.querySelector('.es-risk'),
-                tilesInTech: !!es.querySelector('#es-tech .es-metrics'),
-                delivInTech: !!es.querySelector('#es-tech .es-deliverability'),
+                tilesInTech: !!document.querySelector('#tech-summary-slot #es-tech .es-metrics'),
+                delivInTech: !!document.querySelector('#tech-summary-slot #es-tech .es-deliverability'),
                 defensiveBox: !!document.getElementById('defensive-dns-card'),
             };
         }""")
@@ -88,7 +88,9 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
         assert do_first, "the backend sends do_first for this fixture"
         # Each item is the plain head, then the action title under it.
         assert m["items"] == [d["plain_head"] + d["title"] for d in do_first], m["items"]
-        assert m["buttons"] == ["See the plan", "Technical summary"]
+        # The headline box has no buttons: the plan sits directly below it,
+        # and Technical summary moved to the top of the technical layer.
+        assert m["buttons"] == []
         assert not m["riskBox"] and not m["defensiveBox"]
         assert m["tilesInTech"] and m["delivInTech"]
         assert page.evaluate(STATE_JS, "#es-tech") == {"hidden": True, "inert": True}
@@ -151,7 +153,7 @@ def test_tab_skips_every_closed_block(browser, fixture_result):  # noqa: F811
         _render(page, fixture_result)
         stops = _tab_stops(page)
         texts = [s["text"] for s in stops]
-        assert "Technical summary" in texts and "See the plan" in texts
+        assert "Technical summary" in texts and "See the plan" not in texts
         assert [s for s in stops if s["inside"]] == [], stops
         assert errors == []
     finally:
