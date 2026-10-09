@@ -79,3 +79,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Vendor gap report](vendor-gap-report.md): vendor identification, app against the sender discovery script
 - [APRF article](article-aprf.md): New article, APRF is now an IETF working group draft
 - [Doc 95](doc-95.md): Retitle the APRF article
+- [APRF own record](aprf-own-record.md): APRF check verified against the draft and dns-audit.com's own record

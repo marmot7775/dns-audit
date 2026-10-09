@@ -113,6 +113,46 @@ def test_selector_record_wins_over_wildcard_and_bare():
     assert not _queried(zone, f"old.{BARE}")
 
 
+# Our own domain publishes at the bare name only. All three forms are asked
+# about, and the bare record is what the card reports.
+def test_bare_only_beside_live_selectors_is_published():
+    raw, card, zone = _check({BARE: "v=APRFv1; rua=mailto:aprf@example.org"})
+    assert _queried(zone, BARE) and _queried(zone, f"s1.{BARE}")
+    assert any(n.startswith("dnsaudit") for n in _queried(zone, f".{BARE}"))
+    assert [r["kind"] for r in raw["records"]] == ["bare"]
+    assert card["aprf_state"] == "published"
+    assert card["verdict"] == f"Published at {BARE}"
+
+
+def test_selector_record_on_its_own_is_published():
+    raw, card, _ = _check({f"s1.{BARE}": "v=APRFv1; rua=mailto:sel@example.org"})
+    assert [r["kind"] for r in raw["records"]] == ["selector"]
+    assert card["aprf_state"] == "published"
+    assert card["record_location"] == f"s1.{BARE}"
+
+
+def test_wildcard_wins_over_bare():
+    raw, card, _ = _check({BARE: "v=APRFv1; rua=mailto:bare@example.org",
+                           WILD: "v=APRFv1; rua=mailto:wild@example.org"})
+    assert [r["kind"] for r in raw["records"]] == ["wildcard", "bare"]
+    assert card["record_location"] == WILD
+    assert card["record"] == "v=APRFv1; rua=mailto:wild@example.org"
+
+
+# Section 4.1.1 (the ABNF) is still TODO, so whitespace around tags is
+# undefined. It is accepted the way DMARC parsing accepts it.
+@pytest.mark.parametrize("record", [
+    "v=APRFv1; rua=mailto:aprf@example.org",
+    "v=APRFv1;  rua=mailto:aprf@example.org; ",
+    "v=APRFv1;\trua=mailto:aprf@example.org",
+    "v = APRFv1 ; rua = mailto:aprf@example.org",
+])
+def test_whitespace_after_a_semicolon_is_accepted(record):
+    raw, card, _ = _check({BARE: record})
+    assert card["aprf_state"] == "published"
+    assert raw["records"][0]["rua"] == ["aprf@example.org"]
+
+
 # 4
 @pytest.mark.parametrize("record", [f"rua=mailto:aprf@{DOMAIN}",
                                     f"v=APRFv2; rua=mailto:aprf@{DOMAIN}"])
