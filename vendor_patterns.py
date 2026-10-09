@@ -73,6 +73,19 @@ SPF_INCLUDE_VENDORS: Dict[str, str] = {
     "omnivery.com": "Omnivery",
     "vali.email": "Valimail",
     "smart.ondmarc.com": "Red Sift OnDMARC",
+    # From vendors.json on 2026-10-08, each confirmed that day to publish a
+    # v=spf1 record (spf.barracudanetworks.com, freshemail.io,
+    # _spf.marketo.com and _spf.intuit.com do not, so they are left out).
+    "_spf.atlassian.net": "Atlassian",
+    "spf.ess.barracudanetworks.com": "Barracuda",
+    "ccsend.com": "Constant Contact",
+    "_spf.elasticemail.com": "Elastic Email",
+    "eversrv.com": "Everlytic",
+    "spf.fastmail.com": "Fastmail",
+    "_netblocks2.google.com": "Google Workspace",
+    "_netblocks3.google.com": "Google Workspace",
+    "hubspot.com": "HubSpot",
+    "zoho.com": "Zoho Mail",
 }
 
 # MX host suffix -> vendor.
@@ -99,6 +112,10 @@ MX_VENDORS: Dict[str, str] = {
     "ionos.com": "IONOS",
     "kundenserver.de": "IONOS",
     "mx.cloudflare.net": "Cloudflare Email Routing",
+    # From vendors.json, 2026-10-08.
+    "mx.microsoft": "Microsoft 365",
+    "mimecast.co.za": "Mimecast",
+    "mimecast-offshore.com": "Mimecast",
 }
 
 # Zone a DKIM selector's CNAME points into -> vendor. The strongest DKIM
@@ -125,6 +142,13 @@ DKIM_CNAME_VENDORS: Dict[str, str] = {
     "squarespace-mail.com": "Squarespace",
     "zendesk.com": "Zendesk",
     "send.aweber.com": "AWeber",
+    # From vendors.json, 2026-10-08.
+    "mailgun.com": "Mailgun",
+    "klaviyodns.com": "Klaviyo",
+    "custdkim.salesforce.com": "Salesforce",
+    "eversrv.com": "Everlytic",
+    # Not freshemail.io: every Freshworks product signs from it, so it does
+    # not say which one (Freshdesk, Freshsales, Freshservice).
 }
 
 # Selector name -> vendor, for a key published as TXT at the domain itself,
@@ -170,6 +194,56 @@ DKIM_SELECTOR_VENDORS: Dict[str, str] = {
     "intercom": "Intercom",
     "gor": "Gorgias", "gor2": "Gorgias",
 }
+
+# The distinctive selector names in vendors.json (2026-10-08) the table above
+# lacked. Generic names are left out (is_generic_selector), and so are
+# "wordpress" and "shops", ordinary words a site could use for its own key,
+# and GoDaddy's dotted sable.cloud names (keys here are single labels).
+# A name shared by several vendors goes to the vendor vendors.json marks
+# primary_for it, or is left out when none is.
+DKIM_SELECTOR_VENDORS.update({
+    "activecampaign": "ActiveCampaign", "ac1": "ActiveCampaign",
+    "amazonses": "Amazon SES", "ses1": "Amazon SES", "ses2": "Amazon SES",
+    "aweber": "AWeber", "barracuda": "Barracuda", "bcuda": "Barracuda",
+    "braze": "Braze", "appboy": "Braze", "brevo": "Brevo", "sendinblue": "Brevo",
+    "sib": "Brevo", "calendly": "Calendly", "campaignmonitor": "Campaign Monitor",
+    "cf2024-1": "Cloudflare Email Routing", "constantcontact": "Constant Contact",
+    "krs": "Customer.io", "customerio": "Customer.io",
+    "elasticemail": "Elastic Email", "emma": "Emma", "myemma": "Emma",
+    "mesmtp": "Fastmail", "fastmail": "Fastmail", "freshdesk": "Freshdesk",
+    "getresponse": "GetResponse",
+    "secureserver1": "GoDaddy Professional Email",
+    "secureserver2": "GoDaddy Professional Email",
+    "googlemail": "Google Workspace", "ga1": "Google Workspace",
+    "gorgias": "Gorgias", "helpscout": "Help Scout", "ic1": "Intercom",
+    "s1-ionos": "IONOS", "s2-ionos": "IONOS", "s42582890": "IONOS",
+    "iterable": "Iterable", "convertkit": "Kit", "klaviyo": "Klaviyo",
+    "kl1": "Klaviyo", "mailchimp": "Mailchimp", "mailerlite": "MailerLite",
+    "pdk1": "Mailgun", "pdk2": "Mailgun", "mailgun": "Mailgun", "mg1": "Mailgun",
+    "mj1": "Mailjet", "mailpoet1": "MailPoet", "mailpoet2": "MailPoet",
+    "marketo": "Marketo", "mkto": "Marketo", "mkto1": "Marketo",
+    "mkto2": "Marketo", "mc1": "Mimecast", "mc2": "Mimecast", "mc3": "Mimecast",
+    "mimecast20190719": "Mimecast", "mimecast20200619": "Mimecast",
+    "omnisend": "Omnisend", "mailkit": "Omnivery", "mkt": "Omnivery",
+    "omnivery": "Omnivery", "pipedrive": "Pipedrive", "postmark": "Postmark",
+    "pm1": "Postmark", "proofpoint": "Proofpoint", "proofpoint1": "Proofpoint",
+    "proofpoint2": "Proofpoint", "proofpoint3": "Proofpoint", "pp1": "Proofpoint",
+    "pp02": "Proofpoint", "rackspace": "Rackspace Email",
+    "mailtrust": "Rackspace Email", "salesforce": "Salesforce",
+    "salesforce1": "Salesforce", "salesforce2": "Salesforce", "sfdc": "Salesforce",
+    "200608": "Salesforce Account Engagement",
+    "pardot": "Salesforce Account Engagement",
+    "pardot1": "Salesforce Account Engagement",
+    "exacttarget": "Salesforce Marketing Cloud Engagement",
+    "sfmc": "Salesforce Marketing Cloud Engagement",
+    "sfmc1": "Salesforce Marketing Cloud Engagement", "shopify": "Shopify",
+    "myshopify": "Shopify", "sparkpost": "SparkPost", "scph": "SparkPost",
+    "scph0819": "SparkPost", "messagebird": "SparkPost", "square": "Square",
+    "squarespace": "Squarespace", "sqsp": "Squarespace", "stripe": "Stripe",
+    "messagelabs": "Symantec MessageLabs", "symantec": "Symantec MessageLabs",
+    "wix": "Wix", "zendesk": "Zendesk", "zoho": "Zoho Mail",
+    "zohomail": "Zoho Mail",
+})
 
 
 # Apex TXT verification tokens that only a mail service asks for, as a

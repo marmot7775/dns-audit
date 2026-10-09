@@ -5985,8 +5985,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         matched_vendors = []
         for v in vendors:
             # A reporting service (found only as a DMARC or TLS-RPT report
-            # address) receives reports; it does not send as the domain.
-            if v.get("role") == "reporting":
+            # address) receives reports, and a verification token alone is an
+            # account with nothing set up to send: neither sends as the domain.
+            if v.get("role") in ("reporting", "account"):
                 continue
             spf_inc = VENDOR_SPF_INCLUDES.get(v["name"])
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
@@ -6249,6 +6250,14 @@ _VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DK
                    ("TLS-RPT", "TLS-RPT reports"))
 _REPORTING_TECHNIQUES = {"DMARC Reporting", "TLS-RPT"}
 
+# The sender discovery script's four tiers, strongest first, in place of a
+# percentage that read 99 for nearly every vendor. In use: MX, mail is
+# delivered there now. Configured: an SPF include or a DKIM key the vendor
+# hosts through a CNAME. Likely: a DKIM key known only by its selector name.
+# Account only: a verification token or a report address, a trace of an
+# account with nothing set up to send through it.
+VENDOR_TIERS = ("In use", "Configured", "Likely", "Account only")
+
 
 def _format_vendors(fp_vendors: List) -> List[Dict]:
     """Format pre-computed vendor fingerprint results for frontend."""
@@ -6274,15 +6283,31 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
             # hosting it, stronger than a key known only by its selector name.
             dkim_label = ("DKIM CNAME" if any(s.get("cname") for s in signals
                                               if s.get("technique") == "DKIM Key") else "DKIM")
+            by_cname = dkim_label == "DKIM CNAME"
+            if "MX Record" in techniques:
+                tier = "In use"
+            elif "SPF Include" in techniques or by_cname:
+                tier = "Configured"
+            elif "DKIM Key" in techniques:
+                tier = "Likely"
+            else:
+                tier = "Account only"
+            if techniques and techniques <= _REPORTING_TECHNIQUES:
+                # Found only as a report address: a reporting service, not
+                # something that sends this domain's mail.
+                role = "reporting"
+            elif tier == "Account only":
+                role = "account"
+            else:
+                role = "sender"
             vendors.append({
                 "name": v["vendor"],
+                "tier": tier,
                 "confidence": int(confidence * 100),
                 "detected_via": " + ".join(sides) if sides else None,
                 "sources": [dkim_label if t == "DKIM Key" else label
                             for t, label in _VENDOR_SOURCES if t in techniques],
-                # Found only as a report address: a reporting service, not
-                # something that sends this domain's mail.
-                "role": "reporting" if techniques and techniques <= _REPORTING_TECHNIQUES else "sender",
+                "role": role,
             })
 
     # Deduplicate by name, keep highest confidence
@@ -6291,8 +6316,10 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
         name = v["name"]
         if name not in seen or v["confidence"] > seen[name]["confidence"]:
             seen[name] = v
-    # Senders first, then reporting services.
-    return sorted(seen.values(), key=lambda x: (x["role"] == "reporting", -x["confidence"]))
+    # Strongest tier first; reporting services last.
+    return sorted(seen.values(), key=lambda x: (x["role"] == "reporting",
+                                                VENDOR_TIERS.index(x["tier"]), -x["confidence"],
+                                                x["name"].lower()))
 
 
 # ============================================================

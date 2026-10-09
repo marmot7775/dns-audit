@@ -1662,7 +1662,7 @@ def _vendors(data, S):
     header = [
         Paragraph("<b>Provider</b>", S["body_small"]),
         Paragraph("<b>Detected via</b>", S["body_small"]),
-        Paragraph("<b>Confidence</b>", S["body_small"]),
+        Paragraph("<b>Status</b>", S["body_small"]),
     ]
     rows = [header]
     for v in vs:
@@ -1680,11 +1680,16 @@ def _vendors(data, S):
         reporting = v.get("role") == "reporting"
         if reporting:
             side = f"Receives your {', '.join(v.get('sources') or ['reports'])}"
+        if v.get("role") == "account":
+            side = f"Account trace ({', '.join(v.get('sources') or ['TXT'])}), nothing set up to send"
+        # The tier in words, as on the web page; a result without one (an
+        # older cached result) keeps its percentage.
+        status = "Reporting service" if reporting else v.get("tier")
         rows.append([
             Paragraph(f"<b>{_safe(v.get('name', ''))}</b>", S["body"]),
             Paragraph(_safe(side), S["body_small"]),
-            Paragraph("Reporting service" if reporting
-                      else f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body_small" if reporting else "body"]),
+            Paragraph(_safe(status) if status
+                      else f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body_small" if status else "body"]),
         ])
     vt = Table(rows, colWidths=[3.3*inch, 2.2*inch, 1.0*inch])
     cmds = [
