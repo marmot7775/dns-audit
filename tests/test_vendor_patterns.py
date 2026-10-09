@@ -90,7 +90,8 @@ def test_format_vendors_names_sources_and_side():
         "signals": [{"technique": "DKIM Key"}, {"technique": "SPF Include"}],
     }])
     assert out == [{"name": "Mailchimp", "confidence": 75,
-                    "detected_via": "outbound", "sources": ["SPF", "DKIM"]}]
+                    "detected_via": "outbound", "sources": ["SPF", "DKIM"],
+                    "role": "sender"}]
 
 
 def test_retired_keys_are_not_passed_to_fingerprinting():
