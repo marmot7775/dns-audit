@@ -6562,12 +6562,12 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
     for sel in found:
         selector = sel.get("selector", "unknown")
         sel_record = sel.get("record", "")
-        # Discovery tags a key with a vendor only when SPF or MX named that
-        # vendor. ESP selectors are probed on every domain, so a k1 key at a
-        # domain whose SPF never mentions Mailchimp is credited from where its
-        # CNAME points, else from its name, as the key table and vendor panel
-        # do. "Generic" is not a sender.
-        vendor = sel.get("vendor") or dkim_key_vendor(selector, sel.get("cname_target"))
+        # One rule with the key table and the vendor panel
+        # (vendor_patterns.dkim_key_vendor): the CNAME target first, then
+        # the vendor discovery tagged from SPF or MX, then the name.
+        # selector1 and selector2 need Microsoft's CNAME, and a generic
+        # name needs the tag. "Generic" is not a sender.
+        vendor = dkim_key_vendor(selector, sel.get("cname_target"), sel.get("vendor"))
         key_type = sel.get("key_type", "")
 
         # Analyze key strength
@@ -7027,7 +7027,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             dkim_tags.append(tag_info)
 
         # Provider from selector name
-        provider = vendor or dkim_key_vendor(selector, sel.get("cname_target"))
+        provider = dkim_key_vendor(selector, sel.get("cname_target"), vendor)
         if not provider and selector.lower() in ("selector1", "selector2"):
             provider = "Vendor: unknown"
 
