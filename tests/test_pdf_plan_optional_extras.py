@@ -55,7 +55,7 @@ def test_optional_rows_are_labelled_optional_and_listed_last(result):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_the_tier_bar_counts_what_the_web_heading_counts(result):
-    program = _js_functions("isOptionalPlanItem", "priorityTierSummary") + """
+    program = _js_functions("isOptionalPlanItem", "planCounts", "priorityTierSummary") + """
 const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];
 const rm = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 process.stdout.write(priorityTierSummary(rm));

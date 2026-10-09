@@ -759,6 +759,67 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             verdict = ("Receivers are asked to block forged mail, but you get no reports on "
                        "what they block or whether your own mail passes.")
 
+    # ── Part 1b: The headline ────────────────────────────────
+    # The verdict above describes a policy; the headline answers whether the
+    # domain is protected. It walks the same branches in the same order and
+    # says the state in the visitor's terms. A branch the headline table has
+    # no row for keeps its verdict sentence, so nothing it named is lost.
+    # state picks the colour, icon picks the glyph; the page and the PDF
+    # cover both print the headline.
+    def _headline():
+        if dmarc_unavailable:
+            return ("We couldn't check your spoofing protection. Run the audit again.",
+                    "neutral", "refresh")
+        if _scoped_out("DMARC"):
+            return None, "neutral", None
+        if auth_unassessed:
+            # DMARC was read, SPF or DKIM was not. The verdict says which.
+            return verdict, "neutral", "refresh"
+        if _defensive_clean:
+            return verdict, "pass", "shield-check"
+        if dmarc_status == "fail" and dmarc.get("pill_label") == "Missing":
+            line = "Your domain publishes no protection against spoofing."
+            _sfx = (dmarc.get("registry_policy") or {}).get("suffix")
+            if _sfx:
+                line += (f" The policy found at {_sfx} belongs to the {_sfx} registry, "
+                         "and only receivers on RFC 9989 apply it.")
+            return line, "fail", "shield-x"
+        if dmarc_status == "fail":
+            # Multiple records, a malformed version tag (lowercase v=dmarc1)
+            # or a record no parser can read: receivers discard it.
+            return ("Your spoofing protection record has an error, so receivers ignore it.",
+                    "fail", "shield-x")
+        if _broken_auth and exposed_count == 0:
+            return verdict, "fail", "shield-x"
+        if _quarantine_pct0:
+            return verdict, "warn", "warning"
+        if _eff_policy == "none":
+            return ("Your domain does not yet ask receivers to block mail that fakes it.",
+                    "warn", "warning")
+        if _eff_policy not in ("reject", "quarantine"):
+            return verdict, "neutral", None
+        _pct = (_rec_tags.get("pct") or "").strip()
+        if _pct and not (_pct.isdigit() and int(_pct) >= 100):
+            # pct below 100 covers part of the forged mail; no row says that.
+            return verdict, "warn", "warning"
+        if _inherited_from:
+            _sp = _np = _eff_policy
+        else:
+            _sp = (_rec_tags.get("sp") or "").strip().lower() or _eff_policy
+            _np = (_rec_tags.get("np") or "").strip().lower() or _sp
+        if _sp == "none":
+            return ("Your domain is protected, but its subdomains are not.",
+                    "warn", "shield-half")
+        if _sp not in ("reject", "quarantine") or _np not in ("reject", "quarantine"):
+            # An unknown sp= value or np=none: subdomains that do not exist
+            # are open while real ones are covered. No row says that either.
+            return verdict, "warn", "warning"
+        if _eff_policy == "reject":
+            return "Your domain is protected against spoofing.", "pass", "shield-check"
+        return "Mail that fakes your domain goes to spam.", "warn", "shield-check"
+
+    headline, headline_state, headline_icon = _headline()
+
     # ── Part 2: Three key metrics ────────────────────────────
 
     # Metric 1: Spoofing Protection
@@ -1095,6 +1156,9 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
 
     return {
         "verdict": verdict,
+        "headline": headline,
+        "headline_state": headline_state,
+        "headline_icon": headline_icon,
         "spoofing_protection": spoofing_protection,
         "dmarcbis_readiness": dmarcbis_readiness,
         "protocol_coverage": protocol_coverage,
