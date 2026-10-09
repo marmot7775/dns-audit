@@ -1507,6 +1507,10 @@ if STATIC_DIR.exists():
     async def articles_p_reject():
         return FileResponse(str(STATIC_DIR / "articles" / "p-reject.html"))
 
+    @app.get("/articles/aprf", tags=["Pages"])
+    async def articles_aprf():
+        return FileResponse(str(STATIC_DIR / "articles" / "aprf.html"))
+
     @app.get("/articles/postmaster-tools", tags=["Pages"])
     async def articles_postmaster_tools():
         return FileResponse(str(STATIC_DIR / "articles" / "postmaster-tools.html"))
@@ -1577,6 +1581,7 @@ async def sitemap():
         {"loc": "/articles/dane", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/articles/spf-lookups", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/articles/p-reject", "changefreq": "monthly", "priority": "0.8"},
+        {"loc": "/articles/aprf", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/articles/postmaster-tools", "changefreq": "monthly", "priority": "0.8"},
         {"loc": "/about", "changefreq": "monthly", "priority": "0.5"},
         {"loc": "/privacy", "changefreq": "yearly", "priority": "0.3"},
