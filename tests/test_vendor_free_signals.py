@@ -129,3 +129,18 @@ def test_the_first_hop_names_the_vendor(monkeypatch):
     out = _panel(dkim_selectors=audit_engine._live_dkim_selectors(raw))
     assert out["SendGrid"]["sources"] == ["DKIM CNAME"]
     assert dkim_key_vendor("s1", hops[-1], None, hops) == "SendGrid"
+
+
+def test_a_full_audit_finds_the_vendor_behind_a_wrapper_include(audit):
+    domain = "wrap.test"
+    zone = {
+        domain: {"TXT": ["v=spf1 include:_spf.wrap.test -all"], "MX": [(10, f"mail.{domain}")],
+                 "A": ["203.0.113.1"]},
+        f"_spf.{domain}": {"TXT": ["v=spf1 include:sendgrid.net -all"]},
+        "sendgrid.net": {"TXT": ["v=spf1 ip4:167.89.0.0/17 ~all"]},
+        "_dmarc." + domain: {"TXT": [f"v=DMARC1; p=reject; rua=mailto:d@{domain},mailto:x@rua.easydmarc.com"]},
+    }
+    result = audit(zone, domain, scope="email_full")
+    by_name = {v["name"]: v for v in result["vendors"]}
+    assert by_name["SendGrid"]["sources"] == ["SPF"] and by_name["SendGrid"]["role"] == "sender"
+    assert by_name["EasyDMARC"]["role"] == "reporting"

@@ -5889,6 +5889,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         ]
         _fp_prefetch = {
             "spf_record": _raw_spf.get("record"),
+            # The resolved tree, for vendors behind the domain's own nested
+            # includes and a top-level redirect=.
+            "spf_chain": (_raw_spf.get("spf_recursive") or {}).get("chain"),
             "mx_hosts": _fp_mx_hosts,
             "dmarc_record": _raw_dmarc.get("record"),
             "tls_rpt_record": _raw_tls_rpt.get("record"),
