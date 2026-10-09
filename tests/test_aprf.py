@@ -229,6 +229,13 @@ def test_a_rua_without_mailto_shows_the_fixed_form():
             f"rua=mailto:deliverability@{DOMAIN} would fix that.") in _text(card)
 
 
+def test_one_destination_without_mailto_beside_a_valid_one_is_named():
+    _, card, _ = _check({BARE: f"v=APRFv1; rua=mailto:a@{DOMAIN},b@{DOMAIN}"})
+    assert card["aprf_state"] == "published"
+    assert (f"Reports go to a@{DOMAIN}. Providers skip b@{DOMAIN}, which has no "
+            f"mailto prefix. Writing it as mailto:b@{DOMAIN} would fix that.") in _text(card)
+
+
 def test_a_rua_with_another_scheme_gets_no_fixed_form():
     _, card, _ = _check({BARE: f"v=APRFv1; rua=https://{DOMAIN}/aprf"})
     assert card["aprf_state"] == "ignored"

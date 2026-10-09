@@ -9672,6 +9672,14 @@ def transform_aprf(raw: Dict, domain: str, non_mail: bool = False) -> Dict:
             if r.get("valid"):
                 text = (f"An APRF record is published at {where}. "
                         f"Reports go to {_aprf_list(r['rua'])}.")
+                skipped = r.get("rua_unprefixed") or []
+                if skipped:
+                    one = len(skipped) == 1
+                    text += (f" Providers skip {_aprf_list(skipped)}, which "
+                             + ("has no mailto prefix. Writing it as " if one
+                                else "have no mailto prefix. Writing them as ")
+                             + ",".join(f"mailto:{a}" for a in skipped)
+                             + " would fix that.")
                 if r.get("sdi"):
                     text += f" The record sets sdi to {r['sdi']}."
             else:
