@@ -2,14 +2,13 @@
 ADVANCED EMAIL VENDOR FINGERPRINTING SYSTEM
 Priority: QUALITY & ACCURACY over speed
 
-Multi-signal vendor detection using 10+ techniques:
+Multi-signal vendor detection:
 1. SPF includes analysis
-2. MX record patterns  
-3. DKIM selector patterns
-4. DMARC report destinations (RUA/RUF)
-5. TLS-RPT report destinations
-6. DNS TTL fingerprinting
-7. Subdomain structure analysis
+2. MX record patterns
+3. DKIM keys (CNAME target, else selector name)
+4. Apex verification TXT tokens
+5. DMARC report destinations (RUA)
+6. TLS-RPT report destinations
 
 Each signal is weighted and scored for confidence.
 Multiple signals = higher confidence.
@@ -80,8 +79,10 @@ class AdvancedVendorFingerprinter:
         self._fingerprint_verification_txt()
         self._fingerprint_dmarc()
         self._fingerprint_tls_rpt()
-        self._fingerprint_dns_patterns()
-        self._fingerprint_subdomains()
+        # No TTL or subdomain signals: a TTL of 300 or 3600 names no vendor,
+        # and an A record at bounce or email names none either. Both scored
+        # under the panel's 0.5 cutoff on made up vendor names, so they cost
+        # up to three sequential queries and never showed.
         
         # Aggregate and score
         return self._aggregate_and_score()
@@ -180,6 +181,7 @@ class AdvancedVendorFingerprinter:
                 'vendor': vendor,
                 'evidence': f'{selector}._domainkey' + (f' -> {target}' if by_cname else ''),
                 'confidence': 0.95 if by_cname else 0.70,
+                'cname': bool(by_cname),
             })
             if self.verbose:
                 print(f"  ✓ {vendor} (DKIM selector {selector})")
@@ -274,66 +276,6 @@ class AdvancedVendorFingerprinter:
                 })
                 if self.verbose:
                     print(f"  ✓ {vendor} (TLS-RPT)")
-    
-    def _fingerprint_dns_patterns(self):
-        """DNS TTL and record patterns"""
-        if self.verbose:
-            print("\n[7] Analyzing DNS patterns...")
-        
-        ttl = self._given('txt_ttl')
-        if ttl is self._MISSING:
-            try:
-                answers = self._resolver.resolve(self.domain, 'TXT')
-                ttl = answers.rrset.ttl
-            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-                ttl = None
-
-        if ttl is None:
-            return
-
-        if ttl == 300:
-            self.signals.append({
-                'technique': 'DNS TTL',
-                'vendor': 'M365/Proofpoint Pattern',
-                'evidence': f'TTL {ttl}',
-                'confidence': 0.35
-            })
-        elif ttl == 3600:
-            self.signals.append({
-                'technique': 'DNS TTL',
-                'vendor': 'Google Workspace Pattern',
-                'evidence': f'TTL {ttl}',
-                'confidence': 0.35
-            })
-
-        if self.verbose:
-            print(f"  ℹ️  DNS TTL: {ttl} seconds")
-    
-    def _fingerprint_subdomains(self):
-        """Check for common subdomain patterns"""
-        if self.verbose:
-            print("\n[8] Checking subdomain patterns...")
-        
-        subdomains = [
-            ('bounce', 'ESP with bounce handling'),
-            ('autodiscover', 'Microsoft Exchange/365'),
-            ('email', 'Dedicated email infrastructure'),
-        ]
-        
-        for subdomain, meaning in subdomains:
-            try:
-                self._resolver.resolve(f'{subdomain}.{self.domain}', 'A')
-                self.signals.append({
-                    'technique': 'Subdomain Pattern',
-                    'vendor': meaning,
-                    'evidence': f'{subdomain}.{self.domain} exists',
-                    'confidence': 0.30
-                })
-                if self.verbose:
-                    print(f"  ✓ {subdomain}.{self.domain}")
-                break
-            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
-                continue
     
     @staticmethod
     def _matches_suffix(candidate: str, pattern: str) -> bool:

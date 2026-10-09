@@ -5892,15 +5892,13 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             "mx_hosts": _fp_mx_hosts,
             "dmarc_record": _raw_dmarc.get("record"),
             "tls_rpt_record": _raw_tls_rpt.get("record"),
-            "txt_ttl": _raw_spf.get("ttl"),
             # Live keys only: a retired selector (empty p=) says who signed
             # once, not who signs now.
             "dkim_selectors": _live_dkim_selectors(raw_results.get("dkim")),
             "apex_txt": _raw_spf.get("apex_txt") or [],
         }
-        # Only the subdomain probe still queries, and it is not worth a card of
-        # its own, so the whole call gets a hard ceiling rather than running
-        # unbounded outside every budget in the audit.
+        # Every probe now reads from prefetch, so this makes no DNS query of
+        # its own. The ceiling stays as a guard for any signal added later.
         try:
             fp = AdvancedVendorFingerprinter(domain, prefetch=_fp_prefetch)
             fp_result = _run_with_timeout(fp.fingerprint_all, timeout=8)
@@ -6185,9 +6183,14 @@ def _live_dkim_selectors(raw_dkim: Optional[Dict]) -> List[Dict]:
     return live
 
 
-# Record type each fingerprint technique reads, in the order the panel names them.
+# Record type each fingerprint technique reads, in the order the panel names
+# them. Every technique the fingerprinter has is here: a DMARC or TLS-RPT
+# report address used to be counted but never named, so a vendor found only
+# that way read "Detected via DNS records" at 90 percent, as if it sent mail.
 _VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DKIM"),
-                   ("Verification TXT", "TXT"))
+                   ("Verification TXT", "TXT"), ("DMARC Reporting", "DMARC reports"),
+                   ("TLS-RPT", "TLS-RPT reports"))
+_REPORTING_TECHNIQUES = {"DMARC Reporting", "TLS-RPT"}
 
 
 def _format_vendors(fp_vendors: List) -> List[Dict]:
@@ -6209,11 +6212,20 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
                 sides.append("outbound")
             if "MX Record" in techniques:
                 sides.append("inbound")
+            signals = v.get("signals", [])
+            # A key published as a CNAME into the vendor's zone is the vendor
+            # hosting it, stronger than a key known only by its selector name.
+            dkim_label = ("DKIM CNAME" if any(s.get("cname") for s in signals
+                                              if s.get("technique") == "DKIM Key") else "DKIM")
             vendors.append({
                 "name": v["vendor"],
                 "confidence": int(confidence * 100),
                 "detected_via": " + ".join(sides) if sides else None,
-                "sources": [label for t, label in _VENDOR_SOURCES if t in techniques],
+                "sources": [dkim_label if t == "DKIM Key" else label
+                            for t, label in _VENDOR_SOURCES if t in techniques],
+                # Found only as a report address: a reporting service, not
+                # something that sends this domain's mail.
+                "role": "reporting" if techniques and techniques <= _REPORTING_TECHNIQUES else "sender",
             })
 
     # Deduplicate by name, keep highest confidence
@@ -6222,7 +6234,8 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
         name = v["name"]
         if name not in seen or v["confidence"] > seen[name]["confidence"]:
             seen[name] = v
-    return sorted(seen.values(), key=lambda x: x["confidence"], reverse=True)
+    # Senders first, then reporting services.
+    return sorted(seen.values(), key=lambda x: (x["role"] == "reporting", -x["confidence"]))
 
 
 # ============================================================
