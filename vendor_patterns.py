@@ -211,7 +211,7 @@ DKIM_SELECTOR_VENDORS.update({
     "krs": "Customer.io", "customerio": "Customer.io",
     "elasticemail": "Elastic Email", "emma": "Emma", "myemma": "Emma",
     "mesmtp": "Fastmail", "fastmail": "Fastmail", "freshdesk": "Freshdesk",
-    "freshworks": "Freshdesk", "getresponse": "GetResponse",
+    "getresponse": "GetResponse",
     "secureserver1": "GoDaddy Professional Email",
     "secureserver2": "GoDaddy Professional Email",
     "googlemail": "Google Workspace", "ga1": "Google Workspace",
