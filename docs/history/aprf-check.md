@@ -110,10 +110,11 @@ Pill labels and state text:
 
 Not published:
 
-  No APRF record found. You aren't missing anything yet. With one
-  provider sending reports in beta, publishing a record is worth
-  it only if a meaningful share of your mail goes to Comcast
-  addresses.
+  No APRF record found. Whether to publish one depends on who
+  signs your mail. If it is signed with your own domain, the
+  record takes a few minutes and does no harm if no report ever
+  arrives. If your email platform signs with its own domain, a
+  record here would never be read.
 
 Published:
 

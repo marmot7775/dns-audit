@@ -331,3 +331,12 @@ def test_no_state_carries_a_fix_or_a_plan_row():
         assert card["fix"] is None and card["fix_records"] is None
         assert card["informational"] is True
         assert card["status"] in ("absent", "unavailable")
+
+
+def test_no_record_advice_matches_the_article():
+    # /articles/aprf: publish if your own domain signs, skip if the platform
+    # signs with its own domain. Comcast is the first provider, not the test.
+    text = " ".join(_check({})[1]["paragraphs"])
+    assert "who signs your mail" in text
+    assert "meaningful share" not in text
+    assert "Comcast" not in text
