@@ -113,10 +113,8 @@ def test_the_footer_version_matches_the_packaged_version():
 
 def test_footer_attribution_says_what_neil_does():
     block = _attribution(os.path.join(STATIC, "index.html"))
-    # Cloudflare's email_off markers keep the address readable (see
-    # test_cloudflare_email_off.py); the checks below read what visitors see.
-    assert f'<!--email_off--><a href="mailto:{ALIAS}"' in block
-    block = block.replace("<!--email_off-->", "").replace("<!--/email_off-->", "")
+    # Doc 99: no email_off markers, so Cloudflare obfuscates the address.
+    assert "email_off" not in block
     assert block.startswith('<div class="footer-attribution">Built by Neil Anuskiewicz.')
     for service in ("email deliverability", "email security", "DNS"):
         assert service in block, service
@@ -143,15 +141,16 @@ def test_the_only_mailto_is_the_footer_alias(path):
     assert f'href="mailto:{ALIAS}"' in _attribution(path), rel
 
 
-def test_results_contact_note_offers_email_and_linkedin():
-    """Doc 39 left the results view's closing line alone; Doc 41 added the alias."""
+def test_results_contact_note_offers_linkedin_only():
+    """Doc 41 added the alias to the note; Doc 99 took it out again, since
+    Cloudflare never obfuscates an address inside app.js."""
     index = _read(os.path.join(STATIC, "index.html"))
     assert '<p class="results-contact-note is-hidden" id="results-contact-note"></p>' in index
     app_js = _read(os.path.join(STATIC, "app.js"))
     assert "function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail)" in app_js
-    assert f"'<a href=\"mailto:{ALIAS}\">Email {ALIAS}</a> or ' +" in app_js
-    assert "message me on LinkedIn</a>." in app_js
-    assert app_js.count('href="mailto:') == 1
+    assert ALIAS not in app_js
+    assert "Message me on LinkedIn</a>." in app_js
+    assert app_js.count('href="mailto:') == 0
 
 
 REPO_URL = "https://github.com/marmot7775/dns-audit"

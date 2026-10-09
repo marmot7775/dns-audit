@@ -150,13 +150,13 @@ let _planSeq = 0;
 // The same sentence under both copies of the end-state record. Two panels
 // propose it and a third proposes the next edit at the current policy; the
 // labels and this line are what tell the reader which is which.
-const END_STATE_NOTE = 'Reach this through the migration steps, moving only when your '
+const END_STATE_NOTE = 'Reach this through the steps in Path to enforcement, moving only when your '
     + 'aggregate reports show every legitimate sender aligned. There is no date on that.';
 
 // The plan row carries the next edit, not the end state, so it says which it
 // is where the reader meets it.
 const END_STATE_NOTE_PLAN = 'This is the next edit at your current policy. '
-    + 'The DMARC card carries the migration steps and the enforcement end state.';
+    + 'Path to enforcement, on the DMARC card, carries the steps and the enforcement end state.';
 
 // -- DOM References --
 const auditForm = document.getElementById('audit-form');
@@ -2578,7 +2578,7 @@ function renderRecordBuilder(rb) {
     // ── First record note ──
     let firstNoteHtml = '';
     if (isFirst) {
-        firstNoteHtml = `<div class="rcb-first-note">Start with monitoring. Once you have reviewed reports and confirmed legitimate senders align, progress through the migration path to full enforcement.</div>`;
+        firstNoteHtml = `<div class="rcb-first-note">Start with monitoring. Once you have reviewed reports and confirmed legitimate senders align, follow Path to enforcement to full enforcement.</div>`;
     }
 
     // ── Deploy instructions ──
@@ -4449,17 +4449,17 @@ document.addEventListener('DOMContentLoaded', _renderRecentAudits);
 function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
     const note = document.getElementById('results-contact-note');
     if (!note) return;
-    const contact = '<a href="mailto:dns@dns-audit.com">Email dns@dns-audit.com</a> or ' +
-        '<a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener">message me on LinkedIn</a>.';
+    // LinkedIn only. Cloudflare obfuscates addresses in HTML responses, not
+    // in app.js, so an address here would sit in plain text in the script.
+    // The footer on the same page carries the protected email link.
+    const linkedin = '<a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener">Message me on LinkedIn</a>.';
     if (failCount > 0 || warnCount > 0) {
-        note.innerHTML = 'Some of these are a five-minute DNS change. Some are not. ' +
-            'If you want a second opinion on which is which, this is what I do for a living. ' +
-            contact;
+        note.innerHTML = "If you'd like help with these changes, I do this work for clients. " + linkedin;
         note.classList.remove('is-hidden');
     } else if (sendsMail && !unavailableCount) {
-        note.innerHTML = 'Everything here checks out. If mail from this domain still lands in ' +
-            "spam, the cause is somewhere DNS can't show, such as sender reputation or " +
-            "sending practices. That's the other half of what I do. " + contact;
+        note.innerHTML = "No problems found in this domain's DNS. If its mail still goes to spam, "
+            + 'the cause is outside what this audit checks, such as sender reputation or how the '
+            + 'mail is sent. I work on that too. ' + linkedin;
         note.classList.remove('is-hidden');
     } else {
         note.innerHTML = '';

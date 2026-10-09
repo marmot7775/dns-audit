@@ -108,7 +108,7 @@
             <section class="dbis-section">
                 <h2>A statement that never arrived</h2>
                 <p>The standard explains the DKIM requirement with a bank, and the example is worth walking through because it is exactly what happens to small companies.</p>
-                <p>A bank sends a statement to a customer at an alumni address, something like <code><!--email_off-->jones@alumni.example.edu<!--/email_off--></code>. The alumni association does not run mailboxes; it forwards everything to the address the graduate gave them years ago. The same happens with a role address such as <code><!--email_off-->finance@association.example<!--/email_off--></code>, which forwards to whoever holds the job this year.</p>
+                <p>A bank sends a statement to a customer at an alumni address, something like <code>jones@alumni.example.edu</code>. The alumni association does not run mailboxes; it forwards everything to the address the graduate gave them years ago. The same happens with a role address such as <code>finance@association.example</code>, which forwards to whoever holds the job this year.</p>
                 <p>When the forwarder passes the statement along, the receiving server sees a connection from the forwarder's IP address, not the bank's. SPF is the DNS list of servers allowed to send as the bank's domain. The receiver checks that IP against the list, and the forwarder is not on it, so SPF fails. Nothing was wrong with the bank's SPF record. Forwarding just moved the message to a server the record does not cover.</p>
                 <p>DKIM behaves differently. It is a signature the bank's server adds to the message itself, checked against a key in the bank's DNS. The forwarder does not touch it, so the signature still verifies at the final destination. If the bank signed the statement, it passes DMARC on DKIM and arrives. If the bank relied on SPF alone, the statement fails DMARC, and at <code>p=reject</code> the receiver bounces it. The customer never sees the statement. The bank's aggregate reports can show a pattern of failures from the forwarder, but not which message was lost.</p>
                 <p>That is the whole argument. Forwarding breaks SPF and leaves DKIM alone, and forwarding is everywhere: alumni addresses, role addresses, people who forward their work mail to a personal account. RFC 7960 describes the common ones.</p>
@@ -217,7 +217,7 @@
                     <span class="footer-dot">&middot;</span>
                     <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
                 </div>
-                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <!--email_off--><a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a><!--/email_off--> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
+                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
             </div>
         </div>
     </footer>

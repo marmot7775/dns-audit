@@ -28,7 +28,7 @@ def _rows(result, protocol="DMARC"):
 
 @pytest.mark.parametrize("dmarc, action, tag, want", [
     (f"v=DMARC1; p=quarantine; pct=25; sp=none; {RUA}",
-     "Bring the subdomain policy up to p=quarantine", "sp", "quarantine"),
+     "Raise the subdomain policy to sp=quarantine", "sp", "quarantine"),
     (f"v=DMARC1; p=reject; np=none; {RUA}",
      "Set np=reject to match the domain's policy", "np", "reject"),
     (f"v=DMARC1; p=reject; {RUA}", "Consider adding an explicit np= tag", "np", "reject"),
@@ -163,7 +163,7 @@ def _plan_rows(browser, data):  # noqa: F811
 def test_rendered_dmarc_rows_show_their_own_records(browser, audit):  # noqa: F811
     rows = _plan_rows(browser, _run(audit, f"v=DMARC1; p=reject; sp=quarantine; pct=100; {RUA}"))
     dmarc = {r["action"]: r["record"] for r in rows if r["protocol"] == "DMARC"}
-    assert "sp=reject" in dmarc["Bring the subdomain policy up to p=reject"]
+    assert "sp=reject" in dmarc["Raise the subdomain policy to sp=reject"]
     assert "pct=" not in dmarc["Remove the tag RFC 9989 retired: pct"]
     assert len(set(dmarc.values())) == len(dmarc), dmarc
 

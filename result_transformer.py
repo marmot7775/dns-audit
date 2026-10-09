@@ -659,8 +659,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
                 "real mail from forgeries (SPF and DMARC)."
             )
         else:
-            verdict = ("Your domain does not tell receivers what to do with mail that "
-                       "pretends to be from you (no DMARC record).")
+            verdict = ("Your domain has no DMARC record, so receiving mail servers get "
+                       "no instruction for mail that fails authentication.")
         # The policy above it is a registry's, not this domain's, and the
         # verdict does not credit the domain with it.
         _reg_sfx = (dmarc.get("registry_policy") or {}).get("suffix")
@@ -679,8 +679,9 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
           or (health_status == "attention" and _eff_policy == "none")):
         # p=none with or without rua. Without rua the health verdict is
         # "attention", and the sentence is the same: nothing is requested.
-        verdict = ("Your domain does not yet ask receivers to block mail that pretends "
-                   "to be from you (DMARC p=none). Each receiver decides on its own.")
+        verdict = ("Your DMARC policy is p=none, which asks receiving mail servers to "
+                   "take no action on mail that fails authentication. Each server "
+                   "decides on its own.")
     elif _broken_auth and exposed_count == 0:
         # Every branch below this one reads the DMARC policy alone and can
         # call the domain fully or strongly protected, which a broken record
@@ -709,11 +710,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # An inherited name's readiness is the parent record's, and the
         # improvements it names are made at the parent, not here.
         if health_status == "ready" or _inherited_from:
-            verdict = ("Receivers are asked to refuse mail that pretends to be from this "
-                       "domain or its subdomains.")
+            verdict = ("Receiving mail servers are asked to refuse mail that fails "
+                       "authentication for this domain and its subdomains.")
         else:
-            verdict = ("Receivers are asked to refuse mail that pretends to be from this "
-                       "domain. A few smaller improvements are listed below.")
+            verdict = ("Receiving mail servers are asked to refuse mail that fails "
+                       "authentication for this domain. Smaller improvements are under "
+                       "What to do.")
     elif protected_count >= 3 and exposed_count == 0:
         verdict = ("Receivers are asked to block most forged mail from this domain. "
                    "One route is only partly covered.")
@@ -988,7 +990,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             biggest_risk = top.get("action") or top.get("impact", "")
             biggest_risk_detail = top.get("impact", "") if top.get("action") else ""
         elif roadmap_items:
-            biggest_risk = "Nothing urgent. The plan has smaller improvements."
+            biggest_risk = "No urgent problems. Smaller improvements are under What to do."
             biggest_risk_detail = ""
         else:
             # An empty roadmap hides the Priorities list, so the sentence above
@@ -1102,7 +1104,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             if _auth_all_pass:
                 deliverability_summary = "SPF, DKIM, and DMARC are set up correctly. Placement from here depends on reputation and engagement, which DNS cannot show."
             else:
-                deliverability_summary = "SPF, DKIM, and DMARC are all in place. The plan below has what to tighten."
+                deliverability_summary = "SPF, DKIM, and DMARC are all in place. What to do lists what to tighten."
         elif _assessed_auth:
             deliverability_summary = (
                 f"No inbox placement issues found in what this audit checked. "
@@ -1427,7 +1429,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if dmarc.get("status") == "fail" and dmarc.get("pill_label") == "Missing":
         _missing_row = {"priority": "critical", "protocol": "DMARC",
                         "action": "Publish a DMARC record",
-                        "plain_head": "Receivers have no instructions for mail that pretends to be from you.",
+                        "plain_head": "Receiving mail servers have no instruction for mail that fails your authentication checks.",
                         "who": WHO_DNS_HOST,
                         "impact": "Receivers have no policy for mail that fails authentication, and you get no reports about who is sending as you."}
         # A registry's policy sits above this name. The row says whose it is,
@@ -1536,16 +1538,18 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 break
 
     # ── High ────────────────────────────────────────────────
-    # Missing p= with rua: interop hazard between RFC 7489 and RFC 9989
+    # Missing p= with rua: both RFC 7489 (section 6.6.3) and RFC 9989
+    # (section 4.10.1) treat the record as p=none, so it works; the row asks
+    # for the tag so the record says what it means.
     if tb:
         for w in cw:
-            if w.get("title") == "Missing p= tag (interop hazard)":
+            if w.get("title") == "Missing p= tag":
                 items.append({"priority": "high", "protocol": "DMARC",
-                              "action": "Add explicit p= tag to the DMARC record",
-                              "plain_head": ("Your spoofing policy does not say what receivers "
-                                             "should do, so they read it in different ways."),
+                              "action": "Add a p= tag to the DMARC record",
+                              "plain_head": ("Your DMARC record does not state its policy, so "
+                                             "receiving mail servers treat it as p=none."),
                               "who": WHO_DNS_HOST,
-                              "impact": "RFC 7489 receivers ignore this record entirely; RFC 9989 receivers treat as p=none. Receiver behavior is split."})
+                              "impact": "This record has no p= tag. Because it has a report address, receiving mail servers treat it as p=none. Add p= so the record states its policy."})
                 break
 
     # A report destination outside the domain that has not published its
@@ -1728,9 +1732,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if _spf_band == "over":
         items.append({"priority": "critical", "protocol": "SPF",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
-                      "plain_head": ("Your approved sender list is too long for receivers to "
-                                     "finish reading, so some or all of your mail fails this "
-                                     "check. Mail signed with DKIM for your own domain can still pass."),
+                      "plain_head": ("Your approved sender list needs more DNS lookups than "
+                                     "receiving servers allow, so some or all of your mail fails "
+                                     "this check. Mail signed with DKIM for your own domain can still pass."),
                       "who": WHO_DNS_HOST,
                       "impact": "Past 10 lookups, receivers return PermError. Some or all of your mail fails SPF, depending on the order of the record. For that mail, DMARC relies on DKIM alone."})
     elif _spf_band == "near":
@@ -1918,7 +1922,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                     f"any subdomain is {_sp_val}d rather than {_p_val}ed."
                 )
             items.append({"priority": "high", "protocol": "DMARC",
-                          "action": f"Bring the subdomain policy up to p={_p_val}",
+                          "action": f"Raise the subdomain policy to sp={_p_val}",
                           "plain_head": "Your subdomains get a weaker policy than your main domain.",
                           "who": WHO_DNS_HOST,
                           "impact": _sp_impact,
@@ -2294,6 +2298,17 @@ def _classify_change(record_type: str, old_value: str, new_value: str) -> Dict:
                 change["description"] = f"SPF all mechanism changed: {old_all} to {new_all}"
 
     return change
+
+
+# At exactly 10 nothing fails yet. ip4 and ip6 cost no lookup, so only a
+# mechanism that does is named.
+SPF_AT_LIMIT = ("Your SPF record is at the 10 lookup limit. One more include, a, mx, or exists will push it over, and receiving servers will return an error instead of a pass.")
+
+# RFC 8301 section 3.2: verifiers MUST NOT treat signatures from RSA keys
+# under 1024 bits as valid.
+SUB1024_KEY = ("Under 1024 bits. Receiving servers must reject signatures from keys "
+               "this small (RFC 8301), so this key fails now. Replace it with a "
+               "2048-bit key.")
 
 
 def _parse_record_tags(record: str) -> Dict[str, str]:
@@ -3359,9 +3374,10 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             details.append({
                 "type": "warning",
                 "text": (
-                    "Spec recovery applied: invalid value masked by rua fallback. "
-                    "RFC 9989 section 4.10.1 receivers will treat as p=none; older "
-                    "RFC 7489 receivers may ignore the record. Fix the offending tag."
+                    "A policy value is not valid. Because the record has a report "
+                    "address, receiving mail servers treat it as p=none (RFC 9989 "
+                    "section 4.10.1, RFC 7489 section 6.6.3). Fix the value so the "
+                    "record states its policy."
                 ),
             })
         elif policy == "reject":
@@ -4059,20 +4075,29 @@ def _build_attack_surface(raw: Dict, record: Optional[str], is_no_mail: bool = F
     # pill is amber at worst for these exposures (p=none, sp=none) and the
     # Spoofing Protection tile reads amber, so the block tops out at moderate
     # and its summary names what is exposed.
+    # One sentence per exposed route, in the visitor's terms. "Spoofed
+    # through reporting intelligence" was false: an unauthorized report
+    # destination loses reports, it opens no route for forged mail.
+    _route_sentence = {
+        "Direct Domain Spoofing": "Mail sent as your exact domain is not blocked.",
+        "Subdomain Spoofing": "Mail from your subdomains is not blocked.",
+        "Non-Existent Subdomain Spoofing": "Mail from made-up subdomains is not blocked.",
+        "Reporting Intelligence": "Some of your DMARC reports are not delivered.",
+    }
+    _exposed_summary = " ".join(_route_sentence.get(v["name"], f"{v['name']} is exposed.")
+                                for v in exposed)
     if exposed and usable:
         overall = {"level": "moderate", "label": "Moderate Risk", "color": "amber",
-                   "summary": ("This domain has multiple paths for email spoofing attacks."
-                               if len(exposed) >= 2 else
-                               f"This domain can be spoofed through {exposed[0]['name'].lower()}.")}
+                   "summary": _exposed_summary}
     elif len(exposed) >= 2:
         overall = {"level": "critical", "label": "Critical Risk", "color": "red",
-                   "summary": "This domain has multiple paths for email spoofing attacks."}
+                   "summary": _exposed_summary}
     elif len(exposed) == 1:
         overall = {"level": "high", "label": "High Risk", "color": "red",
-                   "summary": f"This domain can be spoofed through {exposed[0]['name'].lower()}."}
+                   "summary": _exposed_summary}
     elif partial:
         overall = {"level": "moderate", "label": "Moderate Risk", "color": "amber",
-                   "summary": "Some attack vectors are exposed."}
+                   "summary": "Some routes are only partly covered."}
     else:
         overall = {"level": "low", "label": "Low Risk", "color": "green",
                    "summary": "This domain has strong email spoofing defenses."}
@@ -4599,17 +4624,14 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
 
     # ── RED: Critical ───────────────────────────────────────
 
-    # 0. Missing p= but rua= present. RFC 9989 §4.10.1 MUSTs treat-as-p=none;
-    # RFC 7489 ignores the record. Same record, two behaviors.
+    # 0. Missing p= but rua= present. RFC 9989 section 4.10.1 and RFC 7489
+    # section 6.6.3 both treat the record as p=none: it works, so this is
+    # advisory, not a red Misconfigured badge on a working record.
     if not tags.get("p") and rua:
         warnings.append({
-            "level": "critical",
-            "title": "Missing p= tag (interop hazard)",
-            "text": (
-                "No explicit p= tag. RFC 9989-compliant receivers treat this as p=none; RFC 7489 "
-                "receivers ignore the record entirely. Behavior depends on which spec the receiver "
-                "implements. Add an explicit p=none, p=quarantine, or p=reject."
-            ),
+            "level": "advisory",
+            "title": "Missing p= tag",
+            "text": "This record has no p= tag. Because it has a report address, receiving mail servers treat it as p=none. Add p= so the record states its policy.",
             "tags": ["p"],
         })
 
@@ -4889,7 +4911,7 @@ def _detect_dangerous_combinations(tags: Dict[str, str], policy: str, is_no_mail
     warnings.append({
         "level": "info",
         "title": "RFC 9989 reporting restructured",
-        "text": "RFC 9989 splits the specification into three separate RFCs: core mechanism, aggregate reporting, and failure reporting.",
+        "text": "DMARC is now three documents: RFC 9989 for the core, RFC 9990 for aggregate reports, and RFC 9991 for failure reports.",
         "tags": [],
     })
 
@@ -5108,8 +5130,8 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
     )
 
     whats_new.append(
-        "RFC 9989 splits the specification into three separate RFCs: the core mechanism, aggregate "
-        "reporting, and failure reporting."
+        "DMARC is now three documents: RFC 9989 for the core, RFC 9990 for aggregate "
+        "reports, and RFC 9991 for failure reports."
     )
 
     sections.append({
@@ -5156,7 +5178,7 @@ def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, d
     # Section 5: What should I do
     sections.append({
         "title": "What should I do?",
-        "content": "See your personalized migration path above for step-by-step instructions to reach RFC 9989 Ready status.",
+        "content": "See Path to enforcement above for step-by-step instructions to reach RFC 9989 Ready status.",
     })
 
     return {"sections": sections}
@@ -5703,11 +5725,11 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             "read the TXT records at the target."
         )
     elif not record and not has_mx:
+        # No MX says nothing about outbound mail: send-only domains have none.
         explanation = (
-            "No SPF record found, but this domain also has no MX records, "
-            "which means it does not send or receive email. "
-            "For best practice, consider publishing a null SPF record "
-            "(<strong>v=spf1 -all</strong>) to explicitly signal that this domain does not send email."
+            "No SPF record found. This domain has no MX records, so it does not "
+            "receive email. If it sends none either, publish "
+            "<strong>v=spf1 -all</strong> to say so."
         )
     elif not record:
         explanation = (
@@ -5774,7 +5796,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             explanation += (
                 f" <strong>Note:</strong> SPF uses {lookups} of the allowed 10 DNS lookups "
                 f"(<a href=\"https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4\" target=\"_blank\" rel=\"noopener\">RFC 7208 section 4.6.4</a>). "
-                f"{'At the limit. Any addition will cause a PermError.' if lookups == 10 else 'Approaching the limit. Plan for headroom before adding new services.'} "
+                f"{SPF_AT_LIMIT if lookups == 10 else 'Approaching the limit. Plan for headroom before adding new services.'} "
                 + ARTICLE_SPF_LOOKUPS
             )
 
@@ -5978,7 +6000,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         elif spf_lookup_band(_lookups) == "near":
             _deliverability = (
                 f"Your SPF record uses {_lookups} of 10 allowed DNS lookups. "
-                f"{'You are at the limit. Adding one more email service will break SPF for all your email.' if _lookups == 10 else 'You are close to the limit. Plan carefully before adding new sending services like Mailchimp, HubSpot, or SendGrid.'}"
+                f"{SPF_AT_LIMIT if _lookups == 10 else 'You are close to the limit. Plan carefully before adding new sending services like Mailchimp, HubSpot, or SendGrid.'}"
             )
 
     return {
@@ -6691,6 +6713,11 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
                 "type": "warning",
                 "text": f"{selector}: {bits}-bit {key_analysis.get('key_type', 'RSA')} key ({f'{vendor}, ' if vendor else ''}upgrade recommended)",
             }
+            # RFC 8301 section 3.2: verifiers MUST NOT treat a signature from
+            # an RSA key under 1024 bits as valid, so this one fails today.
+            if bits and bits < 1024:
+                weak_detail["text"] = (f"{selector}: {bits}-bit {key_analysis.get('key_type', 'RSA')} "
+                                       f"key{f' ({vendor})' if vendor else ''}. {SUB1024_KEY}")
             # Only attach business_risk to the first weak-key detail to avoid
             # repeating the same callout once per selector.
             if not weak_keys:
@@ -6907,7 +6934,13 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         fix = _first_fix(raw.get("issues", []))
 
     # Deliverability context
-    if weak_keys:
+    if status != "pass" and not weak_keys:
+        # "A DKIM key is published" printed on failed cards whose keys no
+        # receiver can use (SHA-1 only, bad v=, unknown k=, unparseable p=).
+        _deliverability = None
+    elif weak_keys and any(bits and bits < 1024 for _sel, bits in weak_keys):
+        _deliverability = SUB1024_KEY
+    elif weak_keys:
         _sizes = sorted({bits for _sel, bits in weak_keys if bits})
         _size_text = (
             " and ".join(f"{b}-bit" for b in _sizes) if _sizes else "under 2048-bit"
@@ -7034,7 +7067,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             all_strong = False
         elif bits > 0:
             rating = "red"
-            rating_label = "Critical. This key can be factored and forged. Rotate to 2048-bit."
+            rating_label = SUB1024_KEY
             has_weak = True
             all_strong = False
         else:
@@ -7519,7 +7552,7 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
 
     # Has record
     if policy_mode == "enforce":
-        verdict = "Inbound email must use encryption"
+        verdict = "Enforced: senders that support MTA-STS must use encryption"
     elif policy_mode == "testing":
         verdict = "Monitoring TLS, not yet enforcing"
     elif policy_mode == "none":
@@ -7654,12 +7687,10 @@ def transform_tls_rpt(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
             "record": None,
             "configured": False,
             "explanation": (
-                "Without TLS-RPT (<a href=\"https://datatracker.ietf.org/doc/html/rfc8460\" target=\"_blank\" rel=\"noopener\">RFC 8460</a>), "
-                "you have no visibility into encryption failures on inbound email delivery. "
-                "If a sending server cannot establish a secure connection with your mail server, "
-                "it may fall back to plaintext delivery or fail silently. TLS-RPT provides daily reports "
-                "on these failures, allowing you to identify certificate issues or misconfigurations "
-                "before they affect delivery."
+                # Reports arrive after the failures, not before them.
+                "Without <a href=\"https://datatracker.ietf.org/doc/html/rfc8460\" target=\"_blank\" "
+                "rel=\"noopener\">TLS-RPT</a>, you don't hear about encryption failures when other "
+                "servers deliver to you. Senders that support it send a daily report."
             ),
             "details": [_issue_to_detail(i) for i in raw.get("issues", [])],
             "fix": (
@@ -7915,7 +7946,7 @@ def _transform_dnssec_card(raw: Dict, domain: str = "") -> Dict:
             "explanation": (
                 "DNSSEC is configured but its signatures fail to validate. "
                 "Validating resolvers (Cloudflare 1.1.1.1, Quad9 9.9.9.9, "
-                "Google 8.8.8.8 in DNSSEC mode) return SERVFAIL for this "
+                "Google 8.8.8.8) return SERVFAIL for this "
                 "domain, so users behind those resolvers cannot reach it. "
                 "Common causes: expired RRSIGs, an orphaned DS record at the "
                 "parent after a key rollover, or a KSK/ZSK mismatch."
@@ -8027,11 +8058,14 @@ def _transform_dnssec_card(raw: Dict, domain: str = "") -> Dict:
         "verdict": verdict,
         "record": None,
         "configured": True,
+        # A DS mismatch or an unanchored signed zone lands here as fail or
+        # warn, and gets none of the protection the pass sentence promises.
         "explanation": (
-            "DNSSEC is enabled. Your DNS records are cryptographically signed per "
-            "<a href=\"https://datatracker.ietf.org/doc/html/rfc4033\" target=\"_blank\" rel=\"noopener\">RFC 4033</a>/4034/4035, allowing validating resolvers to confirm that responses "
-            "have not been tampered with. This prevents cache poisoning and DNS spoofing, "
-            "and is required for DANE to function."
+            "DNSSEC is on. Resolvers that check signatures can confirm your DNS answers "
+            "were not altered."
+            if status == "pass" else
+            "The zone is signed, but resolvers cannot verify it yet, so it gets none of "
+            "DNSSEC's protection."
         ),
         "details": details,
         "fix": fix,

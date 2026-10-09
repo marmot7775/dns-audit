@@ -29,7 +29,7 @@ def test_low_priority_only_roadmap_does_not_become_biggest_risk():
 
     summary = result_transformer.build_executive_summary(checks, roadmap)
     assert "purely optional" not in summary["biggest_risk"].lower()
-    assert summary["biggest_risk"] == "Nothing urgent. The plan has smaller improvements."
+    assert summary["biggest_risk"] == "No urgent problems. Smaller improvements are under What to do."
     assert summary["biggest_risk_severity"] == "none"
 
 

@@ -156,7 +156,7 @@
                 <p>The record is a DNS TXT record at</p>
                 <pre tabindex="0"><code>&lt;selector&gt;._aprf._domainkey.&lt;signing domain&gt;</code></pre>
                 <p>where the selector and signing domain are the <code>s=</code> and <code>d=</code> values in your DKIM signature. A minimal record reads</p>
-                <pre tabindex="0"><code>v=APRFv1; rua=mailto:<!--email_off-->aprf@example.org<!--/email_off--></code></pre>
+                <pre tabindex="0"><code>v=APRFv1; rua=mailto:aprf@example.org</code></pre>
                 <p>The <code>v</code> tag must be exactly <code>APRFv1</code> and <code>rua</code> must be present, or the provider ignores the record. <code>rua</code> takes one or more <code>mailto:</code> addresses separated by commas. A record at <code>_aprf._domainkey.&lt;signing domain&gt;</code>, or a DNS wildcard at <code>*._aprf._domainkey.&lt;signing domain&gt;</code>, covers every selector. A record for a specific selector takes precedence over either.</p>
                 <p>If the <code>rua</code> address isn't on the signing domain, the draft says the provider should confirm that the destination domain wants the reports, as DMARC does for outside report addresses. The destination publishes a TXT record at</p>
                 <pre tabindex="0"><code>&lt;selector&gt;.&lt;signing domain&gt;._aprf.&lt;destination domain&gt;</code></pre>
@@ -189,7 +189,7 @@
                     <span class="footer-dot">&middot;</span>
                     <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
                 </div>
-                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <!--email_off--><a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a><!--/email_off--> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
+                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
             </div>
         </div>
     </footer>
