@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- Source for static/og-card-aprf.png, the /articles/aprf link preview.
+     Same palette and frame as static/og-card.png. Render at 1200x630:
+     .venv/bin/python tools/og/render.py tools/og/aprf.html static/og-card-aprf.png -->
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:DM;src:url(../../static/fonts/dm-sans-normal-latin.woff2);font-weight:100 1000}
+@font-face{font-family:JB;src:url(../../static/fonts/jetbrains-mono-latin.woff2);font-weight:100 800}
+*{margin:0;box-sizing:border-box}
+html,body{width:1200px;height:630px;overflow:hidden}
+body{background:#0b1424;color:#e6edf6;font-family:DM,sans-serif;position:relative;
+ background-image:linear-gradient(#0f1a2d 1px,transparent 1px),linear-gradient(90deg,#0f1a2d 1px,transparent 1px);
+ background-size:60px 60px}
+.bar{position:absolute;top:0;left:0;right:0;height:5px;background:#1d4f8a}
+.kicker{position:absolute;left:80px;top:62px;font:600 22px JB,monospace;color:#5c6e87;letter-spacing:.02em}
+.kicker b{color:#4a9fdc;font-weight:600}
+h1{position:absolute;left:80px;top:104px;width:1040px;font:700 58px/1.12 DM,sans-serif;letter-spacing:-.015em;color:#f3f6fa}
+.term{position:absolute;left:80px;top:300px;width:1040px;border-radius:14px;background:#1c1c1e;border:1px solid #2a2f38;overflow:hidden}
+.term .top{height:38px;background:#2a2a2c;display:flex;gap:9px;align-items:center;padding-left:16px}
+.term .top i{width:14px;height:14px;border-radius:50%;display:block}
+.term pre{font:500 25px/1.55 JB,monospace;padding:16px 24px 18px;color:#9fb3c8;white-space:pre}
+.cmd{color:#7ee787}.name{color:#8cc4ff}.out{color:#e6c07b}
+.chips{position:absolute;left:80px;top:478px;display:flex;gap:12px}
+.chips span{font:600 18px JB,monospace;color:#6fc3b2;background:#16263b;border:1px solid #22344d;border-radius:6px;padding:9px 16px}
+.foot{position:absolute;left:0;right:0;bottom:0;height:100px;background:#0d1729;display:flex;justify-content:space-between;align-items:center;padding:0 80px;font-size:21px;color:#5c6e87}
+.foot b{font-weight:700;color:#e6edf6}.foot b em{font-style:normal;color:#4a9fdc}
+</style></head><body>
+<div class="bar"></div>
+<div class="kicker"><b>dns-audit.com</b> / articles</div>
+<h1>What APRF inbox placement reports tell you, and what they don't</h1>
+<div class="term"><div class="top"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+<pre><span class="cmd">$ dig TXT</span> <span class="name">_aprf._domainkey.example.com</span>
+<span class="out">"v=APRFv1; rua=mailto:reports@example.com"</span></pre></div>
+<div class="chips"><span>IETF working group draft</span><span>Keyed to DKIM</span><span>Placement and engagement</span></div>
+<div class="foot"><span><b>dns-<em>audit</em>.com</b></span><span>by Neil Anuskiewicz</span></div>
+</body></html>
