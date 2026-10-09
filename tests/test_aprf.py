@@ -214,6 +214,61 @@ def test_a_dkim_wildcard_answer_is_not_an_aprf_record():
     assert card["aprf_state"] == "none"
 
 
+# Field test 2026-10-08: spamresource.com, kickbox.com and example.com.
+def test_wildcard_and_bare_with_the_same_record_read_as_one_sentence():
+    _, card, _ = _check({BARE: f"v=APRFv1; rua=mailto:aprf@{DOMAIN}",
+                         WILD: f"v=APRFv1; rua=mailto:aprf@{DOMAIN}"})
+    assert _text(card).count("An APRF record is published at") == 1
+    assert f"published at {WILD} and {BARE}." in _text(card)
+
+
+def test_a_rua_without_mailto_shows_the_fixed_form():
+    _, card, _ = _check({BARE: f"v=APRFv1;rua=deliverability@{DOMAIN}"})
+    assert card["aprf_state"] == "ignored"
+    assert (f"because its rua tag has no mailto destination. Writing it as "
+            f"rua=mailto:deliverability@{DOMAIN} would fix that.") in _text(card)
+
+
+def test_a_rua_with_another_scheme_gets_no_fixed_form():
+    _, card, _ = _check({BARE: f"v=APRFv1; rua=https://{DOMAIN}/aprf"})
+    assert card["aprf_state"] == "ignored"
+    assert "Writing it as" not in _text(card)
+
+
+def test_a_domain_that_sends_no_mail_does_not_apply():
+    raw, _, _ = _check({})
+    card = result_transformer.transform_aprf(raw, DOMAIN, non_mail=True)
+    assert card["aprf_state"] == "none"
+    assert card["pill_label"] == "Does not apply"
+    assert "sends no mail" in _text(card)
+    assert "few minutes" not in _text(card)
+    assert "Selector specific" not in _text(card)
+    assert card["verdict"] == "This domain sends no mail"
+
+
+def test_a_record_on_a_domain_that_sends_no_mail_is_still_reported():
+    raw, _, _ = _check({BARE: f"v=APRFv1; rua=mailto:aprf@{DOMAIN}"})
+    card = result_transformer.transform_aprf(raw, DOMAIN, non_mail=True)
+    assert card["aprf_state"] == "published"
+
+
+def test_no_record_advice_matches_the_article():
+    text = _text(_check({})[1])
+    assert "If your mail is signed with your own domain" in text
+    assert "a record on your domain would never be read" in text
+
+
+def test_every_state_links_to_the_article_on_the_web_only():
+    link = '<a href="/articles/aprf" target="_blank" rel="noopener">'
+    states = list(_every_state())
+    raw, _, _ = _check({})
+    states.append(result_transformer.transform_aprf(raw, DOMAIN, non_mail=True))
+    for card in states:
+        assert card["explanation"].count(link) == 1, card["aprf_state"]
+        # The PDF prints paragraphs, which carry no markup.
+        assert "<a " not in " ".join(card["paragraphs"])
+
+
 # 11
 def _ui_run(zone, aprf_on):
     scopes = audit_engine.APRF_SCOPES if aprf_on else set()
@@ -316,6 +371,8 @@ def _every_state():
     yield _check(WildZone({}).fail(BARE, "TXT"))[1]
     yield _check({}, raw_dkim={"found_selectors": [], "timed_out": True})[1]
     yield _check({}, raw_dkim={"found_selectors": []})[1]
+    yield result_transformer.transform_aprf(_check({})[0], DOMAIN, non_mail=True)
+    yield _check({BARE: f"v=APRFv1;rua=deliverability@{DOMAIN}"})[1]
 
 
 def test_card_copy_has_no_dashes_and_no_quotation_marks():

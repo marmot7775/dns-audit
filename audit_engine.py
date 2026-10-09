@@ -4463,9 +4463,12 @@ def _parse_aprf(txt: str) -> Dict[str, Any]:
     """
     tags = _aprf_tags(txt)
     destinations = []
+    unprefixed = []  # bare addresses: the card shows the mailto: form
     for item in (tags.get("rua") or "").split(","):
         item = item.strip()
         if item[:7].lower() != "mailto:":
+            if "@" in item and ":" not in item:
+                unprefixed.append(item)
             continue
         address = item[7:].split("!", 1)[0].strip()
         if "@" in address:
@@ -4480,6 +4483,7 @@ def _parse_aprf(txt: str) -> Dict[str, Any]:
         "valid": ignored_reason is None,
         "ignored_reason": ignored_reason,
         "rua": destinations,
+        "rua_unprefixed": unprefixed,
         "sdi": tags.get("sdi") or None,
     }
 
@@ -5640,7 +5644,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             except Exception as e:
                 log.info("APRF check did not complete for %s: %s", domain, e)
                 raw_aprf = _aprf_bare
-        draft_standards.append(transform_aprf(raw_aprf, domain))
+        draft_standards.append(transform_aprf(
+            raw_aprf, domain,
+            non_mail=_sends_no_mail(raw_results.get("mx"), raw_results.get("spf"))))
 
     # --- Detect Defensive DNS pattern (moved early -- roadmap needs it) ---
     defensive_signals = []

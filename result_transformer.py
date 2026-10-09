@@ -190,6 +190,12 @@ ARTICLE_DANE = (
     _article_link("/articles/dane", "DANE for email in 2026")
     + " covers who runs it and what to do about it."
 )
+# On the APRF card in every state, web only: the card is informational, so
+# the link is not tied to a finding the way the five above are.
+ARTICLE_APRF = (
+    _article_link("/articles/aprf", "What APRF inbox placement reports tell you, and what they don't")
+    + " covers what the reports show and whether to publish a record."
+)
 ARTICLE_SENTENCES = (ARTICLE_SPF_LOOKUPS, ARTICLE_P_REJECT, ARTICLE_DMARCBIS,
                      ARTICLE_DNSSEC, ARTICLE_DANE)
 
@@ -9605,7 +9611,7 @@ def _aprf_card(state: str, pill: str, verdict: str, paragraphs: List[str],
         "verdict": verdict,
         "what_this_is": APRF_NOTE,
         "paragraphs": paragraphs,
-        "explanation": "<br><br>".join(_e(p) for p in paragraphs),
+        "explanation": "<br><br>".join([_e(p) for p in paragraphs] + [ARTICLE_APRF]),
         "record": record,
         "record_location": location,
         "configured": state == "published",
@@ -9615,8 +9621,12 @@ def _aprf_card(state: str, pill: str, verdict: str, paragraphs: List[str],
     }
 
 
-def transform_aprf(raw: Dict, domain: str) -> Dict:
-    """The APRF card. Informational in every state: no fix, no plan row."""
+def transform_aprf(raw: Dict, domain: str, non_mail: bool = False) -> Dict:
+    """The APRF card. Informational in every state: no fix, no plan row.
+
+    non_mail: the domain sends no mail (null SPF, or null MX with no sending
+    SPF), so with no record there is nothing to advise.
+    """
     if raw.get("lookup_failed"):
         card = _lookup_unavailable_card("APRF", raw, "APRF record")
         card.update({
@@ -9626,30 +9636,52 @@ def transform_aprf(raw: Dict, domain: str) -> Dict:
             "what_this_is": APRF_NOTE,
             "paragraphs": [re.sub(r"<[^>]+>", "", card["explanation"])],
         })
+        card["explanation"] += "<br><br>" + ARTICLE_APRF
         return card
 
     records = raw.get("records") or []
     paragraphs: List[str] = []
-    if not records:
+    if not records and non_mail:
         paragraphs.append(
-            "No APRF record found. You aren't missing anything yet. With one "
-            "provider sending reports in beta, publishing a record is worth it "
-            "only if a meaningful share of your mail goes to Comcast addresses."
+            "No APRF record found. This domain sends no mail, so there is "
+            "nothing for a provider to report on and no record to add."
+        )
+        state, pill, verdict = "none", PILL_NOT_APPLICABLE, "This domain sends no mail"
+        record = location = None
+    elif not records:
+        # The same advice as the article: worth adding when the domain signs
+        # its own mail, pointless when a service signs with its own domain.
+        paragraphs.append(
+            "No APRF record found. You aren't missing anything yet. If your mail "
+            "is signed with your own domain, adding the record takes a few "
+            "minutes and does no harm. If an email service signs it with the "
+            "service's own domain, a record on your domain would never be read."
         )
         state, pill, verdict = "none", "Not published", "No APRF record found"
         record = location = None
     else:
         valid = [r for r in records if r.get("valid")]
+        # One sentence per distinct record: a wildcard and a bare name that
+        # publish the same text are one setup, not two findings.
+        groups: Dict[str, List[Dict]] = {}
         for r in records:
+            groups.setdefault(r["record"], []).append(r)
+        for same in groups.values():
+            r = same[0]
+            where = _aprf_list([x["location"] for x in same])
             if r.get("valid"):
-                text = (f"An APRF record is published at {r['location']}. "
+                text = (f"An APRF record is published at {where}. "
                         f"Reports go to {_aprf_list(r['rua'])}.")
                 if r.get("sdi"):
                     text += f" The record sets sdi to {r['sdi']}."
             else:
                 reason = _APRF_IGNORED_REASONS.get(r.get("ignored_reason"), "it breaks a rule of the draft")
-                text = (f"A record exists at {r['location']}, but a provider "
+                text = (f"A record exists at {where}, but a provider "
                         f"following the draft would ignore it because {reason}.")
+                bare = r.get("rua_unprefixed") or []
+                if r.get("ignored_reason") == "no_rua" and bare:
+                    text += (" Writing it as rua="
+                             + ",".join(f"mailto:{a}" for a in bare) + " would fix that.")
             paragraphs.append(text)
         if valid:
             paragraphs.append(
@@ -9689,7 +9721,9 @@ def transform_aprf(raw: Dict, domain: str) -> Dict:
         record, location = winner["record"], winner["location"]
 
     skipped = raw.get("selectors_skipped")
-    if skipped == "dkim_incomplete":
+    if non_mail and not records:
+        pass  # no DKIM keys are expected, so there is no selector gap to report
+    elif skipped == "dkim_incomplete":
         paragraphs.append("Selector specific records were not checked, because "
                           "the DKIM check did not finish.")
     elif skipped == "no_live_selectors":
