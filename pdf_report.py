@@ -1521,14 +1521,23 @@ def _draft_standards(data, S):
 
 
 def _record_block(record, S, small=False):
-    """Render a DNS record in a dark code block."""
-    rec = _safe(record)
+    """Render a DNS record in a dark code block.
+
+    One row per line. A table cannot split inside a cell, so the DKIM card's
+    record, every selector's key on its own line, made one cell taller than a
+    page for a domain with many selectors (github.com) and the whole PDF
+    failed with a LayoutError. Rows can break across pages.
+    """
     style = S["record_sm"] if small else S["record"]
-    rt = Table([[Paragraph(rec, style)]], colWidths=[6.5*inch])
+    lines = [ln for ln in str(record or "").split("\n") if ln.strip()] or [""]
+    rt = Table([[Paragraph(_safe(ln), style)] for ln in lines], colWidths=[6.5*inch])
+    last = len(lines) - 1
     rt.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), RECORD_BG),
-        ("TOPPADDING", (0,0), (-1,-1), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("TOPPADDING", (0,0), (-1,0), 6),
+        ("BOTTOMPADDING", (0,last), (-1,last), 6),
         ("LEFTPADDING", (0,0), (-1,-1), 9),
         ("RIGHTPADDING", (0,0), (-1,-1), 9),
         ("ROUNDEDCORNERS", [4,4,4,4]),
