@@ -7,23 +7,30 @@
     <meta name="description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready.">
     <meta name="keywords" content="p=reject, DMARC enforcement, DMARC policy, DKIM, RFC 9989, email forwarding, mailing lists, SPF, p=quarantine, aggregate reports">
     <meta name="author" content="Neil Anuskiewicz">
-    <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="DNS Security Auditor" />
-    <meta property="og:url" content="https://dns-audit.com/articles/p-reject" />
-    <meta property="og:title" content="What to check before you publish p=reject" />
-    <meta property="og:description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready." />
-    <meta property="og:image" content="https://dns-audit.com/static/og-image.png" />
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="What to check before you publish p=reject" />
-    <meta name="twitter:description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready." />
+    <meta property="og:type" content="article">
+    <meta property="article:published_time" content="2026-09-29">
+    <meta property="article:modified_time" content="2026-10-01">
+    <meta property="article:author" content="https://dns-audit.com/about#neil">
+    <meta property="og:site_name" content="dns-audit.com">
+    <meta property="og:url" content="https://dns-audit.com/articles/p-reject">
+    <meta property="og:title" content="What to check before you publish p=reject">
+    <meta property="og:description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready.">
+    <meta property="og:image" content="https://dns-audit.com/static/og-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://dns-audit.com/static/og-card.png">
+    <meta name="twitter:title" content="What to check before you publish p=reject">
+    <meta name="twitter:description" content="RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready.">
     <link rel="canonical" href="https://dns-audit.com/articles/p-reject">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=7441d84">
-    <script src="/static/theme.js?v=7441d84"></script>
+    <link rel="stylesheet" href="/static/style.css?v=dc54985">
+    <script src="/static/theme.js?v=dc54985"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -31,10 +38,10 @@
         "headline": "What to check before you publish p=reject",
         "description": "RFC 9989 makes DKIM on every stream a requirement for p=reject. Why forwarding breaks SPF, what the mailing list warning is worth, and when a domain is ready.",
         "url": "https://dns-audit.com/articles/p-reject",
-        "author": { "@id": "https://dns-audit.com/about#neil" },
-        "publisher": { "@id": "https://dns-audit.com/about#neil" },
+        "author": {"@type": "Person", "@id": "https://dns-audit.com/about#neil", "name": "Neil Anuskiewicz", "url": "https://dns-audit.com/about"},
+        "publisher": {"@type": "Person", "@id": "https://dns-audit.com/about#neil", "name": "Neil Anuskiewicz", "url": "https://dns-audit.com/about"},
         "mainEntityOfPage": "https://dns-audit.com/articles/p-reject",
-        "image": "https://dns-audit.com/static/og-image.png",
+        "image": "https://dns-audit.com/static/og-card.png",
         "isPartOf": { "@id": "https://dns-audit.com/#website" },
         "datePublished": "2026-09-29",
         "dateModified": "2026-10-01"
@@ -95,9 +102,9 @@
                 <p><code>p=reject</code> asks receivers to refuse mail that fails DMARC, and it is where most domains should end up. Since May 2026 the standard adds one condition: every service that sends mail as you must sign it with DKIM rather than rely on SPF alone, because forwarding breaks SPF and leaves DKIM intact. Your DMARC reports show which services pass on DKIM. Move to reject when all of them do and the list has stopped changing; there is no deadline.</p>
             </aside>
             <p class="dbis-lede">Most DMARC deployments follow the same path. Publish <code>p=none</code>, which asks receivers to take no action, watch the aggregate reports, fix every legitimate sender that fails, then publish <code>p=reject</code>, which asks them to refuse failing mail. In my experience most domains skip quarantine, which sends failing mail to spam, and go from remediation straight to reject, and that works. What the vendor guides leave out is that the DMARC standard published in May 2026, <a href="/articles/dmarcbis">RFC 9989</a>, puts a condition on that last step. A domain at reject has to sign all of its mail with DKIM, a signature added to each message and checked against a key in your DNS. Not most of it. All of it. This article explains why the standard says so, what it costs you if you ignore it, and how to tell when a domain is ready.</p>
-            <section class="dbis-section">
+            <div class="dbis-section">
                 <p>One word to settle first. A stream is any system that sends mail using your domain: your mail server, your marketing platform, your help desk, your invoicing tool. A company with four of those has four streams, and each one either signs or it does not.</p>
-            </section>
+            </div>
             <section class="dbis-section">
                 <h2>A statement that never arrived</h2>
                 <p>The standard explains the DKIM requirement with a bank, and the example is worth walking through because it is exactly what happens to small companies.</p>

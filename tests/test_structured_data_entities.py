@@ -50,8 +50,14 @@ def _top_nodes(doc):
         yield doc
 
 
+# A reference may carry the type, name and url beside its @id: Google does not
+# follow an @id to another page, so an article's author names itself. Any
+# other property makes it a second definition.
+_REF_KEYS = {"@id", "@type", "name", "url"}
+
+
 def _is_ref(d):
-    return set(d) == {"@id"}
+    return "@id" in d and set(d) <= _REF_KEYS
 
 
 def _load():
@@ -150,10 +156,13 @@ def test_article_links_to_person_and_site(page):
     [art] = _nodes(page, "TechArticle")
     url = SITE_DATA[page]["canonical"]
     assert art["url"] == url
-    assert art["author"] == {"@id": PERSON}
-    assert art["publisher"] == {"@id": PERSON}
+    # The @id ties the article to the one Person defined on /about. Google
+    # does not follow an @id to another page, so the name and url ride along.
+    for role in ("author", "publisher"):
+        assert art[role] == {"@type": "Person", "@id": PERSON,
+                             "name": "Neil Anuskiewicz", "url": f"{SITE}/about"}, role
     assert art["mainEntityOfPage"] == url
-    assert art["image"] == f"{SITE}/static/og-image.png"
+    assert art["image"] == f"{SITE}/static/og-card.png"
     assert art["isPartOf"] == {"@id": WEBSITE}
     for field in ("headline", "description", "datePublished", "dateModified"):
         assert art[field], field
