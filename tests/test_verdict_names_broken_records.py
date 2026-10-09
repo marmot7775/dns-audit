@@ -105,7 +105,7 @@ def test_a_healthy_record_keeps_its_verdict(audit):
 
     verdict = result["executive_summary"]["verdict"]
     assert "broken" not in verdict
-    assert verdict.startswith("Receivers are asked to refuse mail that pretends"), verdict
+    assert verdict.startswith("Receiving mail servers are asked to refuse mail that fails authentication"), verdict
 
 
 # ---------------------------------------------------------------

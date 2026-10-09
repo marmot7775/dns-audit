@@ -83,7 +83,7 @@ def test_no_proposed_record_carries_a_retired_tag(audit):
 def test_sp_and_np_rows_start_from_the_cleaned_record(audit):
     result = _audit(audit, f"v=DMARC1; p=reject; sp=none; np=none; pct=100; rua=mailto:d@{D}")
     rows = {i["action"]: i for i in result["security_roadmap"]["items"] if i["protocol"] == "DMARC"}
-    assert "pct" not in rows["Bring the subdomain policy up to p=reject"]["record"]
+    assert "pct" not in rows["Raise the subdomain policy to sp=reject"]["record"]
     assert "pct" not in rows["Set np=reject to match the domain's policy"]["record"]
 
 

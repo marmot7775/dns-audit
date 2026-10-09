@@ -119,9 +119,10 @@ class TestPolicyRecoveryRule(unittest.TestCase):
         self.assertEqual(out.get("policy"), "none")
         # Existing syntax error must still fire (constraint #4).
         self.assertTrue(_has_error_about(out, "invalid policy value"))
-        # Spec-recovery warning must surface the interop split.
-        self.assertTrue(_has_warning_about(out, "spec recovery"))
-        self.assertTrue(_has_warning_about(out, "rfc 7489"))
+        # Both specs treat the record as p=none (RFC 7489 section 6.6.3,
+        # RFC 9989 section 4.10.1): no split, no interop hazard.
+        self.assertTrue(_has_warning_about(out, "treat the record as p=none"))
+        self.assertFalse(_has_warning_about(out, "spec recovery"))
 
     def test_missing_p_with_valid_rua_recovers_to_none(self):
         out = _run("v=DMARC1; rua=mailto:r@example.com")

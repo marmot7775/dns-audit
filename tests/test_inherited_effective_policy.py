@@ -116,7 +116,7 @@ def test_parent_sp_none_reads_as_none_and_the_fix_names_the_parent(audit):
     assert "blocked" not in result["executive_summary"]["verdict"]
 
     sp_row = next(r for r in _dmarc_rows(result)
-                  if r["action"] == "Bring the subdomain policy up to p=reject")
+                  if r["action"] == "Raise the subdomain policy to sp=reject")
     assert sp_row["host"] == f"_dmarc.{ORG}"
     assert "sp=reject" in sp_row["record"]
     assert f"at {ORG}, the organizational domain" in sp_row["host_note"]

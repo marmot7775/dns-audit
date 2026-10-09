@@ -84,7 +84,7 @@ def test_do_these_first_publishes_the_owners_record(audit):
 def test_the_verdict_does_not_credit_the_domain_with_the_registry_policy(audit):
     for record in ("v=DMARC1; p=none", "v=DMARC1; p=reject"):
         verdict = audit(_zone(record), DOMAIN)["executive_summary"]["verdict"]
-        assert verdict.startswith("Your domain does not tell receivers what to do"), verdict
+        assert verdict.startswith("Your domain has no DMARC record"), verdict
         assert "belongs to the co.za registry" in verdict, verdict
         assert "(DMARC p=none)" not in verdict
         assert "refuse" not in verdict and "block" not in verdict, verdict

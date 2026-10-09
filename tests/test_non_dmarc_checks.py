@@ -290,7 +290,7 @@ def test_a_duplicate_mta_sts_field_keeps_the_first_value(audit):
     card = _card(_run(audit, _zone(extra=_STS),
                       mta_sts_policy=_policy("mode: enforce", "mode: testing")), "MTA-STS")
 
-    assert card["verdict"] == "Inbound email must use encryption", card["verdict"]
+    assert card["verdict"] == "Enforced: senders that support MTA-STS must use encryption", card["verdict"]
     assert card["status"] == "warn"
 
 

@@ -103,7 +103,7 @@ def test_clean_report_biggest_risk_has_no_marketing_words():
     ]
     es = build_executive_summary(checks, build_security_roadmap(checks))
     assert "optimization opportunities" not in es["biggest_risk"]
-    assert es["biggest_risk"] == "Nothing urgent. The plan has smaller improvements."
+    assert es["biggest_risk"] == "No urgent problems. Smaller improvements are under What to do."
 
 
 def test_no_warning_predicts_what_attackers_will_do_and_the_real_domain_is_used():
@@ -194,7 +194,6 @@ def test_app_js_share_text_and_strict_count_pluralize_on_one():
         "the verb did not agree with a pluralized noun on a count of 1"
     )
     assert "five minute DNS change" not in src
-    assert "five-minute DNS change" in src
 
 
 # ---------------------------------------------------------------------------

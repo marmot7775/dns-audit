@@ -231,16 +231,16 @@ def test_an_enforcing_record_without_rua_gets_no_enforcement_row(shape_results):
 # ---------------------------------------------------------------
 
 def test_p_none_verdict_with_and_without_rua(shape_results):
-    expected = ("Your domain does not yet ask receivers to block mail that pretends to be "
-                "from you (DMARC p=none). Each receiver decides on its own.")
+    expected = ("Your DMARC policy is p=none, which asks receiving mail servers to take no "
+                "action on mail that fails authentication. Each server decides on its own.")
     assert shape_results["p=none, no rua"]["executive_summary"]["verdict"] == expected
     assert shape_results["p=none, rua, pct"]["executive_summary"]["verdict"] == expected
 
 
 def test_ready_record_verdict(shape_results):
     assert shape_results["reject, ready"]["executive_summary"]["verdict"] == (
-        "Receivers are asked to refuse mail that pretends to be from this domain or "
-        "its subdomains.")
+        "Receiving mail servers are asked to refuse mail that fails authentication for this "
+        "domain and its subdomains.")
 
 
 def test_enforcing_without_rua_verdict(shape_results):
@@ -282,8 +282,8 @@ def test_a_missing_dmarc_record_verdict():
     checks = [{"name": "DMARC", "status": "fail", "pill_label": "Missing"},
               {"name": "SPF", "status": "pass", "configured": True, "record": "v=spf1 -all"},
               {"name": "DKIM", "status": "pass", "configured": True}]
-    assert _verdict(checks) == ("Your domain does not tell receivers what to do with mail "
-                                "that pretends to be from you (no DMARC record).")
+    assert _verdict(checks) == ("Your domain has no DMARC record, so receiving mail servers "
+                                "get no instruction for mail that fails authentication.")
 
 
 def test_the_broken_record_and_no_mail_branches_keep_their_wording(audit):
