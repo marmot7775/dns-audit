@@ -4643,7 +4643,9 @@ _shared_executor = ThreadPoolExecutor(
 # was fine for one audit at a time, but 8 concurrent audits each probing
 # len(_SUBDOMAIN_PREFIXES) subdomains queues far more than 20 workers can hold,
 # so the tail waits out its own timeout budget before a probe ever runs.
-_PROBE_WIDTH = 20  # len(_SUBDOMAIN_PREFIXES), defined below
+# len(_SUBDOMAIN_PREFIXES) (20, defined below) plus the vendor CNAME wave
+# (23 labels and a wildcard canary), which can overlap with it in one audit.
+_PROBE_WIDTH = 44
 _probe_executor = ThreadPoolExecutor(
     max_workers=max(20, _MAX_CONCURRENT_AUDITS * _PROBE_WIDTH),
     thread_name_prefix="probe",
@@ -4833,6 +4835,45 @@ def _sends_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
     if _publishes_null_spf(raw_spf):
         return True
     return _publishes_null_mx(raw_mx) and not _has_sending_spf(raw_spf)
+
+
+def _probe_vendor_cname(name: str) -> Optional[str]:
+    """The CNAME target at name, or None for no CNAME or no answer."""
+    try:
+        answer = get_resolver(_SUBDOMAIN_TIMEOUT).resolve(name, "CNAME")
+        return str(answer[0].target).rstrip(".").lower()
+    except Exception:
+        return None
+
+
+def _probe_vendor_cnames(domain: str, budget: float) -> Dict[str, str]:
+    """{label: target} for the vendor return path, tracking and autodiscover
+    labels (vendor_patterns.VENDOR_CNAME_LABELS) that are CNAMEs.
+
+    One parallel wave on _probe_executor, never _shared_executor (the
+    fingerprinting that reads it runs there) or _dkim_executor. A random
+    label is asked too: a wildcard CNAME answers every name, so a label that
+    returns the wildcard's own target is not evidence of anything.
+    """
+    from vendor_patterns import VENDOR_CNAME_LABELS
+    futures = {_probe_executor.submit(_probe_vendor_cname, f"{label}.{domain}"): label
+               for label in VENDOR_CNAME_LABELS}
+    canary = _probe_executor.submit(_probe_vendor_cname, f"dnsaudit{secrets.token_hex(6)}.{domain}")
+    try:
+        for _ in as_completed([*futures, canary], timeout=budget):
+            pass
+    except FuturesTimeoutError:
+        log.warning("Vendor CNAME probe for %s hit its %.1fs budget", domain, budget)
+    wildcard = canary.result() if canary.done() else None
+    found = {}
+    for future, label in futures.items():
+        if not future.done():
+            future.cancel()
+            continue
+        target = future.result()
+        if target and target != wildcard:
+            found[label] = target
+    return found
 
 
 def _audit_subdomains(domain: str) -> Dict[str, Any]:
@@ -5900,6 +5941,15 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             "dkim_selectors": _live_dkim_selectors(raw_results.get("dkim")),
             "apex_txt": _raw_spf.get("apex_txt") or [],
         }
+        # Return path, tracking and autodiscover CNAMEs: the one signal here
+        # that needs its own queries. A short budget inside the audit's.
+        _cname_budget = 3.0
+        if deadline is not None:
+            _cname_budget = min(_cname_budget, max(deadline - time.monotonic(), 0.1))
+        try:
+            _fp_prefetch["label_cnames"] = _probe_vendor_cnames(domain, _cname_budget)
+        except Exception:
+            log.debug("Vendor CNAME probe failed", exc_info=True)
         # Every probe now reads from prefetch, so this makes no DNS query of
         # its own. The ceiling stays as a guard for any signal added later.
         try:

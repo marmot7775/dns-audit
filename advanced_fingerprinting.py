@@ -30,6 +30,7 @@ from vendor_patterns import (
     SPF_INCLUDE_VENDORS,
     dkim_cname_vendor,
     dkim_key_vendor,
+    label_cname_vendor,
     match_host,
     match_verification_txt,
     report_address_domains,
@@ -129,6 +130,7 @@ class AdvancedVendorFingerprinter:
         self._fingerprint_verification_txt()
         self._fingerprint_dmarc()
         self._fingerprint_tls_rpt()
+        self._fingerprint_label_cnames()
         # No TTL or subdomain signals: a TTL of 300 or 3600 names no vendor,
         # and an A record at bounce or email names none either. Both scored
         # under the panel's 0.5 cutoff on made up vendor names, so they cost
@@ -244,6 +246,26 @@ class AdvancedVendorFingerprinter:
             })
             if self.verbose:
                 print(f"  ✓ {vendor} (DKIM selector {selector})")
+
+    def _fingerprint_label_cnames(self):
+        """Vendors behind CNAMEs at fixed labels: a return path (bounce)
+        CNAME or a tracking CNAME is the vendor set up to send, as strong as
+        an MX host; an autodiscover CNAME is only an account trace. Never
+        queries: the audit probes the labels and passes the answers."""
+        kinds = {"return path": ("Return path CNAME", 0.90),
+                 "tracking": ("Tracking CNAME", 0.90),
+                 "autodiscover": ("Autodiscover CNAME", 0.75)}
+        for label, target in (self.prefetch.get('label_cnames') or {}).items():
+            vendor, kind = label_cname_vendor(label, target)
+            if not vendor:
+                continue
+            technique, confidence = kinds[kind]
+            self.signals.append({
+                'technique': technique,
+                'vendor': vendor,
+                'evidence': f'{label}.{self.domain} -> {target}',
+                'confidence': confidence,
+            })
 
     def _fingerprint_verification_txt(self):
         """Mail services named by a verification token at the apex. The token
