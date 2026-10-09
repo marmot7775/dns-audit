@@ -3113,7 +3113,10 @@ function _headlineHtml(es, roadmap) {
     const icon = paths
         ? `<span class="es-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">${paths}</svg></span>`
         : '';
-    const headline = es.headline || '';
+    // A result from before the headline existed shows its verdict, as the
+    // PDF does. An explicit null is a run that left DMARC out: no headline.
+    const headline = Object.prototype.hasOwnProperty.call(es, 'headline')
+        ? (es.headline || '') : (es.verdict || '');
     // The no-mail headline already ends "Nothing to fix.", and the audit
     // could not rank anything when a lookup failed: no subline for either.
     const unread = es.biggest_risk_severity === 'unknown'
