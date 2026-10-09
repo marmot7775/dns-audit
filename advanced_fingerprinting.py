@@ -25,13 +25,63 @@ from typing import Dict, Optional
 from collections import defaultdict
 
 from vendor_patterns import (
-    DKIM_CNAME_VENDORS,
     MX_VENDORS,
+    REPORTING_VENDORS,
     SPF_INCLUDE_VENDORS,
+    dkim_cname_vendor,
     dkim_key_vendor,
     match_host,
     match_verification_txt,
+    report_address_domains,
 )
+
+
+def _authorizes(record: str, target: str) -> bool:
+    """True when record names target with a bare or "+" include, or as its
+    redirect=. "-", "~" and "?" includes do not authorize."""
+    t = target.lower().rstrip(".")
+    for term in (record or "").split()[1:]:
+        low = term.lower()
+        if low.startswith("redirect=") and low[9:].rstrip(".") == t:
+            return True
+        if low.lstrip("+").startswith("include:") and not low.startswith(("-", "~", "?")):
+            if low.lstrip("+")[8:].rstrip(".") == t:
+                return True
+    return False
+
+
+def nested_spf_vendor_includes(chain) -> list:
+    """Vendors the resolved SPF tree authorizes below the top-level includes:
+    behind the domain's own wrapper includes (include:_spf.example.com), and
+    a top-level redirect=. chain is spf_recursive's preorder list, depth 0 the
+    domain. Nothing inside a vendor's own record is credited: an ESP whose
+    record includes Amazon SES is that ESP, not an SES account."""
+    out, stack = [], []
+    for entry in chain or []:
+        depth = entry.get("depth", 0)
+        while stack and stack[-1][0] >= depth:
+            stack.pop()
+        name = (entry.get("domain") or "").lower().rstrip(".")
+        vendor = match_host(name, SPF_INCLUDE_VENDORS)
+        if stack and depth >= 1:
+            parent = stack[-1][1]
+            wrappers_only = not any(v for _, _, v in stack[1:])
+            # A top-level include is already read from the record itself;
+            # depth 1 adds only the redirect= target.
+            top_redirect = depth == 1 and any(
+                t.lower().startswith("redirect=") and t[9:].lower().rstrip(".") == name
+                for t in (parent.get("record") or "").split())
+            # Every edge from the domain down must authorize the next name:
+            # spf_recursive drops qualifiers, so a ~include: wrapper still
+            # appears in the chain with its children.
+            path = [e for _, e, _ in stack] + [entry]
+            path_authorized = all(
+                _authorizes(a.get("record") or "", (b.get("domain") or ""))
+                for a, b in zip(path, path[1:]))
+            if vendor and wrappers_only and (depth >= 2 or top_redirect) and path_authorized:
+                out.append({"host": name, "parent": parent.get("domain"), "vendor": vendor})
+        stack.append((depth, entry, vendor))
+    return out
 
 class AdvancedVendorFingerprinter:
     """
@@ -127,6 +177,14 @@ class AdvancedVendorFingerprinter:
                 })
                 if self.verbose:
                     print(f"  ✓ {vendor} (from {inc})")
+
+        for inc in nested_spf_vendor_includes(self.prefetch.get('spf_chain')):
+            self.signals.append({
+                'technique': 'SPF Include',
+                'vendor': inc['vendor'],
+                'evidence': f"include:{inc['host']} (in {inc['parent']})",
+                'confidence': 0.95,
+            })
     
     def _fingerprint_mx(self):
         """MX record pattern analysis"""
@@ -172,8 +230,9 @@ class AdvancedVendorFingerprinter:
         for sel in self.prefetch.get('dkim_selectors') or []:
             selector = sel.get('selector') or ''
             target = sel.get('cname_target')
-            by_cname = match_host(target, DKIM_CNAME_VENDORS)
-            vendor = dkim_key_vendor(selector, target, sel.get('vendor'))
+            chain = sel.get('cname_chain')
+            by_cname = dkim_cname_vendor(target, chain)
+            vendor = dkim_key_vendor(selector, target, sel.get('vendor'), chain)
             if not vendor:
                 continue
             self.signals.append({
@@ -225,20 +284,16 @@ class AdvancedVendorFingerprinter:
                 print("  ✗ No DMARC record found")
             return
 
-        # Reporting destination
-        rua_match = re.search(r'rua=mailto:([^;,\s]+)', record)
-        if rua_match:
-            rua_email = rua_match.group(1)
-            vendor = self._match_reporting_vendor(rua_email)
+        # Every aggregate (rua) and failure (ruf) report address.
+        for host in report_address_domains(record, ("rua", "ruf")):
+            vendor = self._match_reporting_vendor(host)
             if vendor:
                 self.signals.append({
                     'technique': 'DMARC Reporting',
                     'vendor': vendor,
-                    'evidence': f'Reports to {rua_email}',
+                    'evidence': f'Reports to {host}',
                     'confidence': 0.85
                 })
-                if self.verbose:
-                    print(f"  ✓ {vendor} (DMARC reports)")
     
     def _fingerprint_tls_rpt(self):
         """TLS-RPT analysis"""
@@ -263,19 +318,15 @@ class AdvancedVendorFingerprinter:
                 print("  ✗ No TLS-RPT record")
             return
 
-        rua_match = re.search(r'rua=mailto:([^;,\s]+)', record)
-        if rua_match:
-            rua_email = rua_match.group(1)
-            vendor = self._match_reporting_vendor(rua_email)
+        for host in report_address_domains(record):
+            vendor = self._match_reporting_vendor(host)
             if vendor:
                 self.signals.append({
                     'technique': 'TLS-RPT',
                     'vendor': vendor,
-                    'evidence': f'TLS reports to {rua_email}',
+                    'evidence': f'TLS reports to {host}',
                     'confidence': 0.80
                 })
-                if self.verbose:
-                    print(f"  ✓ {vendor} (TLS-RPT)")
     
     @staticmethod
     def _matches_suffix(candidate: str, pattern: str) -> bool:
@@ -302,21 +353,9 @@ class AdvancedVendorFingerprinter:
         return match_host(mx_host, MX_VENDORS)
 
     def _match_reporting_vendor(self, email: str) -> Optional[str]:
-        """Map reporting destinations to vendors"""
+        """Map a report address, or its domain, to a reporting service."""
         domain = email.split('@')[-1] if '@' in email else email
-        
-        vendors = {
-            'dmarcian.com': 'DMARCian',
-            'agari.com': 'Agari',
-            'valimail.com': 'Valimail',
-            'proofpoint.com': 'Proofpoint',
-            'mimecast.com': 'Mimecast',
-        }
-        
-        for pattern, vendor in vendors.items():
-            if self._matches_suffix(domain, pattern):
-                return vendor
-        return None
+        return match_host(domain, REPORTING_VENDORS)
     
     def _aggregate_and_score(self) -> Dict:
         """Aggregate signals and calculate confidence scores"""

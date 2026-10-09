@@ -8,6 +8,7 @@ Based on real-world consulting experience with 100+ enterprise deployments.
 
 import re
 import time
+import dns.rdatatype
 import dns.resolver
 import dns.exception
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError, as_completed
@@ -323,6 +324,21 @@ def _classify_dangling(dangling: List[Dict], found: List[Dict]) -> List[Dict]:
     return out
 
 
+def _cname_chain(answers, qname: str) -> List[str]:
+    """The CNAME hops in an answer, in order from qname."""
+    cnames = {}
+    for rrset in getattr(getattr(answers, "response", None), "answer", None) or []:
+        if getattr(rrset, "rdtype", None) == dns.rdatatype.CNAME and len(rrset):
+            cnames[rrset.name.to_text().rstrip(".").lower()] = (
+                rrset[0].target.to_text().rstrip(".").lower())
+    chain, cur, seen = [], qname.rstrip(".").lower(), set()
+    while cur in cnames and cur not in seen:
+        seen.add(cur)
+        cur = cnames[cur]
+        chain.append(cur)
+    return chain
+
+
 def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selectors: int = 40,
                      mx_hosts: Optional[List[str]] = None,
                      progress_callback: Optional[Callable[[int], None]] = None,
@@ -485,6 +501,10 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
             # attributes selector1/selector2 to it; the name alone is not.
             _canon = str(getattr(answers, "canonical_name", "") or "").rstrip(".").lower()
             cname_target = _canon if _canon and _canon != fqdn.lower() else None
+            # Every hop, not only the last: a vendor's CNAME can point on out
+            # of its own zone (to a CDN or a key host), and the first hop is
+            # the one that names the vendor.
+            cname_chain = _cname_chain(answers, fqdn) or ([cname_target] if cname_target else [])
 
             # Every record at the name, one joined string each. Looking only
             # at answers[0] dropped the key whenever a domain verification
@@ -524,6 +544,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                 'key_bits': key_analysis['key_bits'],
                 'vendor': matched_vendor,
                 'cname_target': cname_target,
+                'cname_chain': cname_chain,
                 'discovery_priority': 'HIGH' if matched_vendor else 'LOW',
             }
         except dns.exception.Timeout:
