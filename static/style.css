@@ -1238,6 +1238,13 @@ main {
 }
 
 @media (max-width: 640px) {
+    /* A control on its own line, so it gets the 44px touch target */
+    .plan-card-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+    }
+
     .priority-head {
         grid-template-columns: 16px 1fr auto;
         row-gap: var(--space-xs);
