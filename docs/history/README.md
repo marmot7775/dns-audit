@@ -76,3 +76,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 94](doc-94.md): DKIM key records receivers cannot use
 - [Postmaster Tools article](article-postmaster-tools.md): New article, Gmail Postmaster Tools without the reputation ratings
 - [APRF check](aprf-check.md): APRF detection, informational only
+- [Vendor gap report](vendor-gap-report.md): vendor identification, app against the sender discovery script
