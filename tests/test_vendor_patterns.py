@@ -89,7 +89,7 @@ def test_format_vendors_names_sources_and_side():
         "vendor": "Mailchimp", "confidence": 0.75,
         "signals": [{"technique": "DKIM Key"}, {"technique": "SPF Include"}],
     }])
-    assert out == [{"name": "Mailchimp", "confidence": 75,
+    assert out == [{"name": "Mailchimp", "tier": "Configured", "confidence": 75,
                     "detected_via": "outbound", "sources": ["SPF", "DKIM"],
                     "role": "sender"}]
 
