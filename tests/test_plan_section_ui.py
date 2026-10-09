@@ -270,3 +270,21 @@ def test_the_fixture_still_carries_a_subdomain_audit(fixture_result):
 
     assert sa.get("total_probed") == 20
     assert json.dumps(sa)  # serialisable, which is how the page receives it
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_the_open_card_link_is_a_44px_target_on_a_phone(browser, fixture_result, theme):
+    ctx, page, errors = _page(browser, theme, 390)
+    try:
+        _render(page, fixture_result)
+        heights = page.evaluate("""() => {
+            document.querySelectorAll('.priority-head').forEach(h => h.click());
+            return [...document.querySelectorAll('.plan-card-link')]
+                .filter(l => l.getBoundingClientRect().width)
+                .map(l => l.getBoundingClientRect().height);
+        }""")
+        assert heights, "no plan card link rendered"
+        assert min(heights) >= 44, heights
+        assert errors == []
+    finally:
+        ctx.close()
