@@ -7,22 +7,22 @@
     <meta name="description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record.">
     <meta name="keywords" content="RFC 9989, DMARCbis, DMARC, email authentication, RFC 7489, RFC 9990, RFC 9991, DNS tree walk, np tag, psd tag, t tag, public suffix list, deliverability">
     <meta name="author" content="Neil Anuskiewicz">
-    <meta property="og:type" content="article" />
-    <meta property="article:published_time" content="2026-05-20" />
-    <meta property="article:modified_time" content="2026-10-01" />
-    <meta property="article:author" content="https://dns-audit.com/about#neil" />
-    <meta property="og:site_name" content="dns-audit.com" />
-    <meta property="og:url" content="https://dns-audit.com/articles/dmarcbis" />
-    <meta property="og:title" content="What RFC 9989 changes for your DMARC record | dns-audit.com" />
-    <meta property="og:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record." />
-    <meta property="og:image" content="https://dns-audit.com/static/og-card.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:type" content="article">
+    <meta property="article:published_time" content="2026-05-20">
+    <meta property="article:modified_time" content="2026-10-01">
+    <meta property="article:author" content="https://dns-audit.com/about#neil">
+    <meta property="og:site_name" content="dns-audit.com">
+    <meta property="og:url" content="https://dns-audit.com/articles/dmarcbis">
+    <meta property="og:title" content="What RFC 9989 changes for your DMARC record | dns-audit.com">
+    <meta property="og:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record.">
+    <meta property="og:image" content="https://dns-audit.com/static/og-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="https://dns-audit.com/static/og-card.png">
-    <meta name="twitter:title" content="What RFC 9989 changes for your DMARC record | dns-audit.com" />
-    <meta name="twitter:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record." />
+    <meta name="twitter:title" content="What RFC 9989 changes for your DMARC record | dns-audit.com">
+    <meta name="twitter:description" content="DMARC is now RFC 9989. What the tree walk replaces, why the Public Suffix List is out, and the small edits worth making to your record.">
     <link rel="canonical" href="https://dns-audit.com/articles/dmarcbis">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -102,10 +102,10 @@
                 <p>In May 2026 the rules for DMARC, the record that tells receivers what to do with mail pretending to be from you, became an official internet standard, RFC 9989. Receivers will slowly change how they find your main domain, asking DNS directly instead of reading a shared list. For most domains nothing breaks and there is no deadline. Your record may need small edits: remove three retired settings (<code>pct</code>, <code>rf</code>, <code>ri</code>), drop any size limit on a report address, and confirm your report service accepts your reports.</p>
             </aside>
             <p class="dbis-lede">DMARC is a DNS record telling receivers what to do with mail that fails authentication, and where to send reports. For most of its life, it has depended on a text file. Before a receiver can check your policy it has to work out your organizational domain, the main domain a policy belongs to, such as <code>example.co.uk</code> for <code>mail.example.co.uk</code>. For that it consulted the Public Suffix List, a catalogue of every registry-controlled suffix on the internet, maintained by volunteers. RFC 9989 replaces that list with a DNS tree walk: asking DNS for <code>_dmarc</code> records one level up at a time. This article covers what changed, why, and the handful of edits your own record needs.</p>
-            <section class="dbis-section">
+            <div class="dbis-section">
                 <p>DMARC policy lives at the organizational domain, and alignment is judged against it. So before a receiver can do anything with a message from <code>mail.example.co.uk</code>, it has to decide whether the organizational domain is <code>example.co.uk</code> or <code>co.uk</code>. RFC 7489 answered that with the Public Suffix List: find the longest public suffix, add one label, and that is your organizational domain. The list began as a Mozilla project in 2007 for scoping browser cookies, and DMARC borrowed it because nothing better existed.</p>
                 <p>It worked, and it worked because volunteers kept it current through every new TLD and every private suffix for more than a decade. But it was a dependency the protocol did not own: an external file that every receiver had to download, cache, and refresh, with no standard saying how often. Two receivers holding copies of different ages could reach different organizational domains for the same message, and neither would know.</p>
-            </section>
+            </div>
             <section class="dbis-section">
                 <h2>DMARC was never a standard until now</h2>
                 <p>RFC 7489, the document everyone deployed, was Informational. It was published in 2015 on the Independent Submission stream, so it never went through IETF working group consensus, and vendors had room to interpret it, which some of them used. Operators deployed it anyway. They compared notes in forums and in groups like the Messaging, Malware and Mobile Anti-Abuse Working Group, built tooling, and worked out from aggregate reports what each alignment failure meant. An aggregate report, requested with the <code>rua</code> tag, is a daily summary from receivers of who sent mail as you and whether it passed. By the time Gmail and Yahoo required DMARC from bulk senders in 2024, the practice was mature; the mandate made it compulsory.</p>

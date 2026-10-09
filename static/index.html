@@ -7,20 +7,20 @@
     <meta name="description" content="DNS and email security audit. Twelve checks covering DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency, with findings and copy-paste fixes.">
     <meta name="keywords" content="DNS audit, DMARC check, SPF validator, DKIM checker, email security, MTA-STS, BIMI, DNSSEC, domain security">
     <meta name="author" content="Neil Anuskiewicz">
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="dns-audit.com" />
-    <meta property="og:url" content="https://dns-audit.com/" />
-    <meta property="og:title" content="Free DNS and email security audit | dns-audit.com" />
-    <meta property="og:description" content="DNS and email security audit. Twelve checks covering DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency, with findings and copy-paste fixes." />
-    <meta property="og:image" content="https://dns-audit.com/static/og-card.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit" />
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="dns-audit.com">
+    <meta property="og:url" content="https://dns-audit.com/">
+    <meta property="og:title" content="Free DNS and email security audit | dns-audit.com">
+    <meta property="og:description" content="DNS and email security audit. Twelve checks covering DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency, with findings and copy-paste fixes.">
+    <meta property="og:image" content="https://dns-audit.com/static/og-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="https://dns-audit.com/static/og-card.png">
     <meta name="twitter:title" content="Free DNS and email security audit | dns-audit.com">
     <meta name="twitter:description" content="DNS and email security audit. Twelve checks covering DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency, with findings and copy-paste fixes.">
-    <link rel="canonical" href="https://dns-audit.com/" />
+    <link rel="canonical" href="https://dns-audit.com/">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -192,7 +192,7 @@
                             <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
                             </svg>
-                            <span class="domain-input-wrap"><input type="text" id="domain-input" class="domain-input" placeholder="example.com" autocomplete="off" autocapitalize="none" autocorrect="off" inputmode="url" spellcheck="false" required autofocus aria-label="Domain or subdomain to audit" /></span>
+                            <span class="domain-input-wrap"><input type="text" id="domain-input" class="domain-input" placeholder="example.com" autocomplete="off" autocapitalize="none" autocorrect="off" inputmode="url" spellcheck="false" required autofocus aria-label="Domain or subdomain to audit"></span>
                             <button type="submit" id="audit-btn" class="audit-btn">
                                 <span class="btn-text">Run Audit</span>
                                 <span class="btn-loading">
@@ -205,26 +205,26 @@
                     <div class="selector-toggle-row">
                         <button type="button" class="selector-toggle" id="selector-toggle" aria-expanded="false" aria-controls="selector-field">Test a specific DKIM selector</button>
                         <div class="selector-field" id="selector-field">
-                            <input type="text" id="selector-input" class="domain-input selector-input" placeholder="e.g. google, s1, selector1" autocomplete="off" spellcheck="false" title="The s= value from a DKIM-Signature email header" aria-label="DKIM selector" />
+                            <input type="text" id="selector-input" class="domain-input selector-input" placeholder="e.g. google, s1, selector1" autocomplete="off" spellcheck="false" title="The s= value from a DKIM-Signature email header" aria-label="DKIM selector">
                         </div>
                     </div>
                 </form>
             </div>
         </section>
 
-        <section id="loading-section" class="loading-section">
+        <div id="loading-section" class="loading-section">
             <div class="loading-card">
                 <div class="loading-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Audit progress">
                     <div class="loading-bar-fill" id="loading-bar"></div>
                 </div>
                 <div class="loading-status" id="loading-status" aria-live="polite">Resolving DNS records...</div>
             </div>
-        </section>
+        </div>
 
         <section id="results-section" class="results-section">
             <div class="domain-banner" id="domain-banner">
                 <div class="domain-banner-left">
-                    <h1 class="domain-name" id="result-domain"></h1>
+                    <h1 class="domain-name" id="result-domain">Audit results</h1>
                     <div class="audit-timestamp" id="result-timestamp"></div>
                 </div>
                 <div class="banner-actions">

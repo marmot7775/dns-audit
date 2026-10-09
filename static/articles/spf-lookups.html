@@ -7,22 +7,22 @@
     <meta name="description" content="The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough.">
     <meta name="keywords" content="SPF, SPF permerror, SPF lookup limit, RFC 7208, void lookups, SPF flattening, hosted SPF, SPF macros, DMARC, DKIM, email authentication">
     <meta name="author" content="Neil Anuskiewicz">
-    <meta property="og:type" content="article" />
-    <meta property="article:published_time" content="2026-09-29" />
-    <meta property="article:modified_time" content="2026-10-01" />
-    <meta property="article:author" content="https://dns-audit.com/about#neil" />
-    <meta property="og:site_name" content="dns-audit.com" />
-    <meta property="og:url" content="https://dns-audit.com/articles/spf-lookups" />
-    <meta property="og:title" content="SPF permerror from too many lookups: how to get back under 10" />
-    <meta property="og:description" content="The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough." />
-    <meta property="og:image" content="https://dns-audit.com/static/og-card.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:type" content="article">
+    <meta property="article:published_time" content="2026-09-29">
+    <meta property="article:modified_time" content="2026-10-01">
+    <meta property="article:author" content="https://dns-audit.com/about#neil">
+    <meta property="og:site_name" content="dns-audit.com">
+    <meta property="og:url" content="https://dns-audit.com/articles/spf-lookups">
+    <meta property="og:title" content="SPF permerror from too many lookups: how to get back under 10">
+    <meta property="og:description" content="The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough.">
+    <meta property="og:image" content="https://dns-audit.com/static/og-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="https://dns-audit.com/static/og-card.png">
-    <meta name="twitter:title" content="SPF permerror from too many lookups: how to get back under 10" />
-    <meta name="twitter:description" content="The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough." />
+    <meta name="twitter:title" content="SPF permerror from too many lookups: how to get back under 10">
+    <meta name="twitter:description" content="The limit is 10 lookups, the order of your record decides which sender breaks, and flattening trades a problem you can see for one you can't. How to count, what to cut, and what to do when cleanup isn't enough.">
     <link rel="canonical" href="https://dns-audit.com/articles/spf-lookups">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -102,13 +102,13 @@
                 <p>Your SPF record lists the services allowed to send mail as you, and receivers stop reading it after 10 lookups. Past that point some of your mail fails SPF, and which mail depends on the order of the record. Mail with a DKIM signature for your own domain can still pass DMARC, so the damage is often smaller than it looks, but it is real. The fix is usually cleanup: remove unused services, drop old <code>a</code>, <code>mx</code> and <code>ptr</code> entries, and move bulk senders to a subdomain.</p>
             </aside>
             <p class="dbis-lede">SPF gives a receiver 10 lookups per check, where a lookup is a term that sends the receiver to DNS, counted once however many queries it takes. Go past that and some of your legitimate mail stops passing SPF. Which mail depends on the order of your record, so the failure is easy to miss and easy to misread.</p>
-            <section class="dbis-section">
+            <div class="dbis-section">
                 <p>RFC 7208 sets the limit and says what counts. Every <code>include</code>, <code>a</code>, <code>mx</code>, <code>ptr</code>, and <code>exists</code> mechanism costs one lookup, and so does a <code>redirect</code>. <code>ip4</code>, <code>ip6</code>, and <code>all</code> cost nothing. An <code>include</code> pulls in another domain's SPF list, so it costs at least one lookup. Includes nest, and the nested ones don't show up when you read your own record. As of September 2026, <code>include:sendgrid.net</code> costs two, because SendGrid's record pulls in one more include. <code>_spf.google.com</code> costs one. For years it pulled in three more, so the old advice that Google costs four is out of date. Mailgun costs five.</p>
-            </section>
+            </div>
             <section class="dbis-section">
                 <h2>Order decides who breaks</h2>
                 <p>A receiver reads your record left to right and stops at the first mechanism that matches the sending server. It counts lookups as it goes, so it only counts the ones it spent getting to the match. A sender listed early passes. Senders listed late reach the 11th lookup and get permerror. That is SPF's result for a record it cannot finish, and it counts as a fail. Take this record, which a lot of domains would recognize:</p>
-                <pre><code>v=spf1 a mx ptr include:_spf.google.com include:sendgrid.net
+                <pre tabindex="0"><code>v=spf1 a mx ptr include:_spf.google.com include:sendgrid.net
 include:mailgun.org include:mail.zendesk.com ~all</code></pre>
                 <p>Count it. <code>a</code>, <code>mx</code>, and <code>ptr</code> are three. Google is one, four so far. SendGrid is two, six. Mailgun is five, eleven. Zendesk is one, twelve. Mail from Google Workspace passes on the fourth lookup and most SendGrid mail passes on the fifth. Mail from Mailgun's US servers passes on the ninth and tenth. Mail from its EU servers trips the limit inside Mailgun's own tree and gets permerror, and Zendesk never gets checked at all. Nobody at the company sees a problem in their own inbox, because Google is the sender that passes.</p>
                 <p>The number to fix is still the worst case, every counted term in the tree, because you don't choose which sender a receiver checks last. Order is damage control while you fix it. It isn't the fix.</p>
@@ -148,7 +148,7 @@ include:mailgun.org include:mail.zendesk.com ~all</code></pre>
                 <h2>Move bulk senders to a subdomain</h2>
                 <p>If your marketing platform supports a custom return path, point it at <code>news.example.com</code> instead of <code>example.com</code>. SPF then checks the subdomain's record, with its own budget of 10, and it still aligns for DMARC under relaxed alignment, the default, because both names share an organizational domain. Some vendors have you point the subdomain at their record with a CNAME, so they maintain it. Others, Mailgun among them, have you publish a TXT record there yourself, which spends its own 10.</p>
                 <p>For a lot of domains, that's the whole fix. The record from earlier looks like this after cleanup, with Mailgun on a custom return path and the three template terms gone. The <code>ip4</code> is an invoicing server that sends directly.</p>
-                <pre><code>v=spf1 ip4:203.0.113.25 include:_spf.google.com
+                <pre tabindex="0"><code>v=spf1 ip4:203.0.113.25 include:_spf.google.com
 include:sendgrid.net include:mail.zendesk.com ~all</code></pre>
                 <p>Four lookups, and room for the next service someone signs up for.</p>
             </section>

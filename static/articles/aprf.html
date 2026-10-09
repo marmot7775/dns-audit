@@ -7,22 +7,22 @@
     <meta name="description" content="APRF is a proposed daily report on where your signed mail landed. What the reports show, why the numbers are rough, and whether to publish the record.">
     <meta name="keywords" content="APRF, Aggregate Performance Reporting, inbox placement, email deliverability reporting, DKIM, IETF MAILMAINT, Comcast, _aprf._domainkey">
     <meta name="author" content="Neil Anuskiewicz">
-    <meta property="og:type" content="article" />
-    <meta property="article:published_time" content="2026-10-09" />
-    <meta property="article:modified_time" content="2026-10-09" />
-    <meta property="article:author" content="https://dns-audit.com/about#neil" />
-    <meta property="og:site_name" content="dns-audit.com" />
-    <meta property="og:url" content="https://dns-audit.com/articles/aprf" />
-    <meta property="og:title" content="What APRF inbox placement reports tell you, and what they don't" />
-    <meta property="og:description" content="APRF is a proposed daily report on where your signed mail landed. What the reports show, why the numbers are rough, and whether to publish the record." />
-    <meta property="og:image" content="https://dns-audit.com/static/og-card.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:type" content="article">
+    <meta property="article:published_time" content="2026-10-09">
+    <meta property="article:modified_time" content="2026-10-09">
+    <meta property="article:author" content="https://dns-audit.com/about#neil">
+    <meta property="og:site_name" content="dns-audit.com">
+    <meta property="og:url" content="https://dns-audit.com/articles/aprf">
+    <meta property="og:title" content="What APRF inbox placement reports tell you, and what they don't">
+    <meta property="og:description" content="APRF is a proposed daily report on where your signed mail landed. What the reports show, why the numbers are rough, and whether to publish the record.">
+    <meta property="og:image" content="https://dns-audit.com/static/og-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="dns-audit.com: free DNS and email security audit">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="https://dns-audit.com/static/og-card.png">
-    <meta name="twitter:title" content="What APRF inbox placement reports tell you, and what they don't" />
-    <meta name="twitter:description" content="APRF is a proposed daily report on where your signed mail landed. What the reports show, why the numbers are rough, and whether to publish the record." />
+    <meta name="twitter:title" content="What APRF inbox placement reports tell you, and what they don't">
+    <meta name="twitter:description" content="APRF is a proposed daily report on where your signed mail landed. What the reports show, why the numbers are rough, and whether to publish the record.">
     <link rel="canonical" href="https://dns-audit.com/articles/aprf">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -131,12 +131,12 @@
             <section class="dbis-section">
                 <h2>Technical details</h2>
                 <p>The record is a DNS TXT record at</p>
-                <pre><code>&lt;selector&gt;._aprf._domainkey.&lt;signing domain&gt;</code></pre>
+                <pre tabindex="0"><code>&lt;selector&gt;._aprf._domainkey.&lt;signing domain&gt;</code></pre>
                 <p>where the selector and signing domain are the <code>s=</code> and <code>d=</code> values in your DKIM signature. A minimal record reads</p>
-                <pre><code>v=APRFv1; rua=mailto:<!--email_off-->aprf@example.org<!--/email_off--></code></pre>
+                <pre tabindex="0"><code>v=APRFv1; rua=mailto:<!--email_off-->aprf@example.org<!--/email_off--></code></pre>
                 <p>The <code>v</code> tag must be exactly <code>APRFv1</code> and <code>rua</code> must be present, or the provider ignores the record. <code>rua</code> takes one or more <code>mailto:</code> addresses separated by commas. A record at <code>_aprf._domainkey.&lt;signing domain&gt;</code>, or a DNS wildcard at <code>*._aprf._domainkey.&lt;signing domain&gt;</code>, covers every selector. A record for a specific selector takes precedence over either.</p>
                 <p>If the <code>rua</code> address isn't on the signing domain, the draft says the provider should confirm that the destination domain wants the reports, as DMARC does for outside report addresses. The destination publishes a TXT record at</p>
-                <pre><code>&lt;selector&gt;.&lt;signing domain&gt;._aprf.&lt;destination domain&gt;</code></pre>
+                <pre tabindex="0"><code>&lt;selector&gt;.&lt;signing domain&gt;._aprf.&lt;destination domain&gt;</code></pre>
                 <p>with the value <code>v=APRFv1</code>. A wildcard in the selector position accepts reports for every selector on that signing domain. Without the record, a provider that follows the draft won't send.</p>
                 <p>The optional <code>sdi</code> tag names a header you sign with DKIM, plus a one character separator, for example <code>sdi=Signer-Info,^</code>. That header can carry up to four values from broad to narrow, such as brand, stream, and campaign, and a provider may split the report by them. Those values appear in the reports, so choose names you don't mind a report recipient seeing. Comcast's beta doesn't use <code>sdi</code> yet.</p>
                 <p>Reports are JSON, each covering one UTC day for one signing domain and selector, though the draft lets a provider roll all selectors into one report. They arrive as an email attachment named <code>&lt;yyyymmdd&gt;_&lt;domain&gt;_&lt;selector&gt;_&lt;source&gt;.json</code>, sometimes gzipped.</p>
