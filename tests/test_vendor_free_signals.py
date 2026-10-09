@@ -156,3 +156,7 @@ def test_a_softfail_wrapper_does_not_authorize_what_it_includes():
 def test_mailto_header_fields_are_not_the_recipient():
     rec = "v=DMARC1; p=none; rua=mailto:r@free.test?subject=x@dmarcian.com"
     assert report_address_domains(rec) == ["free.test"]
+
+
+def test_a_malformed_recipient_names_nobody():
+    assert report_address_domains("v=DMARC1; rua=mailto:bad@@dmarcian.com,mailto:@x.com") == []
