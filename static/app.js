@@ -1008,7 +1008,10 @@ function renderResults(data) {
             // names who receives its mail (inbound). Naming the vendor
             // alone reads as "handles your mail" when it may be one side.
             const via = (v.sources && v.sources.length) ? v.sources.join(', ') : '';
-            const detail = v.detected_via
+            // Found only as a report address: say what it is, not "detected".
+            const detail = v.role === 'reporting'
+                ? `Receives your ${escapeHtml(via || 'reports')}. A reporting service, not a sender.`
+                : v.detected_via
                 ? `Detected via ${escapeHtml(via || 'SPF/MX')} (${escapeHtml(v.detected_via)})`
                 : via ? `Detected via ${escapeHtml(via)}` : 'Detected via DNS records';
             card.innerHTML = `
