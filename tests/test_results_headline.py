@@ -111,6 +111,19 @@ def test_headline_strings_follow_the_copy_rules():
         assert "!" not in s and " - " not in s and "—" not in s and "–" not in s
 
 
+def test_an_older_result_without_a_headline_shows_its_verdict(browser):  # noqa: F811
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        html = page.evaluate("es => _headlineHtml(es, {items: []})",
+                             {"verdict": "Older verdict sentence."})
+        assert "Older verdict sentence." in html
+        html = page.evaluate("es => _headlineHtml(es, {items: []})",
+                             {"verdict": "Out of scope sentence.", "headline": None})
+        assert "Out of scope sentence." not in html
+    finally:
+        ctx.close()
+
+
 # ---------------------------------------------------------------
 # Part 2: the subline, from the same counts as What to do
 # ---------------------------------------------------------------
