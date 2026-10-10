@@ -898,12 +898,14 @@ def _roadmap_page(data, S, number=2):
         els.extend(_plan_item(data, item, S))
     # Optional extras last, under their own heading, as on the web.
     if extras:
-        # In the first item's KeepTogether: keepWithNext does not reach into
-        # a container, so the heading alone could end a page.
+        # Joined to the first item's flowables in one KeepTogether:
+        # keepWithNext does not reach into a container, so the heading alone
+        # could end a page, and a KeepTogether nested in another measures as
+        # taller than it is and can break a page early.
         head = Paragraph(f"Optional extras ({len(extras)})", S["subheading"])
         for i, item in enumerate(extras):
             block = _plan_item(data, item, S, optional=True)
-            els.extend([KeepTogether([head, *block])] if i == 0 else block)
+            els.extend([KeepTogether([head, *_unwrap_keep(block)])] if i == 0 else block)
 
     # No else branch: roadmap["summary"], printed above, already covers an
     # empty items list for every case (a real all-clear, a scoped run that
@@ -1370,6 +1372,14 @@ def _protocol_details(data, S, number=3, appendix=None):
 
 
 
+def _unwrap_keep(flowables):
+    """The flowables inside any KeepTogether, so a group is never nested."""
+    out = []
+    for f in flowables:
+        out.extend(f._content if isinstance(f, KeepTogether) else [f])
+    return out
+
+
 # The text frame: letter width less the 0.75in margins and the frame's own
 # 6pt padding on each side.
 _FRAME_WIDTH = 8.5*inch - 2*0.75*inch - 12
@@ -1795,7 +1805,7 @@ def _deep_analysis_page(data, S, number="C"):
             els.append(Spacer(1, SP_MD))
             # With the first explanation, for the same reason as Optional extras.
             explanations[0] = KeepTogether([Paragraph("What each check means", S["heading2"]),
-                                            explanations[0]])
+                                            *_unwrap_keep([explanations[0]])])
         els.extend(explanations)
     return els
 
