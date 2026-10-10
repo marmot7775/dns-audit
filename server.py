@@ -837,7 +837,7 @@ async def audit_domain(
     # key, and look up " google._domainkey.example.com".
     selector = selector.strip() if selector else None
     if selector and not SELECTOR_PATTERN.match(selector):
-        raise HTTPException(status_code=400, detail="Invalid DKIM selector (RFC 6376: alphanumeric and hyphens only)")
+        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
     request_id = str(uuid.uuid4())
     log.info("Audit requested: %s (scope=%s, rid=%s)", domain, scope or "complete", request_id)
 
@@ -1011,7 +1011,7 @@ async def audit_stream(
     # key, and look up " google._domainkey.example.com".
     selector = selector.strip() if selector else None
     if selector and not SELECTOR_PATTERN.match(selector):
-        raise HTTPException(status_code=400, detail="Invalid DKIM selector (RFC 6376: alphanumeric and hyphens only)")
+        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
     request_id = str(uuid.uuid4())
     log.info("SSE audit requested: %s (scope=%s, rid=%s)", domain, scope or "complete", request_id)
 
@@ -1280,7 +1280,7 @@ async def audit_pdf(
     # key, and look up " google._domainkey.example.com".
     selector = selector.strip() if selector else None
     if selector and not SELECTOR_PATTERN.match(selector):
-        raise HTTPException(status_code=400, detail="Invalid DKIM selector (RFC 6376: alphanumeric and hyphens only)")
+        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
     log.info("PDF requested: %s (scope=%s)", domain, scope or "complete")
 
     cache_key = f"{domain}:{selector or ''}:{scope or 'complete'}"
