@@ -56,3 +56,25 @@ def test_footer_note_follows_its_column(browser, width, align):  # noqa: F811
             "getComputedStyle(document.querySelector('.footer-attribution')).textAlign") == align
     finally:
         ctx.close()
+
+
+@pytest.mark.parametrize("width", [1280, 700, 390])
+def test_domain_input_spans_the_card_and_the_selector_link_lines_up(browser, width):  # noqa: F811
+    """Capped at 600px, the input stopped short of the title and scope
+    buttons above it and left a blank band down the right of the card; the
+    selector link was centred under it."""
+    ctx, page, _ = _page(browser, "dark", width)
+    try:
+        card_l, card_r, input_l, input_r, text_l, sub_l = page.evaluate("""() => {
+            const c = document.querySelector('.audit-input-card').getBoundingClientRect();
+            const i = document.querySelector('.input-wrapper').getBoundingClientRect();
+            const r = document.createRange();
+            r.selectNodeContents(document.getElementById('selector-toggle'));
+            const s = document.querySelector('.audit-subtitle').getBoundingClientRect();
+            return [c.left, c.right, i.left, i.right, r.getBoundingClientRect().left, s.left];
+        }""")
+        assert abs((input_l - card_l) - (card_r - input_r)) <= 1
+        assert abs(input_l - sub_l) <= 1
+        assert abs(text_l - input_l) <= 1
+    finally:
+        ctx.close()
