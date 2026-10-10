@@ -6914,19 +6914,6 @@ h3.services-sub,
     color: var(--text-primary);
 }
 
-/* Sticky run-another when scrolled past (Prompt 9) */
-#run-another-btn.sticky {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--bg-raised);
-    border-top: 1px solid var(--border);
-    padding: 0.75rem 1rem;
-    z-index: 100;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
-}
-
 /* ==========================================================================
    Additional Responsive (Prompt 7)
    ========================================================================== */

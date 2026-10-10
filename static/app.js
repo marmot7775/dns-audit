@@ -4535,11 +4535,3 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
-
-// Sticky run-another on scroll (Prompt 9)
-window.addEventListener('scroll', () => {
-    const runAnother = document.getElementById('run-another-btn');
-    if (!runAnother) return;
-    const rect = runAnother.getBoundingClientRect();
-    runAnother.classList.toggle('sticky', rect.bottom > window.innerHeight);
-}, { passive: true });
