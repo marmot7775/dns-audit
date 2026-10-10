@@ -21,6 +21,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - The DANE card on a Microsoft 365 legacy MX says "Exchange Online can
   publish it for you" instead of repeating its pill in a sentence the
   results row cut off.
+- A domain that does not exist shows "Domain not found" in the body text
+  colour with the cursor back in the domain field, instead of a red "Audit
+  Failed" with a Try Again button that reran the same name.
 - The home page's domain input spans the card like the title and scope
   buttons above it (it stopped at 600px), and the DKIM selector link sits
   under its left edge.
