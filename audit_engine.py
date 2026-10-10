@@ -4400,7 +4400,8 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
 
 
 # ============================================================
-# APRF (draft-brotman-aggregate-performance-reporting-01)
+# APRF (draft-brotman-aggregate-performance-reporting-01; draft-ietf-mailmaint-aprf-00,
+# 2026-10-09, replaces it with no rule changes)
 # ============================================================
 #
 # Informational only. The card goes in the response's draft_standards list,
