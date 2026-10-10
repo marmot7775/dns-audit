@@ -63,12 +63,6 @@ _cors_raw = os.getenv("CORS_ORIGINS", "https://dns-audit.com,https://www.dns-aud
 CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 # ============================================================
-# API
-# ============================================================
-
-API_BASE_URL = os.getenv("API_BASE_URL", "/api")
-
-# ============================================================
 # Validation patterns
 # ============================================================
 

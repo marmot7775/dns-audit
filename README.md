@@ -1,12 +1,37 @@
 # dns-audit.com
 
+[![Tests](https://github.com/marmot7775/dns-audit/actions/workflows/tests.yml/badge.svg)](https://github.com/marmot7775/dns-audit/actions/workflows/tests.yml)
+[![Lint](https://github.com/marmot7775/dns-audit/actions/workflows/lint.yml/badge.svg)](https://github.com/marmot7775/dns-audit/actions/workflows/lint.yml)
+
 **DNS and email security audit, with DMARC checked against RFC 9989**
 
 dns-audit.com audits a domain's DNS and email security: enter a domain and get plain-language findings and copy-paste DNS records that fix them. DMARC is checked against RFC 9989, the current standard, and against the RFC 7489 behavior most receivers still implement; [the RFC 9989 article](https://dns-audit.com/articles/dmarcbis) explains what changed. Live at [dns-audit.com](https://dns-audit.com).
 
-![Home page](docs/screenshots/home-light.jpg)
+## A real result
+
+dns-audit.com audited on 9 October 2026, in 2.3 seconds. The headline reads "Your domain is protected against spoofing." Spoofing protection: Full. RFC 9989 readiness: Ready. Protocol coverage: 7 of 9. Four of its twelve cards, each with the record it judged:
+
+| Check | Status | Evidence |
+|-------|--------|----------|
+| DMARC | Pass | `v=DMARC1; p=reject; rua=mailto:hgx4xes7dg@rua.powerdmarc.com,mailto:dmarc_agg@vali.email; ruf=mailto:hgx4xes7dg@ruf.powerdmarc.com;` p=reject, and both report destinations are authorized. |
+| SPF | Pass | `v=spf1 include:spf.protection.outlook.com ~all` 1 DNS lookup of the 10 allowed. |
+| MTA-STS | Could be stronger | `v=STSv1; id=20260923T184700;` with a policy in testing mode: senders attempt TLS but will not refuse delivery if it fails. |
+| Certificate Transparency | Not checked | crt.sh did not answer in time. The card says so, and calls it a gap in the audit, not a finding about the domain. |
+
+The last row is the rule the tool is built on: a lookup that did not complete is reported as not checked, never as a pass or a fail. [ARCHITECTURE.md](ARCHITECTURE.md) lists the others.
 
 ![Results page](docs/screenshots/results-light.jpg)
+
+## Running an audit
+
+Enter a domain at [dns-audit.com](https://dns-audit.com), or call `GET /api/audit?domain=example.com` for the same result as JSON. Optional parameters: `selector` names your DKIM selector, and `scope` limits the run to email, DMARC, transport, DNS infrastructure or the security scan. Every card shows what it read, its status, what that means, and a copy-paste fix where one applies. The [PDF report](#api) carries the same result.
+
+## What it does not do
+
+- No blocklist lookups.
+- No mail sending and no SMTP connections. Outbound traffic is DNS plus HTTPS fetches of MTA-STS policies, BIMI logos, and crt.sh, and error reports to Sentry when SENTRY_DSN is set.
+- No accounts.
+- No stored audit history beyond the 90-day DNS snapshot table. Results are cached in memory for five minutes; the request log keeps each audit's domain and scope, not results. What gets logged: [the privacy page](https://dns-audit.com/privacy).
 
 ## 12 Security Checks
 
@@ -72,44 +97,7 @@ DNS cannot list DKIM selectors, so name yours for the best result; an undetected
 
 Single-page app on FastAPI, dnspython and reportlab, with vanilla JavaScript. No accounts, no tracking. The only database is a SQLite table of DNS records seen in past audits, used for change detection and pruned after 90 days.
 
-```
-server.py                  FastAPI app, SSE, rate limiting, caching
-config.py                  Settings from the environment
-audit_engine.py            Check orchestration and timeouts
-result_transformer.py      Raw results to cards, metrics, roadmap
-pdf_report.py              PDF report
-dns_tools.py               Domain normalization, resolvers
-dns_snapshots.py           DNS record history for change detection
-dmarc_tree_walk.py         RFC 9989 tree walk
-spf_recursive.py           SPF lookup counter
-spf_execution_engine.py    SPF trace, DMARC evaluation summary
-spf_intelligence.py        DKIM selector discovery from SPF vendors
-checks_extra.py            MTA-STS, TLS-RPT, BIMI
-mx_check.py                MX analysis
-dkim_formatter.py          DKIM key analysis
-comprehensive_selectors.py Known DKIM selectors
-advanced_fingerprinting.py Vendor fingerprinting
-vendor_patterns.py         Vendor table: SPF, MX, DKIM CNAME, selector names
-anomaly_detector.py        Cross-check anomalies
-ua_classify.py             Browser and bot labels for the audit log
-
-static/
-  index.html               App shell
-  app.js                   Result rendering
-  style.css                Styles and design tokens
-  theme.js                 Theme toggle
-  articles.js              Articles filter
-  articles/                Articles
-
-tools/                     Operator scripts
-  live_check.py            Card statuses from a deployed site
-  rewrite_audit_log_ua.py  Old audit log entries to the log policy
-
-deploy/
-  dns-auditor.service      systemd unit template
-```
-
-Review history: [docs/history](docs/history/README.md).
+The pipeline from request to report, which module owns what, and the rules the code keeps: [ARCHITECTURE.md](ARCHITECTURE.md). Why it is built this way: [docs/decisions](docs/decisions/). Review history: [docs/history](docs/history/README.md).
 
 ## API
 
@@ -124,7 +112,7 @@ Optional parameters: `selector`, `scope`. Rate limited to 10 requests per IP per
 
 ## Self-Hosting
 
-Python 3.10 or newer: seven pinned dependencies require it. CI runs tests on 3.11 and security scans on 3.12; production runs 3.12.
+The Python floor and the dependencies are declared once, in [pyproject.toml](pyproject.toml). The requirements files are generated from it.
 
 ```bash
 pip install -r requirements.txt
@@ -140,14 +128,9 @@ pip install -r requirements.txt -r requirements-dev.txt
 python3 -m pytest tests/ -q
 ```
 
-1,955 tests, run against fake DNS zones. The `no_network` fixture fails any TCP connection off the machine; UDP DNS still gets past it. Browser tests need Playwright (requirements-dev.txt) and `python -m playwright install chromium`, and skip without them.
+More than 2,500 tests, run against fake DNS zones. The `no_network` fixture fails any TCP connection off the machine; UDP DNS still gets past it. Browser tests need Playwright (requirements-dev.txt) and `python -m playwright install chromium`, and skip without them.
 
-## What it does not do
-
-- No blocklist lookups.
-- No mail sending and no SMTP connections. Outbound traffic is DNS plus HTTPS fetches of MTA-STS policies, BIMI logos, and crt.sh, and error reports to Sentry when SENTRY_DSN is set.
-- No accounts.
-- No stored audit history beyond the 90-day DNS snapshot table. Results are cached in memory for five minutes; the request log keeps each audit's domain and scope, not results.
+To change something: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

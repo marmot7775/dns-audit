@@ -2,7 +2,70 @@
 name = "dns-audit"
 version = "2.0.0"
 description = "DNS and email security audit: DMARC, SPF, DKIM, MTA-STS, DNSSEC, DANE, CAA, BIMI, TLS-RPT, MX, nameservers, Certificate Transparency."
+# The one statement of the Python floor. 3.10 is the lowest version every
+# pinned dependency installs on (seven of them require it). CI tests on 3.11;
+# production runs 3.12.
 requires-python = ">=3.10"
+
+# The one list of dependencies. requirements.txt and requirements-dev.txt are
+# generated from these two lists by tools/gen_requirements.py, because the
+# deploy and CI install from them; tests/test_requirements_generated.py fails
+# when they drift. Edit here, then run: python3 tools/gen_requirements.py
+dependencies = [
+    "dnspython==2.8.0",
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.40.0",
+    "starlette>=1.3.1,<1.4",
+    "anyio>=4.0.0",
+    "python-dateutil==2.9.0.post0",
+    "requests>=2.33.0",
+    "defusedxml==0.7.1",
+    "idna>=3.4",
+    # DNSSEC RRSIG signature verification, and RSA key generation in tests.
+    "cryptography>=42.0.0",
+    # Public Suffix List parsing, for the DMARC organizational domain and the
+    # CAA parent climb. audit_engine and dmarc_tree_walk both fall back to a
+    # 68-entry hardcoded list when this is absent, which computes the wrong
+    # org domain for any suffix outside it and raises no error while doing
+    # so. That fallback is a guard, not a supported configuration, so this is
+    # a runtime dependency: the deploy installs requirements.txt only.
+    "tldextract==5.3.2",
+    # Error reporting. server.py starts Sentry only when SENTRY_DSN is set in
+    # the environment (the systemd unit on the droplet), so without it this
+    # is inert.
+    "sentry-sdk[fastapi]==2.71.0",
+    # PDF audit reports. server.py imports pdf_report, which imports
+    # reportlab, so /api/audit/{domain}/pdf returns 503 without it. Runtime,
+    # not test-only: the deploy installs requirements.txt only.
+    "reportlab>=4.0.0",
+]
+
+[project.optional-dependencies]
+# Test and lint only. Any module a test imports that is not a runtime
+# dependency goes here, never in a workflow file.
+dev = [
+    "pytest>=8.0.0",
+    "httpx2>=2.12.0",
+    # PDF text extraction for tests that assert on rendered PDF content
+    # rather than the result dict (Doc 27: a card can be correct in the data
+    # and wrong in the document, which only reading the rendered text
+    # catches).
+    "pypdf>=5.0.0",
+    # Coverage. Not wired into the default pytest run; CI passes --cov and
+    # uploads coverage.xml to Codecov. Locally:
+    #   python3 -m pytest tests/ --cov --cov-report=term-missing
+    "pytest-cov>=6.0.0",
+    # Linter. Config under [tool.ruff] below.
+    "ruff>=0.15.0",
+    # Type checker, report only in CI for now. Pinned so the error count in
+    # CHANGELOG.md moves only when the code does. Config under [tool.mypy].
+    "mypy==2.4.0",
+    # Headless Chromium for the browser tests. The browser itself is a
+    # separate download:
+    #   python -m playwright install --with-deps chromium
+    # Without it those tests skip rather than fail.
+    "playwright>=1.47.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -11,18 +74,26 @@ testpaths = ["tests"]
 target-version = "py310"
 
 [tool.ruff.lint]
-# No select, so `ruff check .` runs ruff's default rule set. On ruff 0.16.1
-# that set is wider than the E4, E7, E9, F this comment used to name: it
-# reports 696 findings here, 29 of them in E4, E7, E9 and F. Widening to
-# E,F,W,I reports 1810 instead, and 1620 of those are E501 alone. That
-# volume buries the findings that carry signal, so E,F,W,I stays off until
-# the formatting debt is paid down deliberately.
+# The rule set is named, not left to ruff's default. ruff 0.16 widened its
+# default set: on this repo it reports 696 findings where 0.15 reported 32,
+# so an unpinned default would turn CI red on a ruff upgrade alone. E4, E7,
+# E9 and F are the classic defaults and the ones that carry signal here
+# (unused names, undefined names, syntax). Widening to E,F,W,I reports about
+# 1800, 1620 of them E501, and stays off until that debt is paid down
+# deliberately. CI runs `ruff check .` as a gate (.github/workflows/lint.yml).
+select = ["E4", "E7", "E9", "F"]
 ignore = [
     # Late imports are deliberate. 24 of the 28 hits are in
     # audit_engine.py, where the logging setup precedes
     # `import dns.resolver`.
     "E402",
 ]
+
+[tool.mypy]
+# Report only for now: CI prints the error count and does not fail on it.
+# The count to drive to zero is in CHANGELOG.md.
+files = ["*.py", "tools/*.py"]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["."]

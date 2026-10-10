@@ -148,7 +148,7 @@ def test_repeated_tag_fails_with_a_critical_row():
 # Records that must still pass
 # ---------------------------------------------------------------
 
-def test_clean_record_passes():
+def test_dkim_record_with_no_problem_tags_passes():
     card = _card(CLEAN)
     assert card["status"] == "pass"
     assert _dkim_rows(card) == []

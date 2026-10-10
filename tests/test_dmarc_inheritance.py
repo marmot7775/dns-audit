@@ -49,13 +49,13 @@ class TestGetOrgDomain(unittest.TestCase):
     def test_subdomain_of_com_tld(self):
         assert _get_org_domain("mail.yahoo.com") == "yahoo.com"
 
-    def test_already_org_domain(self):
+    def test_org_domain_of_an_org_domain_is_itself(self):
         assert _get_org_domain("yahoo.com") == "yahoo.com"
 
     def test_two_part_tld_co_uk(self):
         assert _get_org_domain("sub.example.co.uk") == "example.co.uk"
 
-    def test_deeply_nested_subdomain(self):
+    def test_org_domain_of_a_deep_subdomain_is_its_registered_domain(self):
         assert _get_org_domain("deeply.nested.sub.example.com") == "example.com"
 
     def test_single_label_returns_none(self):
@@ -74,7 +74,7 @@ class TestEnrichDmarcInheritance(unittest.TestCase):
 
     # --- own-record bypass ---
 
-    def test_own_record_skipped(self):
+    def test_domain_with_its_own_dmarc_record_inherits_nothing(self):
         """Domain with its own DMARC record must not set inherited fields."""
         raw = {"record": "v=DMARC1; p=none", "policy": "none"}
         _enrich_dmarc_inheritance(raw, "sub.example.com")
@@ -453,7 +453,7 @@ class TestAnomalyDetectorInheritedDmarc(unittest.TestCase):
 
     # --- return type and structure ---
 
-    def test_return_is_list(self):
+    def test_anomalies_come_back_as_a_list(self):
         result = detect_anomalies(
             {"dmarc": self._inherited_dmarc("reject"), "spf": {"record": "v=spf1 -all"}},
             has_mx=True,

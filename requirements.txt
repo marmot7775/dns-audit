@@ -1,35 +1,15 @@
-# DNS Security Auditor - Requirements
-# Python 3.10+ (see README, seven of the pins below require it)
-
-# Core Dependencies
+# Generated from pyproject.toml by tools/gen_requirements.py. Do not edit:
+# change pyproject.toml, where each pin's reason is written, and rerun.
 dnspython==2.8.0
 fastapi==0.141.1
 uvicorn[standard]==0.40.0
 starlette>=1.3.1,<1.4
 anyio>=4.0.0
-
-# Optional: Enhanced Features
 python-dateutil==2.9.0.post0
 requests>=2.33.0
 defusedxml==0.7.1
 idna>=3.4
-
-# DNSSEC RRSIG signature verification, and RSA key generation in tests
 cryptography>=42.0.0
-
-# Public Suffix List parsing, for the DMARC organizational domain and the
-# CAA parent climb. audit_engine and dmarc_tree_walk both fall back to a
-# 68-entry hardcoded list when this is absent, which computes the wrong org
-# domain for any suffix outside it and raises no error while doing so. That
-# fallback is a guard, not a supported configuration, so this is pinned as a
-# runtime dependency: the deploy runs pip install -r requirements.txt only.
 tldextract==5.3.2
-
-# Error reporting. server.py starts Sentry only when SENTRY_DSN is set in the
-# environment (the systemd unit on the droplet), so without it this is inert.
 sentry-sdk[fastapi]==2.71.0
-
-# PDF audit reports. pdf_report.py imports reportlab and server.py imports
-# pdf_report, so /api/audit/{domain}/pdf returns 503 without it. Runtime
-# dependency, not a test-only one: the deploy installs requirements.txt only.
 reportlab>=4.0.0

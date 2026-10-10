@@ -357,7 +357,6 @@ def test_the_pdf_prints_the_same_deduplicated_dmarc_rows(audit):
 # Section 3: one prioritized list
 # ---------------------------------------------------------------
 
-from reportlab.platypus import Table  # noqa: E402
 
 
 def _one_fail_one_warn_one_absent():

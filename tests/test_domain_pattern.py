@@ -18,7 +18,7 @@ def test_pattern_accepts_normalized_idn_inputs():
     assert DOMAIN_PATTERN.match(normalize_domain("例え.テスト"))
 
 
-def test_pattern_accepts_ascii():
+def test_domain_pattern_accepts_ascii_domains_in_any_case():
     assert DOMAIN_PATTERN.match("example.com")
     assert DOMAIN_PATTERN.match("EXAMPLE.COM")
     assert DOMAIN_PATTERN.match("sub.example.co.uk")

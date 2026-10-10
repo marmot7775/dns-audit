@@ -72,7 +72,7 @@ def _lookup_anomalies(result):
             if "lookup" in (a["title"] + a["description"]).lower()]
 
 
-def test_band_boundaries():
+def test_spf_band_is_near_from_9_and_over_past_10():
     assert [spf_lookup_band(n) for n in (0, 8, 9, 10, 11, 25)] == [
         "ok", "ok", "near", "near", "over", "over"]
     # A count that is only a floor is never ok, and a floor past 10 is over.
