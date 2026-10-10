@@ -90,40 +90,11 @@
     already have a bot flag alone, and prints before and after line counts.
 
 ## Single worker by design
-The service runs exactly one uvicorn process. `deploy/dns-auditor.service`
-passes no `--workers` flag and nothing sets `WEB_CONCURRENCY`, and that has
-to stay true.
-
-Every piece of coordination state in `server.py` is a module level global,
-private to one process:
-
-- `_rate_limits`: per IP rate limit table
-- `_active_audits`: concurrency budget
-- `_inflight`: single flight audit registry
-- `_cache`: audit result cache
-- `_health_cache`: health probe memo
-
-Start N workers and each process gets its own copy of all five. The
-concurrency cap becomes N times `MAX_CONCURRENT_AUDITS` instead of
-`MAX_CONCURRENT_AUDITS`. Each IP gets N times the intended requests per
-window, because each worker keeps a separate rate limit table. Two workers run
-the same audit at the same moment despite the single flight registry, because
-neither can see the other's `_inflight` dict. The health cache stops
-deduplicating its DNS lookup. Nothing errors, nothing logs at request time,
-and no test catches it. The site quietly stops enforcing its own limits.
-
-`_inflight` and `_health_cache` are recent additions, so this assumption is
-getting more load bearing over time, not less.
-
-Scaling out means moving the cache, the rate limiter, the concurrency budget
-and the in flight map to shared storage (Redis or equivalent) first. Until
-that is done, one worker is the only correct configuration.
-
-`server.py` defends itself: `_warn_if_multiple_workers()` runs at import,
-reads the worker count from `WEB_CONCURRENCY` or from a workers flag on its
-own or its supervisor's command line, and logs an error naming everything
-that breaks. A comment protects a reader; the warning protects the person who
-did not read.
+Exactly one uvicorn process: no `--workers` flag, no `WEB_CONCURRENCY`. The
+cache, rate limiter, concurrency budget, in-flight map and health memo are
+per-process globals in `server.py`, so a second worker silently doubles every
+limit. Why, and what scaling out would take: docs/decisions/2026-09-04-single-worker.md.
+`_warn_if_multiple_workers()` logs an error at import if it finds more than one.
 
 Related: uvicorn runs WITH proxy headers, trusting only 127.0.0.1 (its
 default, named explicitly in the unit file). This file used to say the
@@ -199,7 +170,7 @@ needs busting and only `static/articles/index.html` references it.
 The older pattern `grep -oP 'v=\K[a-f0-9]+'` is broken: it only matches hex characters, so version strings containing non-hex letters (e.g. `ds17`, `sec9`) produce a partial or empty match and sed silently no-ops. Do not use the old pattern.
 
 ## Testing
-Any module a test imports that is not in requirements.txt goes in requirements-dev.txt, never in the workflow file.
+Dependencies are declared in pyproject.toml only: runtime under [project] dependencies, test-only under [project.optional-dependencies] dev, never in a workflow file. Then run `python3 tools/gen_requirements.py`; the requirements files are generated and tests/test_requirements_generated.py fails if they drift.
 
 python3 -m pytest tests/ -v
 python3 -c "import ast; ast.parse(open('server.py').read()); print('OK')"

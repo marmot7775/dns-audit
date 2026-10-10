@@ -29,11 +29,9 @@ Only an intermediate level going unread produced a confident wrong answer.
 import os
 import sys
 
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import audit_engine
 import dmarc_tree_walk
 from conftest import FakeZone
 

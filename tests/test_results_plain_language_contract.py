@@ -237,7 +237,7 @@ def test_p_none_verdict_with_and_without_rua(shape_results):
     assert shape_results["p=none, rua, pct"]["executive_summary"]["verdict"] == expected
 
 
-def test_ready_record_verdict(shape_results):
+def test_ready_record_verdict_asks_receivers_to_refuse_failing_mail(shape_results):
     assert shape_results["reject, ready"]["executive_summary"]["verdict"] == (
         "Receiving mail servers are asked to refuse mail that fails authentication for this "
         "domain and its subdomains.")

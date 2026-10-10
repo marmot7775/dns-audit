@@ -11,8 +11,8 @@ used to exist.
 
 Doc 51: live_check moved to tools/. The README's "What it does not do"
 section names the Blocklist check to say the tool does not do it, so that
-section is exempt from the ban. The Architecture block lists every module in
-the repository root and every entry in it exists.
+section is exempt from the ban. The module map, now in ARCHITECTURE.md, lists
+every module in the repository root and every entry in it exists.
 """
 import os
 import re
@@ -33,9 +33,9 @@ def _read(*parts):
         return f.read()
 
 
-def _section(text, title):
+def _section(text, title, doc="README.md"):
     m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
-    assert m, f"README.md has no '## {title}' section"
+    assert m, f"{doc} has no '## {title}' section"
     return m.group(1)
 
 
@@ -99,13 +99,17 @@ def test_live_check_mentions_blocklist_only_in_its_docstring_not_in_card_order()
 
 
 def _architecture_entries():
-    """Every path the README's Architecture code block names.
+    """Every path the module map in ARCHITECTURE.md names.
 
     A line at column 0 is a path from the repo root; an indented line is a
     path inside the directory entry above it.
     """
-    block = re.search(r"```\n(.*?)```", _section(_read("README.md"), "Architecture"), re.DOTALL)
-    assert block, "the README's Architecture section has no code block"
+    block = re.search(
+        r"```\n(.*?)```",
+        _section(_read("ARCHITECTURE.md"), "Modules", "ARCHITECTURE.md"),
+        re.DOTALL,
+    )
+    assert block, "ARCHITECTURE.md's Modules section has no code block"
     entries, parent = [], ""
     for line in block.group(1).splitlines():
         if not line.strip():
@@ -131,13 +135,13 @@ def test_architecture_block_lists_every_root_module_and_no_other():
     listed = {e for e in _architecture_entries() if e.endswith(".py") and "/" not in e}
     root = _root_modules()
     assert root - listed == set(), (
-        f"root modules missing from the README's Architecture block: {sorted(root - listed)}"
+        f"root modules missing from ARCHITECTURE.md's module map: {sorted(root - listed)}"
     )
     assert listed - root == set(), (
-        f"the README's Architecture block lists modules not in the root: {sorted(listed - root)}"
+        f"ARCHITECTURE.md's module map lists modules not in the root: {sorted(listed - root)}"
     )
 
 
 def test_every_architecture_entry_exists():
     missing = [e for e in _architecture_entries() if not os.path.exists(os.path.join(REPO_ROOT, e))]
-    assert missing == [], f"the README's Architecture block names paths that do not exist: {missing}"
+    assert missing == [], f"ARCHITECTURE.md's module map names paths that do not exist: {missing}"
