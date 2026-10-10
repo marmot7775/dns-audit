@@ -29,7 +29,6 @@ def _css():
 def _rules(css):
     """(context, selector, body) for each rule, one level of @media deep."""
     out = []
-    pos = 0
     ctx = ""
     depth = 0
     buf_start = 0
@@ -109,7 +108,7 @@ def test_one_mobile_breakpoint():
 
 def test_important_only_where_specificity_cannot_win():
     css = _css()
-    lines = [l.strip() for l in css.splitlines() if "!important" in l]
+    lines = [line.strip() for line in css.splitlines() if "!important" in line]
     # reduced motion (6), print (2), and the progress bar whose width app.js
     # writes as an inline style (1)
     assert len(lines) == 9, lines

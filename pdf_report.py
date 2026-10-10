@@ -199,7 +199,8 @@ METRIC_COLORS = {
 # ================================================================
 
 def _strip_html(t):
-    if not t: return ""
+    if not t:
+        return ""
     t = re.sub(r"<br\s*/?>", "\n", t, flags=re.IGNORECASE)
     t = re.sub(r"<[^>]+>", "", t)
     for old, new in [("&amp;","&"),("&lt;","<"),("&gt;",">"),("&quot;",'"'),("&#39;","'")]:
@@ -219,7 +220,8 @@ def _audit_time(data):
     return (when or datetime.now(timezone.utc)).strftime("%B %d, %Y at %H:%M UTC")
 
 def _safe(t):
-    if not t: return ""
+    if not t:
+        return ""
     return str(t).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
 def _get_check(data, name):

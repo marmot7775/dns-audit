@@ -12,7 +12,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import audit_engine
 import result_transformer
 
 
