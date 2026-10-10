@@ -1,0 +1,47 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install ruff
+        # The version line from requirements-dev.txt, so there is one pin.
+        run: pip install "$(grep '^ruff' requirements-dev.txt)"
+      - name: ruff check
+        # Rule set is pinned in pyproject.toml, so a ruff upgrade cannot
+        # widen it.
+        run: ruff check .
+
+  mypy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: mypy (report only)
+        # Report only until the count reaches zero; CHANGELOG.md records the
+        # starting number. Files and options are in pyproject.toml.
+        run: |
+          set +e
+          mypy > mypy.txt 2>&1
+          tail -1 mypy.txt
+          echo "### mypy: $(tail -1 mypy.txt)" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
