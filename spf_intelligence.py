@@ -40,6 +40,9 @@ DKIM_FALLBACK_CHUNK = 52
 
 # _test_selector's return for a probe that got no answer at all.
 _UNANSWERED = object()
+# A probe that ended in SERVFAIL or another resolver failure: counted as
+# tested, as before, but not as answered, since nothing was learned.
+_FAILED = object()
 
 # Map SPF includes to vendors and their DKIM selectors
 SPF_VENDOR_MAP = {
@@ -563,8 +566,10 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                 return {'selector': selector, 'fqdn': fqdn,
                         'cname_target': _canon, 'dangling': True}
             return None
-        except (dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
+        except dns.resolver.NoAnswer:
             return None
+        except (dns.resolver.NoNameservers, dns.exception.DNSException):
+            return _FAILED
 
     found = []
     dangling = []
@@ -603,6 +608,8 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                     unanswered += 1
                     continue
                 tested += 1
+                if r is _FAILED:
+                    continue
                 answered.add(futures[future])
                 if r and r.get('dangling'):
                     dangling.append(r)
