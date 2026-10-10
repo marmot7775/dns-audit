@@ -344,6 +344,9 @@ body {
 main {
     max-width: 100%;
     padding: 0;
+    /* body is a flex column at least a viewport tall: main takes the slack,
+       so a short page keeps its footer at the bottom of the window. */
+    flex: 1 0 auto;
 }
 
 /* ==========================================================================
@@ -3138,6 +3141,9 @@ details.st-node>summary:hover {
 .footer-attribution {
     font-size: var(--font-sm);
     color: var(--text-muted);
+    /* Right-aligned like the two link rows above it in the same column.
+       Phones centre it (the max-width 640px block). */
+    text-align: right;
     /* Doc 39: one sentence with an inline link. The flex row only existed
        to sit the LinkedIn icon beside the text. */
     display: block;
