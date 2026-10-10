@@ -142,7 +142,7 @@ def test_d4_partial_only_does_not_say_exposed(audit):
     assert surface["overall"]["summary"] == "Some routes are only partly covered."
 
 
-def test_d5_three_documents(audit):
+def test_d5_report_says_dmarc_is_three_documents(audit):
     text = _text(audit(_zone(), D))
     assert "splits the specification" not in text
     assert ("DMARC is now three documents: RFC 9989 for the core, RFC 9990 for aggregate "

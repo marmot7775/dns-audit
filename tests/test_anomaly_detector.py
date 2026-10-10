@@ -29,7 +29,7 @@ def find(anomalies, title_fragment):
 # ---------------------------------------------------------------------------
 
 class TestEmptyInput:
-    def test_empty_raw_results(self):
+    def test_no_results_raise_no_anomalies(self):
         result = detect_anomalies({}, has_mx=False)
         assert result == []
 
@@ -38,7 +38,7 @@ class TestEmptyInput:
         result = detect_anomalies(raw, has_mx=False)
         assert result == []
 
-    def test_all_empty_dicts(self):
+    def test_empty_check_results_raise_no_anomalies(self):
         raw = {k: {} for k in ("dmarc", "spf", "dkim", "mta_sts",
                                "tls_rpt", "bimi", "dns_infra", "dnssec")}
         result = detect_anomalies(raw, has_mx=False)
@@ -59,17 +59,17 @@ class TestDmarcWithoutSpf:
         # (Doc 76), so this rule only fires where MX is published.
         return detect_anomalies(raw, has_mx=True)
 
-    def test_quarantine_no_spf(self):
+    def test_quarantine_without_spf_is_a_high_anomaly(self):
         result = self._base("quarantine", spf_record=None)
         a = find(result, "without SPF")
         assert a is not None
         assert a["severity"] == "high"
 
-    def test_reject_no_spf(self):
+    def test_reject_without_spf_is_an_anomaly(self):
         result = self._base("reject", spf_record=None)
         assert find(result, "without SPF") is not None
 
-    def test_reject_with_spf(self):
+    def test_reject_with_spf_raises_no_spf_anomaly(self):
         result = self._base("reject", spf_record="v=spf1 include:sendgrid.net -all")
         assert find(result, "without SPF") is None
 
@@ -124,7 +124,7 @@ class TestDmarcWithoutDkim:
         result = self._base("reject", keys=[], has_mx=False)
         assert find(result, "without DKIM") is None
 
-    def test_reject_with_dkim(self):
+    def test_reject_with_a_dkim_key_raises_no_dkim_anomaly(self):
         keys = [{"record": "v=DKIM1; p=MIIBIjANBg==", "selector": "default"}]
         result = self._base("reject", keys=keys, has_mx=True)
         assert find(result, "without DKIM") is None
@@ -146,7 +146,7 @@ class TestDmarcWithoutDkim:
 # ---------------------------------------------------------------------------
 
 class TestSpfLookupCountIsNotAnAnomaly:
-    def test_no_count_fires(self):
+    def test_no_spf_lookup_count_raises_a_lookup_limit_anomaly(self):
         for n in (8, 9, 10, 11, "9", None, "many"):
             raw = {"spf": {"record": "v=spf1 include:x -all", "lookup_count": n}}
             assert find(detect_anomalies(raw, has_mx=False), "lookup limit") is None, n
@@ -242,7 +242,7 @@ class TestBimiWithoutDmarc:
 # ---------------------------------------------------------------------------
 
 class TestMixedDkimKeyStrengths:
-    def test_mixed_strengths_fires(self):
+    def test_mixed_dkim_key_sizes_are_a_medium_anomaly(self):
         raw = {
             "dkim": {
                 "found_selectors": [
@@ -316,7 +316,7 @@ class TestMixedDkimKeyStrengths:
 # ---------------------------------------------------------------------------
 
 class TestSingleNameserver:
-    def test_single_ns_fires(self):
+    def test_single_nameserver_is_a_high_anomaly(self):
         raw = {"nameservers": {"nameservers": [{"hostname": "ns1.example.com"}], "ns_count": 1}}
         result = detect_anomalies(raw, has_mx=False)
         a = find(result, "Single nameserver")
@@ -378,7 +378,7 @@ class TestParkedDomainWithMx:
 # ---------------------------------------------------------------------------
 
 class TestUnauthorizedReportDestinations:
-    def test_unauthorized_destination_fires(self):
+    def test_unauthorized_report_address_is_a_critical_anomaly(self):
         raw = {
             "dmarc": {
                 "policy": "reject",
@@ -406,7 +406,7 @@ class TestUnauthorizedReportDestinations:
         result = detect_anomalies(raw, has_mx=False)
         assert find(result, "unauthorized") is None
 
-    def test_mixed_authorized_fires(self):
+    def test_one_unauthorized_report_address_among_authorized_is_named(self):
         raw = {
             "dmarc": {
                 "policy": "none",

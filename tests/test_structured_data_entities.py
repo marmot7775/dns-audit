@@ -170,7 +170,7 @@ def test_article_links_to_person_and_site(page):
 
 
 @pytest.mark.parametrize("page", ARTICLES + ["about.html"])
-def test_breadcrumb(page):
+def test_breadcrumb_runs_home_then_articles_then_the_page(page):
     [bc] = _nodes(page, "BreadcrumbList")
     items = bc["itemListElement"]
     assert [i["position"] for i in items] == list(range(1, len(items) + 1))
