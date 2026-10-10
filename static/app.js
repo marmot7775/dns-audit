@@ -629,7 +629,7 @@ function hideResults() {
     resultsSection.style.display = 'none';
 }
 
-function showError(message) {
+function showError(message, kind = '') {
     document.title = DEFAULT_TITLE;
     // Clear the top progress bar. Left at its partial width it reads as
     // "still loading" next to the error card.
@@ -644,6 +644,17 @@ function showError(message) {
     // role="alert" so the failure is announced. This card replaces the polite
     // live region the progress card carried, so without it the audit simply
     // stops talking.
+    // A name that does not exist is a typo to fix, not a failure: no red
+    // "Audit Failed", and no Try Again, which would run the same name.
+    if (kind === 'domain_not_found') {
+        card.innerHTML = `
+            <div class="error-title error-title-neutral">Domain not found</div>
+            <div class="error-message" role="alert">${escapeHtml(message)}</div>
+        `;
+        domainInput.focus();
+        domainInput.select();
+        return;
+    }
     card.innerHTML = `
         <div class="error-title">Audit Failed</div>
         <div class="error-message" role="alert">${escapeHtml(message)}</div>
@@ -676,7 +687,7 @@ function renderResults(data, selector = '') {
     // Handle preflight / server errors returned inside the result object
     if (data.error && data.error_message) {
         hideLoading();
-        showError(data.error_message);
+        showError(data.error_message, data.error);
         return;
     }
 
