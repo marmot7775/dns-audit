@@ -468,3 +468,21 @@ def label_cname_vendor(label: str, target: Optional[str]):
         if vendor:
             return vendor, kind
     return None, None
+
+
+# Vendors whose setup docs name a fixed set of DKIM selectors, so a scan that
+# got an answer at every one of them and found no key from the vendor knows
+# the key is missing (vendor gap report, step 8). From the footprints in
+# Neil's sender discovery vendors.json (Toolkit/templates), only the vendors
+# marked verified there, and only where no selector is chosen per account:
+# Google Workspace and Mailgun let the customer name it, so a scan cannot
+# show their key is absent.
+VENDOR_DKIM_SELECTORS: Dict[str, tuple] = {
+    "Brevo": ("brevo1", "brevo2", "mail", "sib2k"),
+    "Fastmail": ("fm1", "fm2", "fm3", "mesmtp"),
+    "Klaviyo": ("km1", "km2", "kt1", "kt2", "ks1", "ks2", "kl1", "kl2"),
+    "Mailchimp": ("k2", "k3"),
+    "Mandrill": ("mte1", "mte2"),
+    "Microsoft 365": ("selector1", "selector2"),
+    "Proton Mail": ("protonmail", "protonmail2", "protonmail3"),
+}

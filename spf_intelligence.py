@@ -40,6 +40,9 @@ DKIM_FALLBACK_CHUNK = 52
 
 # _test_selector's return for a probe that got no answer at all.
 _UNANSWERED = object()
+# A probe that ended in SERVFAIL or another resolver failure: counted as
+# tested, as before, but not as answered, since nothing was learned.
+_FAILED = object()
 
 # Map SPF includes to vendors and their DKIM selectors
 SPF_VENDOR_MAP = {
@@ -563,11 +566,17 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                 return {'selector': selector, 'fqdn': fqdn,
                         'cname_target': _canon, 'dangling': True}
             return None
-        except (dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
+        except dns.resolver.NoAnswer:
             return None
+        except (dns.resolver.NoNameservers, dns.exception.DNSException):
+            return _FAILED
 
     found = []
     dangling = []
+    # Selectors whose query finished with an answer (a key, NXDOMAIN or no
+    # TXT), so "no key at this name" is known rather than assumed. The vendor
+    # panel reads it before saying a sender's key is missing.
+    answered = set()
     timed_out = False
     unanswered = 0
     tested = 0
@@ -599,6 +608,9 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                     unanswered += 1
                     continue
                 tested += 1
+                if r is _FAILED:
+                    continue
+                answered.add(futures[future])
                 if r and r.get('dangling'):
                     dangling.append(r)
                 elif r:
@@ -646,6 +658,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     # reporting the queued count told users we had checked selectors we never
     # got to.
     result['tested_count'] = tested
+    result['answered_selectors'] = sorted(answered)
 
     result['unanswered_count'] = unanswered
     dangling.sort(key=lambda r: selector_order.get(r['selector'], 999))
