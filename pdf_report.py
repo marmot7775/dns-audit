@@ -33,7 +33,7 @@ from result_transformer import PILL_NOT_APPLICABLE, PILL_NULL_MX
 NOT_APPLICABLE_PILLS = (PILL_NOT_APPLICABLE, PILL_NULL_MX)
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
@@ -286,9 +286,9 @@ def _styles():
     s = {}
     s["title"]       = ParagraphStyle("T",  fontName=FONTS["sans_bold"],    fontSize=28, textColor=colors.white, leading=34)
     s["title_sub"]   = ParagraphStyle("TS", fontName=FONTS["sans"],         fontSize=14, textColor=colors.HexColor("#b0c8e0"), leading=18)
-    s["heading"]     = ParagraphStyle("H",  fontName=FONTS["sans_bold"],    fontSize=16, textColor=TEXT_PRI, leading=22, spaceBefore=16, spaceAfter=5)
-    s["heading2"]    = ParagraphStyle("H2", fontName=FONTS["sans_bold"],    fontSize=14, textColor=NAVY, leading=19, spaceBefore=14, spaceAfter=4)
-    s["subheading"]  = ParagraphStyle("SH", fontName=FONTS["sans_bold"],    fontSize=13, textColor=NAVY, leading=17, spaceBefore=12, spaceAfter=3)
+    s["heading"]     = ParagraphStyle("H",  fontName=FONTS["sans_bold"],    fontSize=16, textColor=TEXT_PRI, leading=22, spaceBefore=16, spaceAfter=5, keepWithNext=1)
+    s["heading2"]    = ParagraphStyle("H2", fontName=FONTS["sans_bold"],    fontSize=14, textColor=NAVY, leading=19, spaceBefore=14, spaceAfter=4, keepWithNext=1)
+    s["subheading"]  = ParagraphStyle("SH", fontName=FONTS["sans_bold"],    fontSize=13, textColor=NAVY, leading=17, spaceBefore=12, spaceAfter=3, keepWithNext=1)
     s["body"]        = ParagraphStyle("B",  fontName=FONTS["sans"],         fontSize=11, textColor=TEXT_SEC, leading=16, spaceBefore=2, spaceAfter=2)
     s["body_large"]  = ParagraphStyle("BL", fontName=FONTS["sans"],         fontSize=12, textColor=TEXT_PRI, leading=17, spaceBefore=2, spaceAfter=2)
     s["body_small"]  = ParagraphStyle("BS", fontName=FONTS["sans"],         fontSize=10, textColor=TEXT_TER, leading=14, spaceBefore=1, spaceAfter=1)
@@ -898,9 +898,12 @@ def _roadmap_page(data, S, number=2):
         els.extend(_plan_item(data, item, S))
     # Optional extras last, under their own heading, as on the web.
     if extras:
-        els.append(Paragraph(f"Optional extras ({len(extras)})", S["subheading"]))
-        for item in extras:
-            els.extend(_plan_item(data, item, S, optional=True))
+        # In the first item's KeepTogether: keepWithNext does not reach into
+        # a container, so the heading alone could end a page.
+        head = Paragraph(f"Optional extras ({len(extras)})", S["subheading"])
+        for i, item in enumerate(extras):
+            block = _plan_item(data, item, S, optional=True)
+            els.extend([KeepTogether([head, *block])] if i == 0 else block)
 
     # No else branch: roadmap["summary"], printed above, already covers an
     # empty items list for every case (a real all-clear, a scoped run that
@@ -1027,7 +1030,7 @@ def _dmarc_deep_dive(data, S, number=3):
 
         # splitInRow: a rua list taller than a page is one row, and without it
         # ReportLab raises LayoutError and the PDF endpoint returns 500.
-        tt = Table(rows, colWidths=[0.65*inch, 1.15*inch, 0.9*inch, 3.8*inch], splitInRow=1)
+        tt = Table(rows, colWidths=[0.65*inch, 1.15*inch, 0.9*inch, 3.8*inch], splitInRow=1, repeatRows=1)
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 4),
@@ -1251,7 +1254,7 @@ def _attack_surface_page(data, S, number=4):
                     Paragraph(f'<font color="{f_clr.hexval()}">{_glyphs(found_icon)}</font>', S["body"]),
                     Paragraph(_safe(policy_val) if policy_val else "-", S["body_small"]),
                 ])
-            st = Table(rows, colWidths=[3.0*inch, 1.0*inch, 2.5*inch])
+            st = Table(rows, colWidths=[3.0*inch, 1.0*inch, 2.5*inch], repeatRows=1)
             cmds = [
                 ("VALIGN", (0,0), (-1,-1), "TOP"),
                 ("TOPPADDING", (0,0), (-1,-1), 4),
@@ -1324,7 +1327,7 @@ def _attack_surface_page(data, S, number=4):
                 Paragraph(f'<font color="{s_clr.hexval()}">{status_icon} {_safe(sub.get("status_label", ""))}</font>', S["body_small"]),
             ])
 
-        st = Table(rows, colWidths=[1.7*inch, 0.65*inch, 0.6*inch, 0.7*inch, 1.5*inch, 1.0*inch])
+        st = Table(rows, colWidths=[1.7*inch, 0.65*inch, 0.6*inch, 0.7*inch, 1.5*inch, 1.0*inch], repeatRows=1)
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 3),
@@ -1366,6 +1369,34 @@ def _protocol_details(data, S, number=3, appendix=None):
     return els
 
 
+
+# The text frame: letter width less the 0.75in margins and the frame's own
+# 6pt padding on each side.
+_FRAME_WIDTH = 8.5*inch - 2*0.75*inch - 12
+
+
+def _card_header(title, label, clr, S):
+    """A check's title with its status on the right, one line each.
+
+    The status column fits the longest label, "Optional, not set up"; at
+    1.5in it wrapped. The table spans the text frame from its left edge, so
+    the title sits flush with the verdict and body below, which are outside
+    the table, and the status ends at the right margin.
+    """
+    hdr = Table([
+        [Paragraph(f"<b>{_safe(title)}</b>", S["card_title"]),
+         Paragraph(f'<font color="{clr.hexval()}" size="10"><b>{_safe(label)}</b></font>',
+                   ParagraphStyle("CardStatus", parent=S["body"], alignment=TA_RIGHT))],
+    ], colWidths=[_FRAME_WIDTH - 2.2*inch, 2.2*inch], hAlign="LEFT")
+    hdr.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (0,0), 0),
+        ("RIGHTPADDING", (1,0), (1,0), 0),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+    ]))
+    return hdr
+
 def _protocol_card(check, S, pointer=None):
     """Render a single protocol check as a card.
 
@@ -1387,17 +1418,7 @@ def _protocol_card(check, S, pointer=None):
     els = []
 
     # Header: name + pill
-    hdr = Table([
-        [Paragraph(f"<b>{_safe(name)}</b>", S["card_title"]),
-         Paragraph(f'<font color="{s_clr.hexval()}" size="10"><b> {_safe(s_lbl)} </b></font>', S["body"])],
-    ], colWidths=[5.0*inch, 1.5*inch])
-    hdr.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("ALIGN", (1,0), (1,0), "RIGHT"),
-        ("TOPPADDING", (0,0), (-1,-1), 0),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
-    ]))
-    els.append(hdr)
+    els.append(_card_header(name, s_lbl, s_clr, S))
 
     if verdict:
         els.append(Paragraph(_safe(verdict), S["verdict"]))
@@ -1481,17 +1502,7 @@ def _draft_standards(data, S):
     for card in cards:
         title = card.get("plain_name") or card.get("name", "")
         pill = card.get("pill_label") or STATUS_LBL.get(card.get("status"), "")
-        hdr = Table([
-            [Paragraph(f"<b>{_safe(title)}</b>", S["card_title"]),
-             Paragraph(f'<font color="{NEUTRAL_CLR.hexval()}" size="10"><b> {_safe(pill)} </b></font>', S["body"])],
-        ], colWidths=[5.0*inch, 1.5*inch])
-        hdr.setStyle(TableStyle([
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("ALIGN", (1,0), (1,0), "RIGHT"),
-            ("TOPPADDING", (0,0), (-1,-1), 0),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
-        ]))
-        body = [hdr]
+        body = [_card_header(title, pill, NEUTRAL_CLR, S)]
         if card.get("verdict"):
             body.append(Paragraph(_safe(card["verdict"]), S["verdict"]))
         if card.get("what_this_is"):
@@ -1555,7 +1566,7 @@ def _spf_deep_section(spf_deep, S):
                 Paragraph(_safe(provider), S["body_small"]),
                 Paragraph(str(m.get("cost", 0)), S["body_small"]),
             ])
-        mt = Table(rows, colWidths=[2.5*inch, 0.8*inch, 1.7*inch, 0.7*inch])
+        mt = Table(rows, colWidths=[2.5*inch, 0.8*inch, 1.7*inch, 0.7*inch], repeatRows=1)
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 3),
@@ -1630,7 +1641,7 @@ def _dkim_deep_section(dkim_deep, S):
                 Paragraph(f'<font color="{r_clr.hexval()}">{_safe(k.get("rating_label", ""))}</font>', S["body_small"]),
                 Paragraph(_safe(k.get("rotation_status", "")), S["body_small"]),
             ])
-        kt = Table(rows, colWidths=[60, 70, 70, 40, 140, 80])
+        kt = Table(rows, colWidths=[60, 70, 70, 40, 140, 80], repeatRows=1)
         cmds = [
             ("VALIGN", (0,0), (-1,-1), "TOP"),
             ("TOPPADDING", (0,0), (-1,-1), 3),
@@ -1703,7 +1714,7 @@ def _vendors(data, S):
             Paragraph(_safe(status) if status
                       else f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body_small" if status else "body"]),
         ])
-    vt = Table(rows, colWidths=[3.3*inch, 2.2*inch, 1.0*inch])
+    vt = Table(rows, colWidths=[3.3*inch, 2.2*inch, 1.0*inch], repeatRows=1)
     cmds = [
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("TOPPADDING", (0,0), (-1,-1), 4),
@@ -1767,8 +1778,9 @@ def _deep_analysis_page(data, S, number="C"):
         text = _strip_html(check.get("explanation") or "")
         if not text or text == check.get("verdict"):
             continue
-        explanations.append(Paragraph(f"<b>{_safe(name)}</b>", S["body"]))
-        explanations.append(Paragraph(_safe(text), S["body_small"]))
+        # Together, so a name is never left at the foot of a page.
+        explanations.append(KeepTogether([Paragraph(f"<b>{_safe(name)}</b>", S["body"]),
+                                          Paragraph(_safe(text), S["body_small"])]))
         explanations.append(Spacer(1, SP_SM))
 
     if not body and not explanations:
@@ -1781,7 +1793,9 @@ def _deep_analysis_page(data, S, number="C"):
     if explanations:
         if body:
             els.append(Spacer(1, SP_MD))
-            els.append(Paragraph("What each check means", S["heading2"]))
+            # With the first explanation, for the same reason as Optional extras.
+            explanations[0] = KeepTogether([Paragraph("What each check means", S["heading2"]),
+                                            explanations[0]])
         els.extend(explanations)
     return els
 
@@ -1944,7 +1958,9 @@ def _about_page(data, S, number=7):
     brand_content = [
         Paragraph(
             '<font size="14"><b>Generated by dns-audit.com</b></font>',
-            ParagraphStyle("BR", fontName=FONTS["sans"], alignment=TA_CENTER, leading=20)
+            # White: without a colour it rendered near-black on the navy box.
+            ParagraphStyle("BR", fontName=FONTS["sans"], alignment=TA_CENTER, leading=20,
+                           textColor=colors.white)
         ),
         Spacer(1, SP_XS),
         Paragraph(
