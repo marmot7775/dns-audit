@@ -18,6 +18,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   pyproject.toml.
 
 ### Changed
+- The home page's domain input spans the card like the title and scope
+  buttons above it (it stopped at 600px), and the DKIM selector link sits
+  under its left edge.
 - PDF page 1 ends with every check on one line (plain name, status,
   verdict) instead of blank space. With three long items under "Do these
   first" it drops to a two-column name and status list; the plan always
