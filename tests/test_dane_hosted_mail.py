@@ -73,6 +73,9 @@ def test_microsoft_legacy_mx_gets_the_exchange_online_path(audit):
         "Microsoft supports inbound DANE, so this domain has somewhere to go"
     )
     assert card["pill_label"] == "Available, not enabled"
+    # The verdict says what is available, short enough for the one-line
+    # results row; repeating the pill cut it off with an ellipsis.
+    assert card["verdict"] == "Exchange Online can publish it for you"
 
     fix = card["fix"]
     # Only what Microsoft's page says.
