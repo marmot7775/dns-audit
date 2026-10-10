@@ -24,6 +24,19 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   cannot widen it.
 - README leads with a real audit result and states the floor by reference.
 
+### Fixed
+- The PDF button used the DKIM selector in the input box, not the one the
+  results were run with (#192, #193).
+- Shared links dropped the DKIM selector; they now carry `sel=`, and the
+  address bar follows the result on screen (#195).
+- Dotted DKIM selectors such as `march2005.reykjavik` were refused with a
+  400 that misquoted RFC 6376 section 3.1, which allows them (#195).
+- After an audit the results scrolled under the sticky header; on short
+  pages the footer stopped part way down the window (#196).
+- PDF: the About page's brand title drew near-black on navy; check status
+  labels wrapped; long tables lost their header row on the next page;
+  "Optional extras" could end a page alone (#197).
+
 ### Removed
 - Dead code found by vulture and ruff: `AdvancedFingerprinter._matches_suffix`,
   `config.API_BASE_URL`, four unused PDF colours, and unused locals in
