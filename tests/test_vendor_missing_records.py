@@ -125,3 +125,18 @@ def test_full_audit_m365_mailbox_domain_without_dkim():
     assert m365["tier"] == "In use"
     assert m365["missing"] == [
         "No DKIM key from Microsoft 365. Nothing is published at selector1 or selector2."]
+
+
+def test_a_vendor_seen_only_by_tracking_or_bounce_cname_needs_no_apex_include():
+    # allbirds.com: a Mailgun tracking CNAME, no Mailgun include, and the
+    # sending happens on the CNAMEd subdomain.
+    for sources in (("tracking CNAME",), ("return path CNAME",), ("tracking CNAME", "return path CNAME")):
+        v = _vendor("Mailgun", tier="Configured", sources=sources)
+        assert _run(v, _raw(spf="v=spf1 -all", answered=())) == [], sources
+
+
+def test_the_spf_card_follows_the_same_rule():
+    from audit_engine import _needs_apex_spf_include
+    assert not _needs_apex_spf_include(_vendor("Mailgun", tier="Configured", sources=("tracking CNAME",)))
+    assert _needs_apex_spf_include(_vendor("Mailgun", tier="Configured", sources=("DKIM CNAME", "tracking CNAME")))
+    assert not _needs_apex_spf_include(_vendor("Mailchimp", tier="Account only", sources=("DMARC reports",), role="reporting"))
