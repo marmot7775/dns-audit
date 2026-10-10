@@ -514,7 +514,9 @@ main {
     display: flex;
     gap: 0;
     align-items: stretch;
-    max-width: 600px;
+    /* The full width of the card, like the title, subtitle and scope
+       buttons above it. Capped at 600px it stopped short of them and left
+       a blank band down the right of the card. */
     width: 100%;
 }
 
@@ -525,7 +527,6 @@ main {
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: var(--radius-lg);
     transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
-    max-width: 600px;
     width: 100%;
 }
 .input-unified .input-wrapper:focus-within {
@@ -578,8 +579,9 @@ main {
 
 .selector-toggle-row {
     margin-top: 0.6rem;
-    text-align: center;
-    max-width: 600px;
+    /* Left, like everything else in the card. Centred, it floated under the
+       middle of a field it is not part of. */
+    text-align: left;
     width: 100%;
 }
 
@@ -7647,8 +7649,10 @@ h3.services-sub,
     }
 
     .selector-toggle {
+        /* 44px target; the negative margin keeps the text where it was, flush
+           with the input's left edge. */
         padding: 13px 0.5rem;
-        margin: -13px 0;
+        margin: -13px -0.5rem;
     }
 
     .recent-audits-clear {
