@@ -18,17 +18,15 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   pyproject.toml.
 
 ### Changed
+- PDF page 1 ends with every check on one line (plain name, status,
+  verdict) instead of blank space. With three long items under "Do these
+  first" it drops to a two-column name and status list; the plan always
+  starts on page 2.
 - pyproject.toml is the one place the Python floor and dependencies are
   declared; requirements.txt and requirements-dev.txt are generated from it.
 - ruff's rule set is named in pyproject.toml (E4, E7, E9, F) so a ruff upgrade
   cannot widen it.
 - README leads with a real audit result and states the floor by reference.
-
-### Changed
-- PDF page 1 ends with every check on one line (plain name, status,
-  verdict) instead of blank space. With three long items under "Do these
-  first" it drops to a two-column name and status list; the plan always
-  starts on page 2.
 
 ### Fixed
 - The PDF button used the DKIM selector in the input box, not the one the
