@@ -8412,7 +8412,10 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
             "name": "DANE",
             "status": "absent",
             "pill_label": "Available, not enabled",
-            "verdict": "DANE is available through Exchange Online but not enabled",
+            # The pill already says "Available, not enabled"; the verdict says
+            # what is available. The longer sentence repeated the pill and was
+            # cut off on the results card.
+            "verdict": "Exchange Online can publish it for you",
             "record": None,
             "configured": False,
             "explanation": (
