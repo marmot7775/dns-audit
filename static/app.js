@@ -706,8 +706,10 @@ function renderResults(data, selector = '') {
         if (hashId && document.getElementById(hashId)) {
             openCard(hashId);
         } else {
-            const yOffset = -10;
-            const y = resultsSection.getBoundingClientRect().top + window.pageYOffset + yOffset;
+            // Clear the sticky header, or it covers the domain line and the
+            // PDF, Export and Share buttons the scroll was meant to show.
+            const headerH = document.querySelector('.site-header')?.offsetHeight || 0;
+            const y = resultsSection.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
             window.scrollTo({ top: y, behavior: 'smooth' });
         }
 
