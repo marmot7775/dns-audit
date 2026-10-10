@@ -100,7 +100,7 @@ def test_no_selector_is_declared_twice_in_the_same_context():
     assert not twice, "declared more than once:\n" + "\n".join(twice)
 
 
-def test_one_mobile_breakpoint():
+def test_css_uses_one_mobile_breakpoint_at_640px():
     css = _css()
     assert "max-width: 600px)" not in css
     assert css.count("@media (max-width: 640px)") >= 20
@@ -115,7 +115,7 @@ def test_important_only_where_specificity_cannot_win():
     assert "width: 100% !important;" in lines
 
 
-def test_families_doc_49_removed_are_gone():
+def test_removed_css_families_stay_removed():
     css = _css()
     for gone in (".comparison-", ".compare-btn", ".edu-", ".se-vendor-", ".ha-",
                  ".dbis-walk", ".dbis-hero", ".fix-block", ".details-toggle",
