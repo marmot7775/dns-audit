@@ -32,7 +32,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import spf_intelligence
 from result_transformer import transform_dkim
 from spf_intelligence import smart_dkim_check
 
