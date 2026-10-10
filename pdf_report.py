@@ -42,7 +42,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Table as _PlatypusTable
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, TableStyle,
-    KeepTogether, HRFlowable, PageBreak, CondPageBreak,
+    KeepTogether, HRFlowable, PageBreak, CondPageBreak, Flowable,
 )
 
 log = logging.getLogger("dns-auditor.pdf")
@@ -465,12 +465,98 @@ def _do_first_box(data, S):
     return [box]
 
 
+class _FirstThatFits(Flowable):
+    """Draws the first of several layouts that fits the space left.
+
+    Each layout is a list of flowables. An empty list always fits, so the
+    flowable never pushes what follows it onto another page.
+    """
+
+    def __init__(self, layouts):
+        super().__init__()
+        self.layouts = layouts
+        self._chosen = []
+
+    @staticmethod
+    def _height(layout, avail_w, avail_h):
+        return sum(f.wrap(avail_w, avail_h)[1] + f.getSpaceBefore() + f.getSpaceAfter()
+                   for f in layout)
+
+    def wrap(self, avail_w, avail_h):
+        for layout in self.layouts:
+            h = self._height(layout, avail_w, avail_h)
+            if h <= avail_h:
+                self._chosen, self.width, self.height = layout, avail_w, h
+                return avail_w, h
+        self._chosen, self.width, self.height = [], avail_w, 0
+        return avail_w, 0
+
+    def draw(self):
+        y = self.height
+        for f in self._chosen:
+            y -= f.getSpaceBefore()
+            _, h = f.wrap(self.width, self.height)
+            y -= h
+            f.drawOn(self.canv, 0, y)
+            y -= f.getSpaceAfter()
+
+
+def _checks_at_a_glance(data, S):
+    """Every check on one line: plain name, status, and its verdict when
+    there is room.
+
+    Page 1 held the verdict and up to three items, and the rest of the page
+    was often blank. This is the whole result in the order the Checks
+    section uses. Three long "Do these first" items can leave too little
+    room, so the table drops to name and status, and past that it is left
+    off: the plan always starts on page 2.
+    """
+    checks = [c for c in (_get_check(data, n) for n in PROTOCOL_SECTION_ORDER) if c]
+    if not checks:
+        return []
+    name_style = ParagraphStyle("GlName", parent=S["body_small"], textColor=TEXT_PRI,
+                                fontSize=9, leading=11, spaceBefore=0, spaceAfter=0)
+    small = ParagraphStyle("GlSmall", parent=S["body_small"], fontSize=8.5, leading=10.5,
+                           spaceBefore=0, spaceAfter=0)
+
+    def cells(c):
+        clr, label = _card_status(c)
+        return [Paragraph(_safe(c.get("plain_name") or c.get("name", "")), name_style),
+                Paragraph(f'<font color="{clr.hexval()}"><b>{_safe(label)}</b></font>', small)]
+
+    def layout(rows, widths, first_cols):
+        t = Table(rows, colWidths=widths, hAlign="LEFT")
+        t.setStyle(TableStyle([
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
+            ("TOPPADDING", (0,0), (-1,-1), 2.5),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2.5),
+            *[("LEFTPADDING", (col,0), (col,-1), 0) for col in first_cols],
+            ("LINEBELOW", (0,0), (-1,-2), 0.3, BORDER),
+        ]))
+        return [Paragraph(f"Every check ({len(checks)})", S["subheading"]), t]
+
+    # Full: one check a row with its verdict. Measured at these sizes, the
+    # longest name, "Certificates issued for your domain (CT logs)", is 2.6in
+    # and the longest status, "Available, not enabled", 1.28in plus the
+    # cell's 12pt of padding, so neither wraps.
+    full = layout([cells(c) + [Paragraph(_safe(c.get("verdict") or ""), small)] for c in checks],
+                  [2.7*inch, 1.45*inch, _FRAME_WIDTH - 4.15*inch], [0])
+    # Compact: name and status only, in two columns, at about half the height.
+    half = (len(checks) + 1) // 2
+    pairs = [cells(checks[i]) + (cells(checks[i + half]) if i + half < len(checks) else ["", ""])
+             for i in range(half)]
+    col = (_FRAME_WIDTH - 2.9*inch) / 2
+    compact = layout(pairs, [col, 1.45*inch, col, 1.45*inch], [0, 2])
+    return [_FirstThatFits([full, compact, []])]
+
+
 def _cover_page(data, S):
-    """Page 1: the plain verdict and at most three things to do first.
+    """Page 1: the plain verdict, at most three things to do first, and
+    every check on one line each.
 
     Doc 92 moved the tally to one line on the plan page, and the tiles, the
     attack surface table and the contents to the start of Part 2. A reader
-    who stops here has the answer.
+    who stops here has the answer and the whole result.
     """
     domain = data.get("domain", "unknown")
     es = data.get("executive_summary", {}) or {}
@@ -534,8 +620,7 @@ def _cover_page(data, S):
         els.append(Spacer(1, SP_MD))
 
     els.append(Paragraph(SHORT_ANSWER_POINTER, S["body"]))
-    els.append(Spacer(1, SP_LG))
-
+    els.append(Spacer(1, SP_SM))
     # Scope line. A scoped report that does not say it is scoped implies
     # coverage the reader has no way to know is missing: dns_infra runs five
     # of twelve checks and says nothing about email authentication, so the
@@ -553,8 +638,9 @@ def _cover_page(data, S):
         ))
         els.append(Spacer(1, SP_SM))
 
-    # Audit date line
     els.append(Paragraph(f"Audit performed: {now}", S["body_small"]))
+    els.append(Spacer(1, SP_MD))
+    els.extend(_checks_at_a_glance(data, S))
 
     return els
 
@@ -1407,6 +1493,15 @@ def _card_header(title, label, clr, S):
     ]))
     return hdr
 
+
+def _card_status(check):
+    """A check's status colour and label: its own pill when it carries one,
+    else the default for its state. Page 1 and the check cards both read it."""
+    status = check.get("status", "pass")
+    label = check.get("pill_label") or STATUS_LBL.get(status, "Info")
+    return STATUS_CLR.get(status, TEXT_SEC), label
+
+
 def _protocol_card(check, S, pointer=None):
     """Render a single protocol check as a card.
 
@@ -1419,11 +1514,7 @@ def _protocol_card(check, S, pointer=None):
     record = check.get("record", "")
     details = check.get("details", [])
     fix = check.get("fix", "")
-    s_clr = STATUS_CLR.get(status, TEXT_SEC)
-    s_lbl = STATUS_LBL.get(status, "Info")
-    pill_label = check.get("pill_label")
-    if pill_label:
-        s_lbl = pill_label
+    s_clr, s_lbl = _card_status(check)
 
     els = []
 
