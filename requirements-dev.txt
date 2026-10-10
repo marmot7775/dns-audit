@@ -17,6 +17,10 @@ pytest-cov>=6.0.0
 # Linter. Config lives in pyproject.toml under [tool.ruff].
 ruff>=0.15.0
 
+# Type checker, report only in CI for now. Pinned so the error count
+# CHANGELOG.md tracks moves only when the code does. Config in pyproject.toml.
+mypy==2.4.0
+
 # Headless Chromium for the browser tests (Doc 38 logo, Doc 48 layout,
 # contrast and landmarks). The browser itself is a separate download:
 #   python -m playwright install --with-deps chromium
