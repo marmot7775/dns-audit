@@ -68,3 +68,19 @@ def test_share_url_carries_the_selector_of_the_shown_result(browser, fixture_res
         assert errors == []
     finally:
         ctx.close()
+
+
+def test_address_bar_follows_the_selector_of_the_shown_result(browser, fixture_result):  # noqa: F811
+    """Opened with sel=s1, then a run without a selector: reloading the page
+    must not bring s1 back."""
+    ctx, page, errors = _open(browser, "?sel=s1")
+    try:
+        page.evaluate("d => renderResults(d, 'k2')", fixture_result)
+        page.wait_for_timeout(500)
+        assert parse_qs(urlparse(page.url).query).get("sel") == ["k2"]
+        page.evaluate("d => renderResults(d)", fixture_result)
+        page.wait_for_timeout(500)
+        assert "sel" not in parse_qs(urlparse(page.url).query)
+        assert errors == []
+    finally:
+        ctx.close()

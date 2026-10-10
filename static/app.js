@@ -715,6 +715,9 @@ function renderResults(data, selector = '') {
         const url = new URL(window.location);
         url.searchParams.set('d', data.domain);
         url.searchParams.set('scope', scopeAtRender);
+        // This render's selector, not the one a link opened with.
+        if (selector) url.searchParams.set('sel', selector);
+        else url.searchParams.delete('sel');
         window.history.replaceState({}, '', url);
     }, 300);
 
