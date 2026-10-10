@@ -5079,6 +5079,21 @@ def _spf_tree_names(current_spf: str, spf_recursive: Optional[Dict]) -> set:
     return names
 
 
+# Sources that put a vendor's sending on a subdomain of its own (a bounce or
+# link tracking name CNAMEd into the vendor), whose SPF the vendor publishes
+# there. Seen only that way, the vendor needs nothing in the apex record:
+# allbirds.com has a Mailgun tracking CNAME and was told to add mailgun.org.
+_SUBDOMAIN_ONLY_SOURCES = {"tracking CNAME", "return path CNAME"}
+
+
+def _needs_apex_spf_include(v: Dict) -> bool:
+    """Whether a vendor in the panel is evidence the apex SPF record should
+    name it: a sender, seen by more than a bounce or tracking CNAME."""
+    sources = set(v.get("sources") or [])
+    return v.get("role") not in ("reporting", "account") and not (
+        sources and sources <= _SUBDOMAIN_ONLY_SOURCES)
+
+
 def _vendor_in_spf_tree(vendor: str, spf_inc: str, tree_names: set) -> bool:
     """True when the vendor's include, a name under it, or the vendor's
     hosted SPF zone appears anywhere in the SPF tree."""
@@ -5991,7 +6006,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             # A reporting service (found only as a DMARC or TLS-RPT report
             # address) receives reports, and a verification token alone is an
             # account with nothing set up to send: neither sends as the domain.
-            if v.get("role") in ("reporting", "account"):
+            # A bounce or tracking CNAME alone puts the sending on a subdomain.
+            if not _needs_apex_spf_include(v):
                 continue
             spf_inc = VENDOR_SPF_INCLUDES.get(v["name"])
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
@@ -6340,7 +6356,8 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
     "not shown missing", never "present":
 
     - SPF: the same rule as the SPF card's suggestion (VENDOR_SPF_INCLUDES,
-      anywhere in the resolved tree), so the panel and the card agree. Skipped
+      anywhere in the resolved tree, not for a vendor seen only by a bounce or
+      tracking CNAME), so the panel and the card agree. Skipped
       when there is no SPF record at all; the SPF card already says so.
     - DKIM: only vendors with a fixed selector list (VENDOR_DKIM_SELECTORS),
       and only when the scan got an answer at every one of those names. Not
@@ -6369,7 +6386,8 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
             continue
         name = v["name"]
         spf_inc = VENDOR_SPF_INCLUDES.get(name)
-        if tree_names is not None and spf_inc and not _vendor_in_spf_tree(name, spf_inc, tree_names):
+        if (tree_names is not None and spf_inc and _needs_apex_spf_include(v)
+                and not _vendor_in_spf_tree(name, spf_inc, tree_names)):
             v["missing"].append(f"Not in your SPF record. {name} asks for {spf_inc}.")
         selectors = VENDOR_DKIM_SELECTORS.get(name)
         has_key = any(src.startswith("DKIM") for src in v.get("sources") or [])
