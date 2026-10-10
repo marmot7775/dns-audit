@@ -103,3 +103,5 @@ def test_optional_extras_heading_travels_with_its_first_item(result):
     assert "Optional extras" in _text(holders[0]._content[0])
     assert len(holders[0]._content) > 1
     assert not any(isinstance(f, Paragraph) and "Optional extras" in _text(f) for f in els)
+    # One level: a KeepTogether inside another measures as taller than it is.
+    assert not any(isinstance(c, KeepTogether) for c in holders[0]._content)
