@@ -5094,17 +5094,30 @@ def _needs_apex_spf_include(v: Dict) -> bool:
         sources and sources <= _SUBDOMAIN_ONLY_SOURCES)
 
 
-def _spf_managed_by(tree_names: set) -> Optional[str]:
+def _spf_managed_by(current_spf: str) -> Optional[str]:
     """The hosted SPF service (Valimail, OnDMARC) or "a macro include" when
-    the SPF tree has one: either can authorize a vendor without naming it,
-    so no include can be called missing. glossier.com publishes only a
-    Valimail macro include and was told to add include:_spf.google.com."""
+    the record authorizes through one: either can authorize a vendor without
+    naming it, so no include can be called missing. glossier.com publishes
+    only a Valimail macro include and was told to add include:_spf.google.com.
+
+    Only terms that authorize count: a bare or "+" include, or a redirect,
+    before the all term. "-include:" or a term after all says nothing about
+    who may send. Hosted services sit in the top-level record.
+    """
     from vendor_patterns import HOSTED_SPF_VENDORS, SPF_INCLUDE_VENDORS, match_host
-    for n in sorted(tree_names):
-        vendor = match_host(n, SPF_INCLUDE_VENDORS)
-        if vendor in HOSTED_SPF_VENDORS:
-            return vendor
-    if any("%{" in n for n in tree_names):
+    targets = []
+    for term in _spf_terms(current_spf):
+        bare = term.lstrip(_SPF_QUALIFIERS).lower()
+        if bare == "all":
+            break
+        if term[:1] in "-~?" or not bare.startswith(("include:", "redirect=")):
+            continue
+        targets.append(bare.split(":", 1)[1] if bare.startswith("include:")
+                       else bare.split("=", 1)[1])
+    for t in targets:
+        if match_host(t.rstrip("."), SPF_INCLUDE_VENDORS) in HOSTED_SPF_VENDORS:
+            return match_host(t.rstrip("."), SPF_INCLUDE_VENDORS)
+    if any("%{" in t for t in targets):
         return "a macro include"
     return None
 
@@ -6028,7 +6041,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
                 missing_includes.append(spf_inc)
                 matched_vendors.append(v["name"])
-        managed_by = _spf_managed_by(tree_names) if missing_includes else None
+        managed_by = _spf_managed_by(current_spf) if missing_includes else None
         if managed_by:
             for check in checks:
                 if check.get("name") != "SPF":
@@ -6407,7 +6420,7 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
     # An indeterminate tree left a branch unread, and the include may be in it.
     if raw_spf.get("status") != "unavailable" and spf_record and not raw_spf.get("spf_indeterminate"):
         tree_names = _spf_tree_names(spf_record, raw_spf.get("spf_recursive"))
-        if _spf_managed_by(tree_names):
+        if _spf_managed_by(spf_record):
             tree_names = None
     answered = {(x or "").lower() for x in raw_dkim.get("answered_selectors") or []}
     live = _live_dkim_selectors(raw_dkim)

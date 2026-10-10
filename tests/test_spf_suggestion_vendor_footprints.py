@@ -99,8 +99,16 @@ def test_a_hosted_spf_record_gets_no_include_suggestion():
     """glossier.com publishes only a Valimail macro include; the card said
     to add include:_spf.google.com to it."""
     import audit_engine
-    tree = {"%{i}._ip.%{h}._ehlo.%{d}._spf.vali.email"}
-    assert audit_engine._spf_managed_by(tree) == "Valimail"
-    assert audit_engine._spf_managed_by({"acme.test.smart.ondmarc.com"}) == "Red Sift OnDMARC"
-    assert audit_engine._spf_managed_by({"%{ir}._spf.example.net"}) == "a macro include"
-    assert audit_engine._spf_managed_by({"_spf.google.com"}) is None
+    m = audit_engine._spf_managed_by
+    assert m("v=spf1 include:%{i}._ip.%{h}._ehlo.%{d}._spf.vali.email ~all") == "Valimail"
+    assert m("v=spf1 +include:acme.test.smart.ondmarc.com -all") == "Red Sift OnDMARC"
+    assert m("v=spf1 redirect=%{ir}._spf.example.net") == "a macro include"
+    assert m("v=spf1 include:_spf.google.com ~all") is None
+
+
+def test_only_authorizing_terms_make_a_record_hosted():
+    """-include: excludes, and nothing after all is evaluated (review on #189)."""
+    m = __import__("audit_engine")._spf_managed_by
+    assert m("v=spf1 -include:_spf.vali.email include:_spf.google.com ~all") is None
+    assert m("v=spf1 ~include:%{i}._spf.example.net -all") is None
+    assert m("v=spf1 include:_spf.google.com -all include:_spf.vali.email") is None
