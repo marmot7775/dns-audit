@@ -243,6 +243,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         syncScopeDesc();
     }
+    // A shared link carries the selector its audit was run with. Same rule
+    // as the server's SELECTOR_PATTERN (config.py); anything else is dropped.
+    const sel = params.get('sel');
+    if (domain && sel && sel.length <= 253 && /^[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})*$/.test(sel)) {
+        document.getElementById('selector-input').value = sel;
+        document.getElementById('selector-field').classList.add('visible');
+        const selToggle = document.getElementById('selector-toggle');
+        selToggle.classList.add('active');
+        selToggle.setAttribute('aria-expanded', 'true');
+    }
     if (domain) {
         const normalized = normalizeDomain(domain);
         if (DOMAIN_RE.test(normalized)) {
@@ -705,6 +715,9 @@ function renderResults(data, selector = '') {
         const url = new URL(window.location);
         url.searchParams.set('d', data.domain);
         url.searchParams.set('scope', scopeAtRender);
+        // This render's selector, not the one a link opened with.
+        if (selector) url.searchParams.set('sel', selector);
+        else url.searchParams.delete('sel');
         window.history.replaceState({}, '', url);
     }, 300);
 
@@ -4025,6 +4038,9 @@ function _getShareUrl() {
     url.searchParams.set('d', d.domain);
     const scope = _resultScope(d);
     if (scope !== 'complete') url.searchParams.set('scope', scope);
+    // Without it the link reruns the audit without the DKIM lookup the
+    // sharer saw.
+    if (lastAuditSelector) url.searchParams.set('sel', lastAuditSelector);
     return url.toString();
 }
 

@@ -70,8 +70,10 @@ DOMAIN_PATTERN = re.compile(
     r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z][A-Za-z0-9-]{1,62}(?<!-)$"
 )
 
-# RFC 6376: DKIM selectors are DNS labels -- alphanumeric and hyphens only
-SELECTOR_PATTERN = re.compile(r'^[A-Za-z0-9-]{1,63}$')
+# RFC 6376 section 3.1: selector = sub-domain *( "." sub-domain ). Each
+# label is letters, digits and hyphens, 63 at most; periods separate labels
+# ("march2005.reykjavik" is the RFC's own example).
+SELECTOR_PATTERN = re.compile(r'^(?=.{1,253}\Z)[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})*\Z')
 
 # ============================================================
 # Build identity
