@@ -1,28 +1,9 @@
-# Test-only dependencies. CI and local runs must install this
-# alongside requirements.txt.
+# Generated from pyproject.toml by tools/gen_requirements.py. Do not edit:
+# change pyproject.toml, where each pin's reason is written, and rerun.
 pytest>=8.0.0
 httpx2>=2.12.0
-
-# PDF text extraction for tests that assert on rendered PDF content rather
-# than the result dict (Doc 27: a card can be correct in the data and wrong
-# in the document, which only reading the rendered text catches).
 pypdf>=5.0.0
-
-# Coverage measurement. Not wired into the default pytest run, so
-# `pytest tests/` behaves exactly as before. CI passes --cov and uploads
-# coverage.xml to Codecov. Locally, invoke it explicitly:
-#   python3 -m pytest tests/ --cov --cov-report=term-missing
 pytest-cov>=6.0.0
-
-# Linter. Config lives in pyproject.toml under [tool.ruff].
 ruff>=0.15.0
-
-# Type checker, report only in CI for now. Pinned so the error count
-# CHANGELOG.md tracks moves only when the code does. Config in pyproject.toml.
 mypy==2.4.0
-
-# Headless Chromium for the browser tests (Doc 38 logo, Doc 48 layout,
-# contrast and landmarks). The browser itself is a separate download:
-#   python -m playwright install --with-deps chromium
-# Without it those tests skip rather than fail.
 playwright>=1.47.0
