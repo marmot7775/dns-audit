@@ -93,3 +93,14 @@ def test_no_include_for_a_vendor_whose_footprint_needs_none():
     for name in ("Mailchimp", "Postmark", "SparkPost", "Brevo", "SendGrid",
                  "Amazon SES", "HubSpot", "Salesforce", "Zendesk", "Freshdesk", "Intercom"):
         assert name not in VENDOR_SPF_INCLUDES, name
+
+
+def test_a_hosted_spf_record_gets_no_include_suggestion():
+    """glossier.com publishes only a Valimail macro include; the card said
+    to add include:_spf.google.com to it."""
+    import audit_engine
+    tree = {"%{i}._ip.%{h}._ehlo.%{d}._spf.vali.email"}
+    assert audit_engine._spf_managed_by(tree) == "Valimail"
+    assert audit_engine._spf_managed_by({"acme.test.smart.ondmarc.com"}) == "Red Sift OnDMARC"
+    assert audit_engine._spf_managed_by({"%{ir}._spf.example.net"}) == "a macro include"
+    assert audit_engine._spf_managed_by({"_spf.google.com"}) is None

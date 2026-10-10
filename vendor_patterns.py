@@ -145,6 +145,11 @@ DKIM_CNAME_VENDORS: Dict[str, str] = {
     # From vendors.json, 2026-10-08.
     "mailgun.com": "Mailgun",
     "klaviyodns.com": "Klaviyo",
+    # Klaviyo's own SendGrid account: kl and kl2 at glossier.com, kotn.com,
+    # feastables.com, liquiddeath.com and magicspoon.com all CNAME into it
+    # (2026-10-09). The longer pattern beats sendgrid.net, which credited
+    # those keys to SendGrid and left Klaviyo as an account trace.
+    "u161779.wl030.sendgrid.net": "Klaviyo",
     "custdkim.salesforce.com": "Salesforce",
     "eversrv.com": "Everlytic",
     # Not freshemail.io: every Freshworks product signs from it, so it does
@@ -470,6 +475,13 @@ def label_cname_vendor(label: str, target: Optional[str]):
     return None, None
 
 
+# Services that publish a domain's SPF for it, often through a macro include.
+# One of them can authorize a vendor without naming it in the record, so an
+# include that seems missing cannot be called missing (sender discovery
+# vendors.json marks these hosted_spf).
+HOSTED_SPF_VENDORS = frozenset({"Valimail", "Red Sift OnDMARC"})
+
+
 # Vendors whose setup docs name a fixed set of DKIM selectors, so a scan that
 # got an answer at every one of them and found no key from the vendor knows
 # the key is missing (vendor gap report, step 8). From the footprints in
@@ -480,7 +492,9 @@ def label_cname_vendor(label: str, target: Optional[str]):
 VENDOR_DKIM_SELECTORS: Dict[str, tuple] = {
     "Brevo": ("brevo1", "brevo2", "mail", "sib2k"),
     "Fastmail": ("fm1", "fm2", "fm3", "mesmtp"),
-    "Klaviyo": ("km1", "km2", "kt1", "kt2", "ks1", "ks2", "kl1", "kl2"),
+    # kl and kl2 are the live setup (CNAMEs into Klaviyo's SendGrid account),
+    # km, kt and ks the documented static one; all eight are in ESP_SELECTORS.
+    "Klaviyo": ("kl", "kl2", "km1", "km2", "kt1", "kt2", "ks1", "ks2"),
     "Mailchimp": ("k2", "k3"),
     "Mandrill": ("mte1", "mte2"),
     "Microsoft 365": ("selector1", "selector2"),
