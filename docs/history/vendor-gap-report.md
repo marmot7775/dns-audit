@@ -70,3 +70,26 @@ open decisions.
    checkable, and not before step 8.
 4. The 30 query wave is acceptable in parallel with a cap and a canary.
 5. Adopt the script's generic name rule.
+
+## Step 8, as built (2026-10-09)
+
+The SPF half was already in place: the SPF card names detected senders whose
+include is missing and suggests a record (step 1, VENDOR_SPF_INCLUDES). Step 8
+adds a line under each vendor in the panel and the PDF for a missing record,
+and changes no card status or score.
+
+- Only In use and Configured senders. Likely, account only and reporting
+  vendors get nothing.
+- SPF: the same rule as the SPF card, so the two agree. Nothing when there is
+  no SPF record or the lookup did not finish.
+- DKIM: only the vendors marked verified in vendors.json with a fixed selector
+  list (VENDOR_DKIM_SELECTORS in vendor_patterns.py): Brevo, Fastmail,
+  Klaviyo, Mailchimp, Mandrill, Microsoft 365, Proton Mail. Google Workspace
+  and Mailgun let the customer name the selector, so they are not checked.
+- A key is called missing only when the scan got an answer at every one of
+  the vendor's selectors (answered_selectors, new in smart_dkim_check). Not
+  under a _domainkey wildcard, after a timed out scan, when one of the
+  vendor's selectors is a dangling CNAME (the DKIM card reports it), or when
+  a live key names no vendor (it may be this one's).
+- The return path check from the script is not ported: the label is set per
+  account for most vendors, and a missing one is information, not a fault.

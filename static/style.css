@@ -2854,6 +2854,13 @@ details.st-node>summary:hover {
     color: var(--text-tertiary);
 }
 
+/* A record the vendor's own setup docs require that the audit checked for
+   and did not find (vendor gap report, step 8). */
+.vendor-missing {
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+}
+
 /* ==========================================================================
    PROVIDER INTELLIGENCE (Prompt 19)
    ========================================================================== */
@@ -6912,19 +6919,6 @@ h3.services-sub,
 .audit-btn.export-csv-btn:hover {
     background: var(--surface-hover);
     color: var(--text-primary);
-}
-
-/* Sticky run-another when scrolled past (Prompt 9) */
-#run-another-btn.sticky {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--bg-raised);
-    border-top: 1px solid var(--border);
-    padding: 0.75rem 1rem;
-    z-index: 100;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* ==========================================================================

@@ -1015,6 +1015,7 @@ function renderResults(data) {
             card.innerHTML = `
                 <div class="vendor-name">${escapeHtml(v.name)}${tier ? ` <span class="tag vendor-tier">${escapeHtml(tier)}</span>` : ''}</div>
                 <div class="vendor-confidence">${detail}</div>
+                ${(v.missing || []).map(m => `<div class="vendor-missing">${escapeHtml(m)}</div>`).join('')}
             `;
             vendorsGrid.appendChild(card);
         });
@@ -4535,11 +4536,3 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
-
-// Sticky run-another on scroll (Prompt 9)
-window.addEventListener('scroll', () => {
-    const runAnother = document.getElementById('run-another-btn');
-    if (!runAnother) return;
-    const rect = runAnother.getBoundingClientRect();
-    runAnother.classList.toggle('sticky', rect.bottom > window.innerHeight);
-}, { passive: true });

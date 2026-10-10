@@ -1705,8 +1705,11 @@ def _vendors(data, S):
         # The tier in words, as on the web page; a result without one (an
         # older cached result) keeps its percentage.
         status = "Reporting service" if reporting else v.get("tier")
+        # Records the vendor's setup docs require that the audit checked for
+        # and did not find, under the name as on the web page.
+        missing = "".join(f"<br/><font size=\"8\">{_safe(m)}</font>" for m in v.get("missing") or [])
         rows.append([
-            Paragraph(f"<b>{_safe(v.get('name', ''))}</b>", S["body"]),
+            Paragraph(f"<b>{_safe(v.get('name', ''))}</b>{missing}", S["body"]),
             Paragraph(_safe(side), S["body_small"]),
             Paragraph(_safe(status) if status
                       else f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body_small" if status else "body"]),
