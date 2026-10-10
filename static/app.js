@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // A shared link carries the selector its audit was run with. Same rule
     // as the server's SELECTOR_PATTERN (config.py); anything else is dropped.
     const sel = params.get('sel');
-    if (domain && sel && /^[A-Za-z0-9-]{1,63}$/.test(sel)) {
+    if (domain && sel && sel.length <= 253 && /^[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})*$/.test(sel)) {
         document.getElementById('selector-input').value = sel;
         document.getElementById('selector-field').classList.add('visible');
         const selToggle = document.getElementById('selector-toggle');
