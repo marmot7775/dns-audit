@@ -6358,7 +6358,8 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
     - SPF: the same rule as the SPF card's suggestion (VENDOR_SPF_INCLUDES,
       anywhere in the resolved tree, not for a vendor seen only by a bounce or
       tracking CNAME), so the panel and the card agree. Skipped
-      when there is no SPF record at all; the SPF card already says so.
+      when there is no SPF record at all (the SPF card already says so) or
+      part of the tree did not resolve.
     - DKIM: only vendors with a fixed selector list (VENDOR_DKIM_SELECTORS),
       and only when the scan got an answer at every one of those names. Not
       under a _domainkey wildcard, after a timed out scan, when a vendor
@@ -6370,7 +6371,8 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
     raw_dkim = raw_results.get("dkim") or {}
     spf_record = raw_spf.get("record") or ""
     tree_names = None
-    if raw_spf.get("status") != "unavailable" and spf_record:
+    # An indeterminate tree left a branch unread, and the include may be in it.
+    if raw_spf.get("status") != "unavailable" and spf_record and not raw_spf.get("spf_indeterminate"):
         tree_names = _spf_tree_names(spf_record, raw_spf.get("spf_recursive"))
     answered = {(x or "").lower() for x in raw_dkim.get("answered_selectors") or []}
     live = _live_dkim_selectors(raw_dkim)

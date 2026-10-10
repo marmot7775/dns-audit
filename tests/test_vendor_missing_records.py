@@ -140,3 +140,31 @@ def test_the_spf_card_follows_the_same_rule():
     assert not _needs_apex_spf_include(_vendor("Mailgun", tier="Configured", sources=("tracking CNAME",)))
     assert _needs_apex_spf_include(_vendor("Mailgun", tier="Configured", sources=("DKIM CNAME", "tracking CNAME")))
     assert not _needs_apex_spf_include(_vendor("Mailchimp", tier="Account only", sources=("DMARC reports",), role="reporting"))
+
+
+def test_an_spf_tree_with_an_unread_branch_says_nothing_about_spf():
+    raw = _raw(spf="v=spf1 include:_spf.example.net -all")
+    raw["spf"]["spf_indeterminate"] = True
+    assert _run(_vendor("Microsoft 365", sources=("MX", "DKIM CNAME")), raw) == []
+
+
+def test_a_selector_probe_that_failed_is_not_answered(monkeypatch):
+    """SERVFAIL at selector1 and selector2: tested, as before, but not
+    answered, so the panel cannot call the Microsoft 365 key missing."""
+    import dns.resolver
+    import spf_intelligence
+
+    class _Resolver:
+        lifetime = 3
+
+        def resolve(self, name, rdtype="A", *a, **k):
+            if name.startswith(("selector1.", "selector2.")):
+                raise dns.resolver.NoNameservers()
+            raise dns.resolver.NXDOMAIN()
+
+    monkeypatch.setattr(spf_intelligence, "get_uncached_resolver", lambda *a, **k: _Resolver())
+    raw = spf_intelligence.smart_dkim_check("fail.test", "v=spf1 include:spf.protection.outlook.com -all")
+    assert "selector1" not in raw["answered_selectors"]
+    assert "selector2" not in raw["answered_selectors"]
+    assert raw["answered_selectors"], "the NXDOMAIN probes still count as answered"
+    assert raw["tested_count"] >= len(raw["answered_selectors"]) + 2
