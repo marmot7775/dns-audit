@@ -138,6 +138,9 @@ function statusIconHtml(st) {
 const DEFAULT_TITLE = document.title;
 let currentScope = 'complete';
 let lastAuditData = null;
+// The DKIM selector the shown results were run with. The PDF reads this, not
+// the input, which may have been edited since.
+let lastAuditSelector = '';
 let auditStartTime = 0;
 let auditController = null;
 let auditReader = null;
@@ -427,6 +430,7 @@ async function runAudit(domain) {
     hideResults();
 
     const selectorVal = document.getElementById('selector-input')?.value?.trim() || '';
+    lastAuditSelector = selectorVal;
     let streamUrl = `${API_BASE}/audit/stream?domain=${encodeURIComponent(domain)}`;
     if (selectorVal) streamUrl += `&selector=${encodeURIComponent(selectorVal)}`;
     if (currentScope && currentScope !== 'complete') streamUrl += `&scope=${encodeURIComponent(currentScope)}`;
@@ -3848,8 +3852,7 @@ document.getElementById('pdf-btn').addEventListener('click', () => {
     pdfBtn.disabled = true;
     const domain = encodeURIComponent(lastAuditData.domain);
     const scope = _resultScope(lastAuditData);
-    const selectorVal = document.getElementById('selector-input')?.value?.trim() || '';
-    const selectorParam = selectorVal ? `&selector=${encodeURIComponent(selectorVal)}` : '';
+    const selectorParam = lastAuditSelector ? `&selector=${encodeURIComponent(lastAuditSelector)}` : '';
     window.open(`/api/audit/${domain}/pdf?scope=${scope}${selectorParam}`, '_blank');
     setTimeout(() => { pdfBtn.classList.remove('btn-busy'); pdfBtn.disabled = false; }, 2000);
 });
