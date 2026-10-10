@@ -18,6 +18,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   pyproject.toml.
 
 ### Changed
+- The DANE card on a Microsoft 365 legacy MX says "Exchange Online can
+  publish it for you" instead of repeating its pill in a sentence the
+  results row cut off.
 - The home page's domain input spans the card like the title and scope
   buttons above it (it stopped at 600px), and the DKIM selector link sits
   under its left edge.
