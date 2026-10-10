@@ -5967,6 +5967,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # --- Vendor list for frontend ---
     vendors = _format_vendors(fp_vendors)
+    _vendor_missing_records(vendors, raw_results)
 
     # --- Provider Intelligence (Prompt 19) ---
     provider_intelligence = _build_provider_intelligence(raw_results, checks)
@@ -6327,6 +6328,55 @@ def _format_vendors(fp_vendors: List) -> List[Dict]:
     return sorted(seen.values(), key=lambda x: (x["role"] == "reporting",
                                                 VENDOR_TIERS.index(x["tier"]), -x["confidence"],
                                                 x["name"].lower()))
+
+
+def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
+    """Set each vendor's "missing": the records its own setup docs require
+    that this audit checked for and did not find (vendor gap report, step 8).
+
+    Only for senders the panel calls In use or Configured: a key known only by
+    its name, a verification token or a report address says too little about
+    how the vendor is set up. Only what the audit can check, so silence means
+    "not shown missing", never "present":
+
+    - SPF: the same rule as the SPF card's suggestion (VENDOR_SPF_INCLUDES,
+      anywhere in the resolved tree), so the panel and the card agree. Skipped
+      when there is no SPF record at all; the SPF card already says so.
+    - DKIM: only vendors with a fixed selector list (VENDOR_DKIM_SELECTORS),
+      and only when the scan got an answer at every one of those names. Not
+      under a _domainkey wildcard, after a timed out scan, when a vendor
+      selector is a dangling CNAME (the DKIM card reports that), or when a
+      live key names no vendor (it may be this vendor's).
+    """
+    from vendor_patterns import VENDOR_DKIM_SELECTORS, dkim_key_vendor
+    raw_spf = raw_results.get("spf") or {}
+    raw_dkim = raw_results.get("dkim") or {}
+    spf_record = raw_spf.get("record") or ""
+    tree_names = None
+    if raw_spf.get("status") != "unavailable" and spf_record:
+        tree_names = _spf_tree_names(spf_record, raw_spf.get("spf_recursive"))
+    answered = {(x or "").lower() for x in raw_dkim.get("answered_selectors") or []}
+    live = _live_dkim_selectors(raw_dkim)
+    dkim_checkable = bool(answered) and not (
+        raw_dkim.get("wildcard_detected") or raw_dkim.get("timed_out")
+        or raw_dkim.get("status") == "unavailable"
+        or any(dkim_key_vendor(k.get("selector"), k.get("cname_target"), k.get("vendor"),
+                               k.get("cname_chain")) is None for k in live))
+    dangling = {(d.get("selector") or "").lower() for d in raw_dkim.get("dangling_selectors") or []}
+    for v in vendors:
+        v["missing"] = []
+        if v.get("role") != "sender" or v.get("tier") not in ("In use", "Configured"):
+            continue
+        name = v["name"]
+        spf_inc = VENDOR_SPF_INCLUDES.get(name)
+        if tree_names is not None and spf_inc and not _vendor_in_spf_tree(name, spf_inc, tree_names):
+            v["missing"].append(f"Not in your SPF record. {name} asks for {spf_inc}.")
+        selectors = VENDOR_DKIM_SELECTORS.get(name)
+        has_key = any(src.startswith("DKIM") for src in v.get("sources") or [])
+        if (dkim_checkable and selectors and not has_key
+                and set(selectors) <= answered and not set(selectors) & dangling):
+            names = ", ".join(selectors[:-1]) + " or " + selectors[-1]
+            v["missing"].append(f"No DKIM key from {name}. Nothing is published at {names}.")
 
 
 # ============================================================

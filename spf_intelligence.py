@@ -568,6 +568,10 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
 
     found = []
     dangling = []
+    # Selectors whose query finished with an answer (a key, NXDOMAIN or no
+    # TXT), so "no key at this name" is known rather than assumed. The vendor
+    # panel reads it before saying a sender's key is missing.
+    answered = set()
     timed_out = False
     unanswered = 0
     tested = 0
@@ -599,6 +603,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
                     unanswered += 1
                     continue
                 tested += 1
+                answered.add(futures[future])
                 if r and r.get('dangling'):
                     dangling.append(r)
                 elif r:
@@ -646,6 +651,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     # reporting the queued count told users we had checked selectors we never
     # got to.
     result['tested_count'] = tested
+    result['answered_selectors'] = sorted(answered)
 
     result['unanswered_count'] = unanswered
     dangling.sort(key=lambda r: selector_order.get(r['selector'], 999))
