@@ -350,22 +350,6 @@ class AdvancedVendorFingerprinter:
                     'confidence': 0.80
                 })
     
-    @staticmethod
-    def _matches_suffix(candidate: str, pattern: str) -> bool:
-        """True when candidate is pattern, or a subdomain of it.
-
-        A substring test hands "sendgrid.net.attacker.example" SendGrid's name
-        and badge at 0.99 confidence, in the web vendor card and the PDF
-        "Detected vendors" section. For a tool people run to find out whether
-        their SPF or MX has been tampered with, that is the wrong direction to
-        fail. spf_execution_engine and spf_intelligence match on label
-        boundaries for the same reason; this module feeds the vendor list the
-        report actually shows, and was missed.
-        """
-        c = (candidate or "").lower().strip().rstrip(".")
-        p = (pattern or "").lower().strip().rstrip(".")
-        return bool(c) and bool(p) and (c == p or c.endswith("." + p))
-
     def _match_spf_vendor(self, include: str) -> Optional[str]:
         """Map SPF includes to vendors, from the table the DKIM card shares."""
         return match_host(include, SPF_INCLUDE_VENDORS)
