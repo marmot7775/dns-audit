@@ -29,8 +29,14 @@ def test_pdf_handler_does_not_read_the_selector_input():
     assert "lastAuditSelector" in handler and "lastAuditData.domain" in handler
 
 
-def test_selector_is_captured_when_the_audit_starts():
+def test_selector_is_stored_with_the_result_it_produced():
+    """Set where lastAuditData is set, not when a run starts: a run that
+    fails or is overtaken must not leave its selector beside an older
+    result."""
     src = _source()
-    run = src[src.index("async function runAudit("):]
-    run = run[:run.index("fetch(streamUrl")]
-    assert re.search(r"lastAuditSelector\s*=\s*selectorVal", run)
+    render = src[src.index("function renderResults("):]
+    render = render[:render.index("\n}\n")]
+    assert re.search(r"lastAuditData = data;\s*lastAuditSelector = selector;", render)
+    run = src[src.index("async function runAudit("):src.index("function renderResults(")]
+    assert "lastAuditSelector" not in run
+    assert run.count("renderResults(") == run.count(", selectorVal)")

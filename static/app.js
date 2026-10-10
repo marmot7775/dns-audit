@@ -138,8 +138,9 @@ function statusIconHtml(st) {
 const DEFAULT_TITLE = document.title;
 let currentScope = 'complete';
 let lastAuditData = null;
-// The DKIM selector the shown results were run with. The PDF reads this, not
-// the input, which may have been edited since.
+// The DKIM selector the shown results were run with, set by renderResults
+// beside lastAuditData. The PDF reads this, not the input, which may have
+// been edited since.
 let lastAuditSelector = '';
 let auditStartTime = 0;
 let auditController = null;
@@ -430,7 +431,6 @@ async function runAudit(domain) {
     hideResults();
 
     const selectorVal = document.getElementById('selector-input')?.value?.trim() || '';
-    lastAuditSelector = selectorVal;
     let streamUrl = `${API_BASE}/audit/stream?domain=${encodeURIComponent(domain)}`;
     if (selectorVal) streamUrl += `&selector=${encodeURIComponent(selectorVal)}`;
     if (currentScope && currentScope !== 'complete') streamUrl += `&scope=${encodeURIComponent(currentScope)}`;
@@ -477,7 +477,7 @@ async function runAudit(domain) {
                 if (msg.done) {
                     auditReader = null;
                     if (msg.cached) msg.result._cached = true;
-                    renderResults(msg.result);
+                    renderResults(msg.result, selectorVal);
                     return;
                 }
 
@@ -515,7 +515,7 @@ async function runAudit(domain) {
                 throw new Error(fallbackErr.detail || `Audit failed (HTTP ${resp.status})`);
             }
             const data = await resp.json();
-            renderResults(data);
+            renderResults(data, selectorVal);
         } catch (fallbackErr) {
             if (fallbackErr.name === 'AbortError') return;
             console.error('Fallback audit error:', fallbackErr);
@@ -653,8 +653,11 @@ function _resultScope(data) {
     return (data && data.scope) || currentScope || 'complete';
 }
 
-function renderResults(data) {
+function renderResults(data, selector = '') {
+    // Set together, so the PDF never pairs one audit's domain with another
+    // run's selector.
     lastAuditData = data;
+    lastAuditSelector = selector;
     // The spec toggle renders with RFC 9989 active on every audit, so the
     // mode it tracks has to start there too, or the first click after a
     // previous audit's RFC 7489 choice is swallowed as a no-op.
