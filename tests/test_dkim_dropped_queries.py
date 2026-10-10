@@ -178,3 +178,14 @@ def test_mailchimp_selectors_lead_the_probe_order():
     vendors = detect_vendors_from_spf("v=spf1 include:servers.mcsv.net -all")
     order = _selectors_from_vendors(vendors, COMPREHENSIVE_DKIM_SELECTORS)[:40]
     assert order[:3] == ["k1", "k2", "k3"]
+
+
+def test_answered_selectors_holds_only_names_that_got_an_answer():
+    """The vendor panel says a sender's key is missing only at names listed
+    here, so a dropped probe must not appear in it."""
+    zone = _zone(answer_first=10)
+    with fake_dns(zone):
+        raw = spf_intelligence.smart_dkim_check(DOMAIN, "v=spf1 mx -all")
+    assert len(raw["answered_selectors"]) == raw["tested_count"]
+    dropped = {q[0].split("._domainkey.")[0] for q in _dkim_queries(zone)} - set(raw["answered_selectors"])
+    assert len(dropped) == raw["unanswered_count"]

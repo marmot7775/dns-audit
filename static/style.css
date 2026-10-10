@@ -2854,6 +2854,13 @@ details.st-node>summary:hover {
     color: var(--text-tertiary);
 }
 
+/* A record the vendor's own setup docs require that the audit checked for
+   and did not find (vendor gap report, step 8). */
+.vendor-missing {
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+}
+
 /* ==========================================================================
    PROVIDER INTELLIGENCE (Prompt 19)
    ========================================================================== */

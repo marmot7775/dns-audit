@@ -1015,6 +1015,7 @@ function renderResults(data) {
             card.innerHTML = `
                 <div class="vendor-name">${escapeHtml(v.name)}${tier ? ` <span class="tag vendor-tier">${escapeHtml(tier)}</span>` : ''}</div>
                 <div class="vendor-confidence">${detail}</div>
+                ${(v.missing || []).map(m => `<div class="vendor-missing">${escapeHtml(m)}</div>`).join('')}
             `;
             vendorsGrid.appendChild(card);
         });
