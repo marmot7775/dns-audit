@@ -20,7 +20,6 @@ from result_transformer import (  # noqa: E402
     _build_spec_comparison,
     build_executive_summary,
     build_security_roadmap,
-    transform_ct,
 )
 
 DOMAIN = "doc66.test"

@@ -196,7 +196,7 @@ def _png_chunks(data):
 
 
 @pytest.mark.parametrize("name,size", [("apple-touch-icon.png", 180), ("favicon-32.png", 32)])
-def test_png_icons_decode(name, size):
+def test_png_icons_decode_at_their_declared_size(name, size):
     data = open(os.path.join(STATIC, name), "rb").read()
     for ctype, body, crc in _png_chunks(data):
         assert zlib.crc32(ctype + body) & 0xFFFFFFFF == crc, f"{name}: bad CRC on {ctype!r}"
@@ -304,7 +304,7 @@ def test_an_empty_roadmap_gets_its_own_biggest_risk_sentence():
             == "Nothing to fix. Every check the audit could assess passed.")
 
 
-def test_the_five_strings_doc_47_left_are_replaced():
+def test_retired_overclaims_stay_out_of_generated_text():
     rt = _read("result_transformer.py")
     ae = _read("audit_engine.py")
     for gone in ("better inbox placement", "is delivered as if", "silently stripped"):

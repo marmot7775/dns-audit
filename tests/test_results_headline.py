@@ -143,7 +143,7 @@ SUBLINE_CASES = [
 
 @pytest.mark.parametrize("items,expected", SUBLINE_CASES,
                          ids=["fixes", "one-fix", "optional", "one-optional", "nothing"])
-def test_subline(browser, items, expected):  # noqa: F811
+def test_headline_subline_counts_fixes_and_optional_items(browser, items, expected):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
         assert page.evaluate("rm => headlineSubline(rm)", {"items": items}) == expected

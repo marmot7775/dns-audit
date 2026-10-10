@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from result_transformer import RFC9989_RETIRED_TAGS, _parse_record_tags, build_security_roadmap
+from result_transformer import RFC9989_RETIRED_TAGS, _parse_record_tags
 from test_dmarc_grades import DOMAIN, RUA, _card, _pdf_text, _run, _zone
 
 

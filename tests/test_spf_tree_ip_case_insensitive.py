@@ -34,7 +34,7 @@ def test_uppercase_ip4_and_ip6_kept():
     assert "ip6:2001:db8::/32" in node["ips"]
 
 
-def test_qualified_ip4_kept():
+def test_spf_tree_keeps_ip_ranges_with_a_qualifier():
     node = _build_tree_node(
         _node("-ip4:198.51.100.0/24", "~ip4:192.0.2.0/24", "?IP6:2001:db8::/48", "-all"),
         0, 0,

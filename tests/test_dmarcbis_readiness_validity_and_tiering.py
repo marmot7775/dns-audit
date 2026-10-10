@@ -50,9 +50,6 @@ def test_invalid_record_is_not_claimed_valid_under_either_spec():
     readiness = card["dmarcbis_readiness"]
     assert readiness is not None
 
-    checklist_texts = " ".join(
-        f"{c.get('label', '')} {c.get('detail') or ''}" for c in readiness["checklist"]
-    )
     assert readiness["status"] != "compliant", (
         f"An invalid record must not be marked DMARCbis-compliant; "
         f"got readiness={readiness!r}"

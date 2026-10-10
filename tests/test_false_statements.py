@@ -30,7 +30,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from conftest import FakeZone
 import checks_extra
 import pdf_report
-import result_transformer
 from result_transformer import (
     _build_migration_path,
     _build_record_builder,
