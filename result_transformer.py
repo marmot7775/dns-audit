@@ -551,8 +551,6 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
                                  ("SPF", spf_unassessed),
                                  ("DKIM", dkim_unassessed)) if u]
     auth_unassessed = bool(unassessed)
-    unassessed_names = _join_names(unassessed)
-    unassessed_verb = "lookups did" if len(unassessed) > 1 else "lookup did"
 
     # ── Part 1: One-sentence verdict ─────────────────────────
     attack_surface = dmarc.get("attack_surface")
@@ -6661,7 +6659,6 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         # name needs the tag. "Generic" is not a sender.
         vendor = dkim_key_vendor(selector, sel.get("cname_target"), sel.get("vendor"),
                                  sel.get("cname_chain"))
-        key_type = sel.get("key_type", "")
 
         # Analyze key strength
         key_analysis = analyze_dkim_key_strength(sel_record)
@@ -7374,7 +7371,6 @@ def transform_mx(raw: Dict) -> Dict:
 
     # Add any issues not already covered
     for issue in raw.get("issues", []):
-        severity = issue.get("severity", "info")
         text = issue.get("plain_english") or issue.get("issue", "")
         if "dangling" not in text.lower() and "single" not in text.lower():
             details.append(_issue_to_detail(issue))
@@ -7523,7 +7519,6 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
                 "deliverability": None,
             }
 
-        sts_id = datetime.now(timezone.utc).strftime('%Y%m%d')
         return {
             "name": "MTA-STS",
             "status": "absent",
@@ -7994,7 +7989,6 @@ def _transform_dnssec_card(raw: Dict, domain: str = "") -> Dict:
     details.append({"type": "good", "text": f"DNSKEY records found ({key_count} key{'s' if key_count != 1 else ''})"})
 
     chain_valid = raw.get("chain_valid")
-    chain_details = raw.get("chain_details", [])
 
     if has_ds:
         details.append({"type": "good", "text": "DS record present at parent (chain of trust anchored)"})
@@ -8464,8 +8458,6 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
     for issue in issues:
         details.append(_issue_to_detail(issue))
 
-    # Build example TLSA record using first MX host
-    example_host = tlsa_records[0]["mx_host"] if tlsa_records else "mail.example.com"
     fix_parts = [
         "DANE implementation requires multiple steps:<br>"
         "<strong>1.</strong> DNSSEC must be enabled and validated for your domain.<br>"
@@ -8858,9 +8850,6 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
         pill_label = f"{active} cert{'s' if active != 1 else ''}"
 
     # Verdict
-    issuer_summary = ", ".join(i["name"] for i in issuers[:2])
-    if len(issuers) > 2:
-        issuer_summary += f" +{len(issuers) - 2} more"
     verdict = f"{active} active cert{'s' if active != 1 else ''} from {len(issuers)} issuer{'s' if len(issuers) != 1 else ''}"
 
     # Explanation
