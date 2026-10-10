@@ -72,45 +72,7 @@ DNS cannot list DKIM selectors, so name yours for the best result; an undetected
 
 Single-page app on FastAPI, dnspython and reportlab, with vanilla JavaScript. No accounts, no tracking. The only database is a SQLite table of DNS records seen in past audits, used for change detection and pruned after 90 days.
 
-```
-server.py                  FastAPI app, SSE, rate limiting, caching
-config.py                  Settings from the environment
-audit_engine.py            Check orchestration and timeouts
-result_transformer.py      Raw results to cards, metrics, roadmap
-pdf_report.py              PDF report
-dns_tools.py               Domain normalization, resolvers
-dns_snapshots.py           DNS record history for change detection
-dmarc_tree_walk.py         RFC 9989 tree walk
-spf_recursive.py           SPF lookup counter
-spf_execution_engine.py    SPF trace, DMARC evaluation summary
-spf_intelligence.py        DKIM selector discovery from SPF vendors
-checks_extra.py            MTA-STS, TLS-RPT, BIMI
-mx_check.py                MX analysis
-dkim_formatter.py          DKIM key analysis
-comprehensive_selectors.py Known DKIM selectors
-advanced_fingerprinting.py Vendor fingerprinting
-vendor_patterns.py         Vendor table: SPF, MX, DKIM CNAME, selector names
-anomaly_detector.py        Cross-check anomalies
-ua_classify.py             Browser and bot labels for the audit log
-
-static/
-  index.html               App shell
-  app.js                   Result rendering
-  style.css                Styles and design tokens
-  theme.js                 Theme toggle
-  articles.js              Articles filter
-  articles/                Articles
-
-tools/                     Operator scripts
-  live_check.py            Card statuses from a deployed site
-  rewrite_audit_log_ua.py  Old audit log entries to the log policy
-  gen_requirements.py      requirements files from pyproject.toml
-
-deploy/
-  dns-auditor.service      systemd unit template
-```
-
-Review history: [docs/history](docs/history/README.md).
+The pipeline from request to report, which module owns what, and the rules the code keeps: [ARCHITECTURE.md](ARCHITECTURE.md). Why it is built this way: [docs/decisions](docs/decisions/). Review history: [docs/history](docs/history/README.md).
 
 ## API
 
