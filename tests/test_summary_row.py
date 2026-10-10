@@ -18,7 +18,7 @@ TOPS_JS = """() => [...document.querySelectorAll('.summary-card')]
 
 
 @pytest.mark.parametrize("width", [820, 1280])
-def test_five_summary_tiles_share_one_row(browser, fixture_result, width):
+def test_five_summary_tiles_share_one_row(browser, fixture_result, width):  # noqa: F811 (pytest fixtures)
     data = copy.deepcopy(fixture_result)
     if not any(c["status"] == "unavailable" for c in data["checks"]):
         next(c for c in data["checks"] if c["status"] == "absent")["status"] = "unavailable"

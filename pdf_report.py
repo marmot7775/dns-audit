@@ -117,7 +117,6 @@ class Table(_PlatypusTable):
 # PDF and the page it came from use the same status and accent colours.
 # tests/test_palette_contrast.py holds the two in step.
 NAVY        = colors.HexColor("#12284a")
-NAVY_LIGHT  = colors.HexColor("#24427a")
 PASS_CLR    = colors.HexColor("#177245")   # --pass (light)
 PASS_BG     = colors.HexColor("#eaf5ef")
 WARN_CLR    = colors.HexColor("#9a5a10")   # --warn (light)
@@ -143,7 +142,6 @@ TEXT_PRI    = colors.HexColor("#101828")   # --text-primary (light)
 TEXT_SEC    = colors.HexColor("#475467")   # --text-secondary (light)
 TEXT_TER    = colors.HexColor("#5a6678")   # --text-tertiary (light)
 BORDER      = colors.HexColor("#dfe4ec")   # --border (light)
-BORDER_LIGHT = colors.HexColor("#eef1f6")
 BLUE_ACCENT = colors.HexColor("#2f5fcc")   # --primary (light)
 TEAL_ACCENT = colors.HexColor("#0e7268")   # --dmarcbis (light)
 SURFACE_BG  = colors.HexColor("#f4f6f9")   # --bg (light)
@@ -162,7 +160,6 @@ PROTOCOL_SECTION_ORDER = [
 PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
 
 STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
-STATUS_BG  = {"pass": PASS_BG,  "warn": WARN_BG,  "fail": FAIL_BG,  "absent": NEUTRAL_BG}
 STATUS_LBL = {"pass": "Pass", "warn": "Could be stronger", "fail": "Needs fixing",
               "absent": "Optional, not set up", "unavailable": "Not checked"}
 # Colours deliberately not mapped for "unavailable": every lookup falls
@@ -187,12 +184,6 @@ PRIORITY_CLR = {
     "medium": NEUTRAL_CLR,
     "low": NEUTRAL_CLR,
 }
-PRIORITY_BG = {
-    "critical": FAIL_BG,
-    "high": WARN_BG,
-    "medium": NEUTRAL_BG,
-    "low": NEUTRAL_BG,
-}
 
 METRIC_COLORS = {
     "green": PASS_CLR,
@@ -208,7 +199,8 @@ METRIC_COLORS = {
 # ================================================================
 
 def _strip_html(t):
-    if not t: return ""
+    if not t:
+        return ""
     t = re.sub(r"<br\s*/?>", "\n", t, flags=re.IGNORECASE)
     t = re.sub(r"<[^>]+>", "", t)
     for old, new in [("&amp;","&"),("&lt;","<"),("&gt;",">"),("&quot;",'"'),("&#39;","'")]:
@@ -228,7 +220,8 @@ def _audit_time(data):
     return (when or datetime.now(timezone.utc)).strftime("%B %d, %Y at %H:%M UTC")
 
 def _safe(t):
-    if not t: return ""
+    if not t:
+        return ""
     return str(t).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
 def _get_check(data, name):
@@ -940,8 +933,6 @@ def _dmarc_deep_dive(data, S, number=3):
     # "Detail in Appendix A" pointer.
     _header_len = len(els)
 
-    status = dmarc.get("status", "pass")
-
     # RFC 9989 Health Verdict
     tb = dmarc.get("tag_breakdown") or {}
     health = tb.get("health")
@@ -992,7 +983,6 @@ def _dmarc_deep_dive(data, S, number=3):
             for chk in cat.get("checks", []):
                 c_status = chk.get("status", "pass")
                 icon = {"pass": "\u2713", "fail": "\u2717", "warn": WARN_ICON}.get(c_status, "\u2022")
-                c_clr = STATUS_CLR.get(c_status, TEXT_SEC)
                 style_key = {"pass": "d_good", "fail": "d_error", "warn": "d_warning"}.get(c_status, "d_info")
                 els.append(Paragraph(f"{_glyphs(icon)}  {_safe(chk.get('message', ''))}", S[style_key]))
 
@@ -1165,7 +1155,6 @@ def _attack_surface_page(data, S, number=4):
 
     # Overall assessment
     overall = attack_surface.get("overall", {})
-    level = overall.get("level", "")
     o_clr = _clr(overall.get("color", "red"))
     o_label = overall.get("label", "")
     o_summary = overall.get("summary", "")

@@ -22,7 +22,7 @@ from vendor_patterns import (
 )
 
 
-def test_longest_pattern_wins():
+def test_vendor_match_prefers_the_longest_pattern():
     assert match_host("spf.em.secureserver.net", SPF_INCLUDE_VENDORS) == "GoDaddy Websites + Marketing"
     assert match_host("secureserver.net", SPF_INCLUDE_VENDORS) == "GoDaddy Professional Email"
     assert match_host("x.olc.protection.outlook.com", MX_VENDORS) == "Outlook.com (consumer)"

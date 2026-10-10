@@ -26,7 +26,7 @@ def _items(card):
     return build_security_roadmap([card])["items"]
 
 
-def test_baseline_key_passes():
+def test_dkim_key_without_test_mode_or_sha1_passes():
     card = _card(DKIM_RECORD)
     assert card["status"] == "pass"
     assert card["dkim_test_mode"] == [] and card["dkim_sha1_only"] == []

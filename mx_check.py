@@ -179,7 +179,7 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
             "No email can be received.",
             "Verify the domain name is correct."))
         return result
-    except dns.exception.DNSException as e:
+    except dns.exception.DNSException:
         # SERVFAIL, REFUSED, timeout, NoNameservers. NXDOMAIN and NoAnswer are
         # answers and are handled above; this is the case where nothing was
         # learned. Reported as "unavailable" rather than "error", because the

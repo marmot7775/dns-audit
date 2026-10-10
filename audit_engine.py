@@ -2387,8 +2387,6 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     """
     import ipaddress
 
-    # Known mechanisms that consume a DNS lookup (RFC 7208 §4.6.4)
-    LOOKUP_MECHANISMS = {"include", "a", "mx", "ptr", "exists", "redirect"}
     # Known mechanisms/modifiers (anything else is likely a typo)
     KNOWN_MECHANISMS = {"all", "include", "a", "mx", "ptr", "ip4", "ip6", "exists"}
     # RFC 6652 registers ra, rp and rr with IANA alongside redirect and exp.

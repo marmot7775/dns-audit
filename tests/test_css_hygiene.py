@@ -29,7 +29,6 @@ def _css():
 def _rules(css):
     """(context, selector, body) for each rule, one level of @media deep."""
     out = []
-    pos = 0
     ctx = ""
     depth = 0
     buf_start = 0
@@ -101,7 +100,7 @@ def test_no_selector_is_declared_twice_in_the_same_context():
     assert not twice, "declared more than once:\n" + "\n".join(twice)
 
 
-def test_one_mobile_breakpoint():
+def test_css_uses_one_mobile_breakpoint_at_640px():
     css = _css()
     assert "max-width: 600px)" not in css
     assert css.count("@media (max-width: 640px)") >= 20
@@ -109,14 +108,14 @@ def test_one_mobile_breakpoint():
 
 def test_important_only_where_specificity_cannot_win():
     css = _css()
-    lines = [l.strip() for l in css.splitlines() if "!important" in l]
+    lines = [line.strip() for line in css.splitlines() if "!important" in line]
     # reduced motion (6), print (2), and the progress bar whose width app.js
     # writes as an inline style (1)
     assert len(lines) == 9, lines
     assert "width: 100% !important;" in lines
 
 
-def test_families_doc_49_removed_are_gone():
+def test_removed_css_families_stay_removed():
     css = _css()
     for gone in (".comparison-", ".compare-btn", ".edu-", ".se-vendor-", ".ha-",
                  ".dbis-walk", ".dbis-hero", ".fix-block", ".details-toggle",

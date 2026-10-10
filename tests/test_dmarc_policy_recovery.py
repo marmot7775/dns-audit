@@ -78,7 +78,7 @@ class TestRuaSyntacticValidator(unittest.TestCase):
     def test_single_valid_mailto_passes(self):
         self.assertTrue(_is_rua_syntactically_valid("mailto:reports@example.com"))
 
-    def test_uppercase_mailto_passes(self):
+    def test_rua_scheme_is_case_insensitive(self):
         self.assertTrue(_is_rua_syntactically_valid("MAILTO:reports@example.com"))
 
     def test_size_modifier_is_stripped(self):
@@ -91,12 +91,12 @@ class TestRuaSyntacticValidator(unittest.TestCase):
             _is_rua_syntactically_valid("garbage, mailto:reports@example.com")
         )
 
-    def test_all_invalid_fails(self):
+    def test_rua_that_is_not_a_mailto_address_is_invalid(self):
         self.assertFalse(_is_rua_syntactically_valid("not-a-uri"))
         self.assertFalse(_is_rua_syntactically_valid("https://example.com/reports"))
         self.assertFalse(_is_rua_syntactically_valid("mailto:not-an-email"))
 
-    def test_empty_string_fails(self):
+    def test_empty_rua_is_invalid(self):
         self.assertFalse(_is_rua_syntactically_valid(""))
 
     def test_whitespace_in_list_is_tolerated(self):

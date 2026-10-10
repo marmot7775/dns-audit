@@ -616,7 +616,6 @@ def _walk_after_author_hit(
         record = _query_dmarc(parent)
         _step_failed = record is LOOKUP_FAILED
         if _step_failed:
-            walk_incomplete = True
             record = None
         walk_query_count += 1
 
