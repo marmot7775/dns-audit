@@ -104,6 +104,7 @@ static/
 tools/                     Operator scripts
   live_check.py            Card statuses from a deployed site
   rewrite_audit_log_ua.py  Old audit log entries to the log policy
+  gen_requirements.py      requirements files from pyproject.toml
 
 deploy/
   dns-auditor.service      systemd unit template
@@ -124,7 +125,7 @@ Optional parameters: `selector`, `scope`. Rate limited to 10 requests per IP per
 
 ## Self-Hosting
 
-Python 3.10 or newer: seven pinned dependencies require it. CI runs tests on 3.11 and security scans on 3.12; production runs 3.12.
+The Python floor and the dependencies are declared once, in [pyproject.toml](pyproject.toml). The requirements files are generated from it.
 
 ```bash
 pip install -r requirements.txt
