@@ -168,3 +168,26 @@ def test_a_selector_probe_that_failed_is_not_answered(monkeypatch):
     assert "selector2" not in raw["answered_selectors"]
     assert raw["answered_selectors"], "the NXDOMAIN probes still count as answered"
     assert raw["tested_count"] >= len(raw["answered_selectors"]) + 2
+
+
+def test_hosted_spf_or_a_macro_include_says_nothing_about_spf():
+    # glossier.com: only a Valimail macro include, which can cover Google.
+    for spf in ("v=spf1 include:%{i}._ip.%{h}._ehlo.%{d}._spf.vali.email ~all",
+                "v=spf1 include:acme.test.smart.ondmarc.com ~all",
+                "v=spf1 include:%{ir}.%{v}._spf.example.net ~all"):
+        assert _run(_vendor("Google Workspace", sources=("MX", "DKIM")), _raw(spf=spf, answered=())) == [], spf
+
+
+def test_klaviyo_kl_keys_are_klaviyos_not_sendgrids():
+    import vendor_patterns as vp
+    for sel in ("kl", "kl2"):
+        target = f"{sel}.domainkey.u161779.wl030.sendgrid.net"
+        assert vp.dkim_key_vendor(sel, target, None, [target]) == "Klaviyo"
+    # Any other SendGrid account is still SendGrid.
+    assert vp.dkim_key_vendor("s1", "s1.domainkey.u1234.wl001.sendgrid.net", None, None) == "SendGrid"
+
+
+def test_klaviyo_selectors_are_all_probed_every_audit():
+    from comprehensive_selectors import ESP_SELECTORS
+    from vendor_patterns import VENDOR_DKIM_SELECTORS
+    assert set(VENDOR_DKIM_SELECTORS["Klaviyo"]) <= set(ESP_SELECTORS)

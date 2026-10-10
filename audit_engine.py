@@ -5094,6 +5094,21 @@ def _needs_apex_spf_include(v: Dict) -> bool:
         sources and sources <= _SUBDOMAIN_ONLY_SOURCES)
 
 
+def _spf_managed_by(tree_names: set) -> Optional[str]:
+    """The hosted SPF service (Valimail, OnDMARC) or "a macro include" when
+    the SPF tree has one: either can authorize a vendor without naming it,
+    so no include can be called missing. glossier.com publishes only a
+    Valimail macro include and was told to add include:_spf.google.com."""
+    from vendor_patterns import HOSTED_SPF_VENDORS, SPF_INCLUDE_VENDORS, match_host
+    for n in sorted(tree_names):
+        vendor = match_host(n, SPF_INCLUDE_VENDORS)
+        if vendor in HOSTED_SPF_VENDORS:
+            return vendor
+    if any("%{" in n for n in tree_names):
+        return "a macro include"
+    return None
+
+
 def _vendor_in_spf_tree(vendor: str, spf_inc: str, tree_names: set) -> bool:
     """True when the vendor's include, a name under it, or the vendor's
     hosted SPF zone appears anywhere in the SPF tree."""
@@ -6013,7 +6028,24 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
                 missing_includes.append(spf_inc)
                 matched_vendors.append(v["name"])
-        if missing_includes:
+        managed_by = _spf_managed_by(tree_names) if missing_includes else None
+        if managed_by:
+            for check in checks:
+                if check.get("name") != "SPF":
+                    continue
+                vendor_list = ", ".join(matched_vendors)
+                where = ("the service that operates it" if managed_by == "a macro include"
+                         else _e(managed_by))
+                vendor_hint = (
+                    f"<strong>Detected services:</strong> {_e(vendor_list)}<br><br>"
+                    f"This SPF record uses {_e(managed_by)}, which can authorize "
+                    f"{_e(vendor_list)} without naming {'it' if len(matched_vendors) == 1 else 'them'} "
+                    f"here. Check that {_e(vendor_list)} {'is' if len(matched_vendors) == 1 else 'are'} "
+                    f"enabled with {where} rather than adding includes to this record."
+                )
+                check["fix"] = vendor_hint + ("<br><br>" + check["fix"] if check.get("fix") else "")
+                break
+        elif missing_includes:
             for check in checks:
                 if check.get("name") != "SPF":
                     continue
@@ -6358,8 +6390,9 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
     - SPF: the same rule as the SPF card's suggestion (VENDOR_SPF_INCLUDES,
       anywhere in the resolved tree, not for a vendor seen only by a bounce or
       tracking CNAME), so the panel and the card agree. Skipped
-      when there is no SPF record at all (the SPF card already says so) or
-      part of the tree did not resolve.
+      when there is no SPF record at all (the SPF card already says so),
+      part of the tree did not resolve, or a hosted SPF service or macro
+      include could cover the vendor without naming it.
     - DKIM: only vendors with a fixed selector list (VENDOR_DKIM_SELECTORS),
       and only when the scan got an answer at every one of those names. Not
       under a _domainkey wildcard, after a timed out scan, when a vendor
@@ -6374,6 +6407,8 @@ def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
     # An indeterminate tree left a branch unread, and the include may be in it.
     if raw_spf.get("status") != "unavailable" and spf_record and not raw_spf.get("spf_indeterminate"):
         tree_names = _spf_tree_names(spf_record, raw_spf.get("spf_recursive"))
+        if _spf_managed_by(tree_names):
+            tree_names = None
     answered = {(x or "").lower() for x in raw_dkim.get("answered_selectors") or []}
     live = _live_dkim_selectors(raw_dkim)
     dkim_checkable = bool(answered) and not (
