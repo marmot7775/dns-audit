@@ -103,9 +103,16 @@ class Table(_PlatypusTable):
     ReportLab sets each cell's font before drawing it, Paragraph or not, and
     its default is Helvetica, which put an unused Helvetica resource on
     every page.
+
+    splitInRow defaults to 1. Without it ReportLab cannot break a table
+    inside a row, so any one-cell box (callouts, verdicts, remediation
+    steps, the brand box) taller than a page raised LayoutError and the
+    PDF endpoint returned 500, as github.com's DKIM record did on 9 Oct
+    2026. tests/test_pdf_tall_cells.py holds this.
     """
 
     def __init__(self, *args, **kwargs):
+        kwargs.setdefault("splitInRow", 1)
         super().__init__(*args, **kwargs)
         self.setStyle([("FONTNAME", (0, 0), (-1, -1), FONTS["sans"])])
 
