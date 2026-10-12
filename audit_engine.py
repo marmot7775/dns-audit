@@ -6500,7 +6500,7 @@ def _build_resilience_analysis(
         spf_note = (
             "The SPF lookup did not complete, so this audit did not learn whether an "
             "SPF record exists. This is not a finding about the domain. Re-run the "
-            "audit once the nameservers are answering."
+            "audit in a few minutes."
         )
     elif spf_multiple:
         # Same status as the lookup overflow, and for the same reason: a
@@ -6654,7 +6654,7 @@ def _build_resilience_analysis(
         dmarc_note = (
             "The DMARC lookup did not complete, so this audit did not learn whether a "
             "DMARC record exists or what policy it sets. This is not a finding about "
-            "the domain. Re-run the audit once the nameservers are answering."
+            "the domain. Re-run the audit in a few minutes."
         )
     elif _inherited and _inh_policy in ("reject", "quarantine"):
         dmarc_status = _inh_policy

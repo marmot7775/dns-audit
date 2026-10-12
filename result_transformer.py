@@ -970,7 +970,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         biggest_risk = (
             "This audit could not read part of this domain's DNS, so it cannot name the "
             f"biggest risk. The {unread_names} {unread_verb} not complete. Re-run the audit "
-            "once the nameservers are answering."
+            "in a few minutes."
         )
     else:
         # A low-priority item (an optional nicety like an explicit np= tag)
