@@ -121,6 +121,10 @@ uvicorn server:app --host 127.0.0.1 --port 8000
 
 Run it behind a reverse proxy that terminates TLS, bound to loopback. Exposed on 0.0.0.0, set `TRUSTED_PROXY_IPS=` (empty), or any client can rotate `X-Real-IP` past the rate limit. Keep uvicorn's proxy headers trusting loopback only (`--forwarded-allow-ips 127.0.0.1`, the default). Run one worker: the cache, rate limiter and concurrency budget are per process. `/api/health` reports the running commit SHA; `BUILD_SHA` overrides it.
 
+### Configuration
+
+`AUDIT_NAMESERVERS`: the nameservers the audit queries, comma separated; default the system's upstreams plus 1.1.1.1 and 8.8.8.8.
+
 ## Tests
 
 ```bash

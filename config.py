@@ -56,6 +56,16 @@ _trusted_proxies_raw = os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1,::1")
 TRUSTED_PROXY_IPS = {ip.strip() for ip in _trusted_proxies_raw.split(",") if ip.strip()}
 
 # ============================================================
+# Audit resolvers
+# ============================================================
+
+# The nameservers the audit queries, comma separated. Empty (the default)
+# means the system's upstreams plus 1.1.1.1 and 8.8.8.8; see
+# dns_tools._upstream_nameservers.
+_audit_ns_raw = os.getenv("AUDIT_NAMESERVERS", "")
+AUDIT_NAMESERVERS = [ns.strip() for ns in _audit_ns_raw.split(",") if ns.strip()]
+
+# ============================================================
 # CORS
 # ============================================================
 
