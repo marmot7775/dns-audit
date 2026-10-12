@@ -6774,9 +6774,10 @@ def _build_resilience_analysis(
             "exist, and nothing below should be read as a finding about the domain."
         )
         risk = (
-            "No conclusion is available. A nameserver returned a failure or stopped "
-            "responding during this audit, which is a separate problem from anything "
-            "these records might say. Confirm the domain resolves, then re-run the audit."
+            "No conclusion is available. This audit did not get an answer in time. "
+            "That can be the domain's nameservers or the audit's own resolver, and "
+            "the audit cannot tell which from here. Confirm the domain resolves, "
+            "then re-run the audit."
         )
     elif _is_non_sending_sub:
         _inh_source = raw_dmarc.get("inherited_from", "organizational domain")

@@ -4,6 +4,7 @@ DNS Security Auditor - Core DNS Tools
 Domain normalization and audit entry point.
 """
 
+import ipaddress
 import re
 import time
 from typing import Dict, List, Optional
@@ -13,6 +14,8 @@ import dns.exception
 import dns.rdatatype
 import dns.resolver
 import idna
+
+import config
 
 # ============================================================
 # Shared DNS resolvers
@@ -107,16 +110,83 @@ _DNSSEC_CACHE = BoundedNegativeCache(max_size=1000)
 # resolver a copy of the parsed configuration instead of the file.
 _resolv_conf_template = dns.resolver.Resolver()
 
+# On a systemd host /etc/resolv.conf names only the stub, 127.0.0.53. When
+# resolved misbehaves every audit query fails with it: on 2026-10-12 a scope
+# on the droplet's private interface turned every NXDOMAIN through the stub
+# into a timeout, and MTA-STS, TLS-RPT and BIMI read "Not checked" on every
+# domain (Doc 100). This file lists the real upstreams behind the stub.
+_SYSTEMD_RESOLV_CONF = "/run/systemd/resolve/resolv.conf"
+
+# Last, so the host's own resolvers stay the normal path and these only see
+# traffic when those fail.
+_PUBLIC_FALLBACK_NAMESERVERS = ["1.1.1.1", "8.8.8.8"]
+
+
+def _is_loopback(nameserver: str) -> bool:
+    try:
+        return ipaddress.ip_address(nameserver).is_loopback
+    except ValueError:
+        return False
+
+
+def _systemd_upstreams(path: str) -> List[str]:
+    """The upstreams resolved forwards to, or [] when the file is missing or empty."""
+    try:
+        upstream = dns.resolver.Resolver(filename=path)
+    except (dns.exception.DNSException, OSError):
+        return []
+    return [str(ns) for ns in upstream.nameservers if not _is_loopback(str(ns))]
+
+
+def _upstream_nameservers(
+    template: Optional["dns.resolver.Resolver"] = None,
+    systemd_resolv_conf: str = _SYSTEMD_RESOLV_CONF,
+) -> List[str]:
+    """The nameservers the audit queries, in order.
+
+    AUDIT_NAMESERVERS, when set, is the whole list. Otherwise the resolv.conf
+    nameservers, with any loopback stub replaced by the upstreams behind it
+    (dropped if those cannot be read), then 1.1.1.1 and 8.8.8.8.
+    """
+    if config.AUDIT_NAMESERVERS:
+        return list(config.AUDIT_NAMESERVERS)
+    if template is None:
+        template = _resolv_conf_template
+
+    servers: List[str] = []
+
+    def add(ns: str) -> None:
+        if ns not in servers:
+            servers.append(ns)
+
+    for ns in (str(n) for n in template.nameservers):
+        if _is_loopback(ns):
+            for upstream in _systemd_upstreams(systemd_resolv_conf):
+                add(upstream)
+        else:
+            add(ns)
+    for ns in _PUBLIC_FALLBACK_NAMESERVERS:
+        add(ns)
+    return servers
+
+
+# Worked out once, like the template, so no probe resolver reads a file.
+# dnspython moves to the next nameserver when one times out, within the
+# lifetime, so a dead upstream costs one timeout per query, not the budget.
+# server.py logs this list at startup, after logging is configured.
+AUDIT_UPSTREAMS = _upstream_nameservers()
+
 
 def _from_template(timeout: float) -> "dns.resolver.Resolver":
-    """A resolver carrying the configuration read from resolv.conf at import.
+    """A resolver carrying the configuration read from resolv.conf at import,
+    querying AUDIT_UPSTREAMS rather than the file's own nameserver list.
 
     Every factory below starts here, so no resolver built during an audit
     opens /etc/resolv.conf again.
     """
     resolver = dns.resolver.Resolver(configure=False)
     t = _resolv_conf_template
-    resolver.nameservers = list(t.nameservers)
+    resolver.nameservers = list(AUDIT_UPSTREAMS)
     resolver.domain = t.domain
     resolver.search = list(t.search)
     resolver.rotate = t.rotate

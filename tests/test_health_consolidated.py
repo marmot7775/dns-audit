@@ -21,6 +21,8 @@ def test_api_health_verifies_dns_resolution(monkeypatch):
         calls["called"] = True
 
     monkeypatch.setattr(server_module.dns.resolver, "resolve", _resolve)
+    monkeypatch.setattr(server_module, "_negative_lookup_probe", lambda: None)
+    monkeypatch.setitem(server_module._negative_probe_cache, "expires", 0.0)
 
     response = client.get("/api/health")
 
@@ -28,6 +30,7 @@ def test_api_health_verifies_dns_resolution(monkeypatch):
     assert response.json() == {
         "status": "ok",
         "dns_resolution": "working",
+        "negative_lookups": "ok",
         "version": server_module.BUILD_SHA,
     }
     assert calls.get("called") is True

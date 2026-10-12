@@ -192,8 +192,9 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
         result["lookup_target"] = domain
         result["issues"].append(_make_issue(
             "info", "MX lookup did not complete",
-            "The nameserver returned a failure or stopped responding, so this "
-            "audit did not learn whether MX records exist.", "",
+            "This audit did not get an answer in time. That can be the "
+            "domain's nameservers or the audit's own resolver, and the audit "
+            "cannot tell which from here.", "",
             "Re-run the audit once the nameservers are answering."))
         return result
 

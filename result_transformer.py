@@ -310,8 +310,9 @@ def _lookup_unavailable_card(name: str, raw: Dict, subject: str, pill_label: str
         "configured": False,
         "explanation": (
             f"The DNS query for this domain's {subject}{where} did not complete. "
-            "The nameserver returned a failure or stopped responding, so this "
-            "audit did not learn whether the record exists. This is not a "
+            "This audit did not get an answer in time. That can be the "
+            "domain's nameservers or the audit's own resolver, and the audit "
+            "cannot tell which from here. This is not a "
             "finding about the domain, and it does not mean the record is "
             "missing. Nothing about the domain was assessed here."
         ),
