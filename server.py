@@ -54,7 +54,7 @@ from config import (
     DOMAIN_PATTERN, SELECTOR_PATTERN,
     TRUSTED_PROXY_IPS, BUILD_SHA, ENVIRONMENT,
 )
-from dns_tools import normalize_domain
+from dns_tools import AUDIT_UPSTREAMS, normalize_domain
 from ua_classify import is_bot, ua_summary
 try:
     from pdf_report import generate_pdf
@@ -109,6 +109,11 @@ try:
     audit_logger.addHandler(audit_handler)
 except PermissionError:
     log.warning("Cannot create log directory %s -- file logging disabled", _log_dir)
+
+# Which servers every audit queries (Doc 100). Logged here rather than in
+# dns_tools, which is imported before logging is configured, so an INFO line
+# there would be dropped.
+log.info("Audit nameservers: %s", ", ".join(AUDIT_UPSTREAMS))
 
 
 # ============================================================
@@ -1420,6 +1425,34 @@ _HEALTH_TTL = 30
 _health_cache = {"ok": None, "expires": 0.0}
 _health_cache_lock = threading.Lock()
 
+# Positive answers can keep working while negative ones fail: on 2026-10-12
+# every NXDOMAIN through the droplet's stub resolver timed out, DMARC, SPF and
+# MX still answered, and MTA-STS, TLS-RPT and BIMI read "Not checked" on
+# every audit (Doc 100). This probe asks the audit's own resolver for a name
+# that does not exist. The zone is mozilla.org, not dns-audit.com, because
+# Cloudflare answers a missing name with NOERROR and no records, never
+# NXDOMAIN, so a dns-audit.com probe would not exercise the path that broke.
+# Memoized for 60 seconds so uptime monitors add no DNS load.
+_NEGATIVE_PROBE_TTL = 60
+_NEGATIVE_PROBE_ZONE = "mozilla.org"
+_negative_probe_cache = {"error": None, "expires": 0.0}
+
+
+def _negative_lookup_probe() -> Optional[str]:
+    """None when a nonexistent name comes back NXDOMAIN or NoAnswer, else the
+    exception class name. One query: timeout equals lifetime, so no second
+    attempt."""
+    resolver = get_uncached_resolver(3)
+    resolver.lifetime = 3
+    name = f"health-{secrets.token_hex(4)}.{_NEGATIVE_PROBE_ZONE}"
+    try:
+        resolver.resolve(name, "TXT")
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return None
+    except Exception as e:
+        return type(e).__name__
+    return None
+
 
 @app.get("/api/health", tags=["System"])
 async def health():
@@ -1453,10 +1486,26 @@ async def health():
             _health_cache["ok"] = verdict
             _health_cache["expires"] = time.time() + _HEALTH_TTL
 
+    with _health_cache_lock:
+        fresh = time.time() < _negative_probe_cache["expires"]
+        negative_error = _negative_probe_cache["error"] if fresh else None
+    if not fresh:
+        negative_error = await anyio.to_thread.run_sync(_negative_lookup_probe)
+        if negative_error:
+            log.error("Health check negative lookup failed: %s", negative_error)
+        with _health_cache_lock:
+            _negative_probe_cache["error"] = negative_error
+            _negative_probe_cache["expires"] = time.time() + _NEGATIVE_PROBE_TTL
+    # Reported, never folded into status: a resolver fault is not a reason to
+    # restart the service, but it is a field to alert on.
+    negative = {"negative_lookups": "failing" if negative_error else "ok"}
+    if negative_error:
+        negative["negative_lookups_error"] = negative_error
+
     if verdict:
-        return {"status": "ok", "dns_resolution": "working", "version": BUILD_SHA}
+        return {"status": "ok", "dns_resolution": "working", **negative, "version": BUILD_SHA}
     return JSONResponse(
-        content={"status": "error", "version": BUILD_SHA},
+        content={"status": "error", **negative, "version": BUILD_SHA},
         status_code=500,
     )
 
