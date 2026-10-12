@@ -207,3 +207,13 @@ def test_resilience_unavailable_wording():
     assert resilience["level"] == "inconclusive"
     assert NEW_SENTENCE in resilience["risk"]
     assert OLD_SENTENCE not in resilience["risk"]
+
+
+def test_no_rerun_advice_blames_the_nameservers():
+    # The audit cannot tell whose resolver failed, so the re-run advice
+    # must not imply the domain's nameservers were the problem.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("audit_engine.py", "mx_check.py", "result_transformer.py"):
+        with open(os.path.join(root, name), encoding="utf-8") as fh:
+            text = " ".join(fh.read().split())
+        assert "once the nameservers are answering" not in text, name
