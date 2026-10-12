@@ -195,7 +195,7 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
             "This audit did not get an answer in time. That can be the "
             "domain's nameservers or the audit's own resolver, and the audit "
             "cannot tell which from here.", "",
-            "Re-run the audit once the nameservers are answering."))
+            "Re-run the audit in a few minutes."))
         return result
 
     if not raw_mx:
