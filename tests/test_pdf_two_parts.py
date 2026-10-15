@@ -195,18 +195,21 @@ def test_the_dmarc_check_comes_before_the_divider_and_its_validation_after(compl
     assert "p=none (monitoring only, no enforcement)" in " ".join(part1.split())
 
 
-def test_part_one_stays_within_eleven_pages(complete):
+def test_part_one_stays_within_twelve_pages(complete):
     # Doc 65 set this at eight. Doc 67 gave every check a two-sentence line
     # saying what its protocol is, in the Checks section, which is two pages
     # of report the reader now gets before the appendix starts. The plan then
     # gained a row this fixture never had: p=none with pct=50 had no row to
     # remove pct, because the removed-tags row came only from a Compatible
     # verdict. That row and its record are the eleventh page. The budget
-    # moved by exactly what was added and no further.
+    # moved by exactly what was added and no further. Doc 101 put the checks
+    # under three area headings, as on the results page; each check is kept
+    # whole on a page and a heading travels with its first check, so the
+    # headings push one check over and make the twelfth page.
     pages = _pages(complete)
     divider = _divider_index(pages)
 
-    assert divider <= 11, f"Part 1 runs to {divider} pages"
+    assert divider <= 12, f"Part 1 runs to {divider} pages"
 
 
 def test_each_check_points_at_the_appendix_that_holds_its_detail(complete):
