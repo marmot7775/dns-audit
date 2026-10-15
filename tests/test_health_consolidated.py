@@ -27,10 +27,14 @@ def test_api_health_verifies_dns_resolution(monkeypatch):
     response = client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    # A live count, so only its type is fixed.
+    assert isinstance(body.pop("threads"), int)
+    assert body == {
         "status": "ok",
         "dns_resolution": "working",
         "negative_lookups": "ok",
+        "thread_ceiling": server_module.AUDIT_THREAD_CEILING,
         "version": server_module.BUILD_SHA,
     }
     assert calls.get("called") is True

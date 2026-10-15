@@ -32,11 +32,13 @@ def test_health_failure_does_not_leak_resolver_detail(monkeypatch):
 
     assert response.status_code == 500
     body = response.json()
+    assert isinstance(body.pop("threads"), int)
     # The negative probe reports the exception class name, never its message.
     assert body == {
         "status": "error",
         "negative_lookups": "failing",
         "negative_lookups_error": "DNSException",
+        "thread_ceiling": server_module.AUDIT_THREAD_CEILING,
         "version": server_module.BUILD_SHA,
     }
     assert sensitive_detail not in response.text
