@@ -46,7 +46,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import dns.resolver
 import dns.exception
 
-from audit_engine import run_full_audit
+from audit_engine import AUDIT_THREAD_CEILING, run_full_audit
 from config import (
     LOG_DIR, LOG_LEVEL, CACHE_TTL, CACHE_MAX_SIZE,
     RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX_IPS,
@@ -114,6 +114,42 @@ except PermissionError:
 # dns_tools, which is imported before logging is configured, so an INFO line
 # there would be dropped.
 log.info("Audit nameservers: %s", ", ".join(AUDIT_UPSTREAMS))
+
+
+# Thread headroom (Doc 102). The audit pools can hold AUDIT_THREAD_CEILING
+# threads, and systemd caps the unit at TasksMax, read here from the cgroup.
+# Below the ceiling plus ~100 for uvicorn, anyio, the stream threads and
+# sentry, enough overlapping traffic reaches the cap and every audit fails
+# until a restart. A warning, not a refusal to start: the site still works
+# until the cap is reached.
+_THREAD_OVERHEAD = 100
+_PIDS_MAX = Path("/sys/fs/cgroup/system.slice/dns-auditor.service/pids.max")
+
+
+def _check_thread_headroom(pids_max_path: Path = _PIDS_MAX) -> Optional[int]:
+    """Warn when the unit's task limit is below what the pools can reach.
+
+    Returns the limit read, or None when there is no numeric limit to read
+    (no such file off the droplet, or "max" for unlimited).
+    """
+    try:
+        raw = pids_max_path.read_text().strip()
+    except OSError:
+        return None
+    if not raw.isdigit():
+        return None
+    limit = int(raw)
+    needed = AUDIT_THREAD_CEILING + _THREAD_OVERHEAD
+    if limit < needed:
+        log.warning(
+            "TasksMax %d is below the audit thread ceiling %d plus %d overhead (%d): "
+            "raise TasksMax in the unit file or audits fail with \"can't start new thread\"",
+            limit, AUDIT_THREAD_CEILING, _THREAD_OVERHEAD, needed,
+        )
+    return limit
+
+
+_check_thread_headroom()
 
 
 # ============================================================
@@ -1502,10 +1538,14 @@ async def health():
     if negative_error:
         negative["negative_lookups_error"] = negative_error
 
+    # Doc 102: how close the process is to the audit pools' ceiling. Reported,
+    # never folded into status.
+    threads = {"threads": threading.active_count(), "thread_ceiling": AUDIT_THREAD_CEILING}
     if verdict:
-        return {"status": "ok", "dns_resolution": "working", **negative, "version": BUILD_SHA}
+        return {"status": "ok", "dns_resolution": "working", **negative, **threads,
+                "version": BUILD_SHA}
     return JSONResponse(
-        content={"status": "error", **negative, "version": BUILD_SHA},
+        content={"status": "error", **negative, **threads, "version": BUILD_SHA},
         status_code=500,
     )
 
