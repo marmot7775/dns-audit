@@ -1448,6 +1448,44 @@ a.tag { text-decoration: none; }
     gap: var(--space-md);
 }
 
+/* Doc 101: the cards in three areas, each under an h3. */
+#results-list {
+    gap: var(--space-xl);
+}
+
+.check-area-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.check-area-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--space-sm);
+    row-gap: var(--space-xs);
+}
+
+.results-section .check-area-heading .check-area-title {
+    font-size: var(--font-lg);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.check-area-count {
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.check-area-lead {
+    margin: var(--space-xs) 0 var(--space-md);
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
 /* Result card -- left border accent for status at-a-glance */
 .result-card {
     background: var(--surface);
@@ -1456,6 +1494,9 @@ a.tag { text-decoration: none; }
     border: 1px solid var(--border);
     border-left: 3px solid var(--border);
     overflow: hidden;
+    /* A #check-* link or openCard lands the card below the sticky header,
+       as .results-section does, not under it. */
+    scroll-margin-top: 4.5rem;
     opacity: 0;
     transform: translateY(12px);
     animation: cardEntrance 400ms var(--ease-out) forwards;
@@ -1484,7 +1525,10 @@ a.tag { text-decoration: none; }
    1280px only four cards render their real content and the other eight
    clamp to 302px -- a sweep run that way reports a clean result from a
    quarter of the page, the exact mistake PR #29 made. */
-.result-card:nth-child(n+6) {
+/* Doc 101: the cards sit in per-area lists now, so a :nth-child count
+   restarts in each list and never reaches 6. createResultCard marks the
+   sixth card on with .result-card-deferred instead. */
+.result-card-deferred {
     content-visibility: auto;
     contain-intrinsic-size: auto 300px;
 }
