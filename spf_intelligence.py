@@ -37,6 +37,11 @@ DKIM_DROP_THRESHOLD = 5
 # The generic fallback goes out in chunks this size, so a zone that starts
 # dropping is noticed after one chunk instead of after the whole list.
 DKIM_FALLBACK_CHUNK = 52
+# The priority wave goes out in chunks this size too (Doc 102). One audit
+# then never holds more than DKIM_WAVE_CHUNK DKIM threads at once, which is
+# what audit_engine sizes _dkim_executor by. It must not be smaller than
+# DKIM_FALLBACK_CHUNK, or a fallback chunk would queue on the pool.
+DKIM_WAVE_CHUNK = DKIM_FALLBACK_CHUNK
 
 # _test_selector's return for a probe that got no answer at all.
 _UNANSWERED = object()
@@ -637,8 +642,15 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     try:
         # The priority wave always runs in full: these are the selectors the
         # domain's own SPF or MX points at, plus ESP_SELECTORS, and they go
-        # out first, concurrently, in one wave.
-        _run_wave(priority_selectors)
+        # out first. Doc 102 sends them in chunks of DKIM_WAVE_CHUNK, so one
+        # audit holds at most that many probe threads; between chunks it stops
+        # where a single wave would, at DKIM_MAX_FOUND (_run_wave also stops
+        # on the deadline). No drop check here: the full priority wave ran
+        # before, and it still does.
+        for i in range(0, len(priority_selectors), DKIM_WAVE_CHUNK):
+            if len(found) >= DKIM_MAX_FOUND:
+                break
+            _run_wave(priority_selectors[i:i + DKIM_WAVE_CHUNK])
         if not found:
             for i in range(0, len(fallback_selectors), DKIM_FALLBACK_CHUNK):
                 if _dropping():
