@@ -278,3 +278,65 @@ def test_areas_render_and_links_land_on_their_card(browser, audit, theme, width)
             assert not errors, errors
         finally:
             ctx.close()
+
+
+# ---------------------------------------------------------------
+# PDF: the same areas, in the same order, from the same map
+# ---------------------------------------------------------------
+
+PAGE_ORDER_JS = "() => [...document.querySelectorAll('#results-list .result-card')].map(c => c.dataset.check)"
+
+
+def test_pdf_reads_the_map_from_app_js():
+    import pdf_report
+    assert [(k, ns) for k, _h, _l, ns, _p in pdf_report.CHECK_AREAS] == list(_check_areas().items())
+    assert [h for _k, h, _l, _n, _p in pdf_report.CHECK_AREAS] == [HEADINGS[k] for k in AREA_ORDER]
+    assert pdf_report.PROTOCOL_SECTION_ORDER == [n for ns in _check_areas().values() for n in ns]
+    pdf_src = _read("pdf_report.py")
+    assert "Receiving your mail" not in pdf_src and "'MTA-STS', 'TLS-RPT'" not in pdf_src
+
+
+@pytest.mark.parametrize("scope", SCOPES)
+def test_pdf_check_order_matches_the_page(browser, audit, scope):  # noqa: F811
+    import pdf_report
+    data = _data(audit, "v=DMARC1; p=reject; " + RUA, scope=scope)
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        _render(page, data)
+        page_order = page.evaluate(PAGE_ORDER_JS)
+        page_areas = [a["heading"] for a in page.evaluate(AREAS_JS)]
+        assert not errors, errors
+    finally:
+        ctx.close()
+    assert [c["name"] for c in pdf_report._ordered_checks(data)] == page_order
+    assert [h for h, _l, _c in pdf_report._area_groups(data)] == page_areas
+
+
+def test_pdf_checks_section_has_the_area_headings(audit):
+    import io
+    from pypdf import PdfReader
+    import pdf_report
+    data = _run(audit, f"v=DMARC1; p=none; {RUA}")
+    text = " ".join(" ".join((p.extract_text() or "").split())
+                    for p in PdfReader(io.BytesIO(pdf_report.generate_pdf(data))).pages)
+    checks = text.split("Checks", 1)[1]
+    at = [checks.find(HEADINGS[k]) for k in AREA_ORDER]
+    assert all(i >= 0 for i in at) and at == sorted(at), at
+
+
+@pytest.mark.parametrize("dmarc", [f"v=DMARC1; p=none; {RUA}", None])
+def test_pdf_area_heading_never_ends_a_page(audit, dmarc):
+    import io
+    from pypdf import PdfReader
+    import pdf_report
+    data = _run(audit, dmarc)
+    pages = [p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf_report.generate_pdf(data))).pages]
+    names = {c.get("plain_name") or c["name"] for c in data["checks"]} | {c["name"] for c in data["checks"]}
+    seen = 0
+    for text in pages:
+        for _k, heading, lead, _n, _p in pdf_report.CHECK_AREAS:
+            if heading in text and lead in text:
+                seen += 1
+                after = text.split(lead, 1)[1]
+                assert any(n in after for n in names), (heading, after[:80])
+    assert seen == 3

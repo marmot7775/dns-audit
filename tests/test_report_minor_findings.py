@@ -127,14 +127,15 @@ def test_section_order_matches_what_the_body_actually_renders():
     They used to be a constant and a hand-written sequence of _get_check
     calls. Doc 65 made the section loop over the constant, so this holds it
     to that: the body names no check of its own, and the constant leads with
-    the three the site pins to the top of its card list.
+    the three the site pins to the top of its card list. Doc 101: the body
+    loops over _area_groups, which reads the same CHECK_AREAS.
     """
     source = open(os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "pdf_report.py")).read()
     body = source.split("def _protocol_details(")[1].split("\ndef ")[0]
 
-    assert "for name in PROTOCOL_SECTION_ORDER:" in body
+    assert "in _area_groups(data):" in body
     assert re.findall(r'_get_check\(data, "([^"]+)"\)', body) == []
     assert pdf_report.PROTOCOL_SECTION_ORDER[:3] == ["DMARC", "SPF", "DKIM"]
     # And every check the site can render has a place in it.
