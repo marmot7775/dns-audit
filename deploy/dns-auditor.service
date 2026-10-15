@@ -29,6 +29,15 @@ ExecStart=/home/DEPLOY_USER/.venv/bin/uvicorn server:app --host 127.0.0.1 --port
 Restart=always
 RestartSec=3
 LimitNOFILE=65535
+# TasksMax caps the threads this unit may run. It must exceed
+# AUDIT_THREAD_CEILING in audit_engine.py (the most threads the three audit
+# pools can hold, and they never shrink) plus about 100 for uvicorn, anyio,
+# the per-audit stream thread in server.py and sentry. Left unset, systemd's
+# default is 15 percent of kernel threads-max, which on this droplet sat
+# below the pools' ceiling: every audit failed with "can't start new thread"
+# until a restart. server.py logs a warning at startup when the limit is
+# too low, and /api/health reports threads and thread_ceiling.
+TasksMax=4096
 
 # Hardening
 NoNewPrivileges=true

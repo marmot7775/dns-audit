@@ -147,7 +147,7 @@ _tld_extract = tldextract.TLDExtract(
     suffix_list_urls=(),
     cache_fetch_timeout=3.0,
 )
-from spf_intelligence import smart_dkim_check, DKIM_FALLBACK_CHUNK as _DKIM_FALLBACK_CHUNK
+from spf_intelligence import smart_dkim_check, DKIM_WAVE_CHUNK as _DKIM_WAVE_CHUNK
 from dns_tools import (
     is_spf_record,
     get_dnssec_resolver,
@@ -4611,8 +4611,6 @@ def _raw_check_aprf(domain: str, raw_dkim: Optional[Dict],
 # on demand.
 # config has no project imports, so this cannot introduce a cycle.
 from config import MAX_CONCURRENT_AUDITS as _MAX_CONCURRENT_AUDITS
-# Neither does comprehensive_selectors; it is pure data, no imports of its own.
-from comprehensive_selectors import ESP_SELECTORS as _ESP_SELECTORS
 
 _PHASE2_WIDTH = 9  # mta_sts, tls_rpt, bimi, dnssec, caa, nameservers, dane, dkim, ct
 _shared_executor = ThreadPoolExecutor(
@@ -4648,18 +4646,28 @@ _probe_executor = ThreadPoolExecutor(
 #
 # Also sized off the concurrency cap, for the same reason as _probe_executor:
 # a fixed 20 workers under 8 concurrent audits each submitting a full wave is
-# the starvation this pool exists to fix. The width is the largest single
-# wave one audit submits at once. The priority wave is max_selectors (40)
-# plus ESP_SELECTORS (46 as of Doc 93), so 86; the generic fallback only runs
-# after it, in chunks of DKIM_FALLBACK_CHUNK (52), so it never adds to that.
-# 86 x MAX_CONCURRENT_AUDITS (8) = 688 workers. The threads are idle DNS
-# waits; ThreadPoolExecutor only creates them on demand, so sizing for the
-# worst case costs address space, not CPU.
-_DKIM_PROBE_WIDTH = max(40 + len(_ESP_SELECTORS), _DKIM_FALLBACK_CHUNK)
+# the starvation this pool exists to fix. The width is the most probes one
+# audit submits at once. Since Doc 102 both the priority wave (max_selectors
+# 40 plus ESP_SELECTORS) and the generic fallback go out in chunks of
+# DKIM_WAVE_CHUNK (52, equal to DKIM_FALLBACK_CHUNK), so
+# 52 x MAX_CONCURRENT_AUDITS (8) = 416 workers. It was 86 x 8 = 688 when the
+# priority wave went out whole. Never size it below DKIM_FALLBACK_CHUNK per
+# audit, or concurrent fallback chunks queue behind each other.
 _dkim_executor = ThreadPoolExecutor(
-    max_workers=max(20, _MAX_CONCURRENT_AUDITS * _DKIM_PROBE_WIDTH),
+    max_workers=max(20, _MAX_CONCURRENT_AUDITS * _DKIM_WAVE_CHUNK),
     thread_name_prefix="dkim",
 )
+
+# The most threads the three audit pools can hold at once. ThreadPoolExecutor
+# never retires an idle worker, so under enough overlapping traffic the
+# process climbs to this and stays there. The systemd unit's TasksMax must
+# exceed it plus about 100 for uvicorn, anyio, the per-audit stream thread in
+# server.py and sentry: on 2026-10-15 the default TasksMax (1107) sat below
+# the pools' 1112 and every audit failed with "can't start new thread" until
+# a restart. server.py logs a warning at startup when the unit's limit is too
+# low, and /api/health reports this beside the live thread count.
+AUDIT_THREAD_CEILING = (_shared_executor._max_workers + _probe_executor._max_workers
+                        + _dkim_executor._max_workers)
 
 
 # ============================================================
