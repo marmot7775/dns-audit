@@ -85,4 +85,5 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 98](doc-98.md): Results page cleanup, contact note placement, centered buttons, no debug details
 - [Doc 99](doc-99.md): Report copy part 1, address obfuscation, false statements, one name for What to do
 - [Doc 100](doc-100.md): Audit resolvers skip the stub, health probes negative lookups, lookup cards stop blaming the domain
+- [Doc 101](doc-101.md): Result cards grouped into three areas: sending, receiving, the domain's DNS
 - [Making the standard visible](standard-visible.md): Architecture page, decisions, CI lint, packaging, cleanup
