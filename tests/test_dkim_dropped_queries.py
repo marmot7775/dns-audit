@@ -197,3 +197,17 @@ def test_answered_selectors_holds_only_names_that_got_an_answer():
     assert len(raw["answered_selectors"]) == raw["tested_count"]
     dropped = {q[0].split("._domainkey.")[0] for q in _dkim_queries(zone)} - set(raw["answered_selectors"])
     assert len(dropped) == raw["unanswered_count"]
+
+
+def test_a_zone_that_drops_queries_gets_no_sender_map_and_the_panel_says_why(monkeypatch):
+    # Doc 72: the zone keeps dropping after the DKIM sweep, so the map would
+    # spend its whole budget on silence. It is not drawn.
+    def fail(domain, budget):
+        raise AssertionError("the sender map ran on a zone dropping queries")
+
+    monkeypatch.setattr(audit_engine, "map_senders", fail)
+    with fake_dns(_zone()):
+        result = audit_engine.run_full_audit(DOMAIN, scope="email_full")
+    assert result["vendors_status"] == "unavailable"
+    assert result["vendors_reason"] == "queries_dropped"
+    assert result["vendors"] == []

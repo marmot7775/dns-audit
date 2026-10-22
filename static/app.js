@@ -18,6 +18,9 @@ const SCOPE_CHECKS = {
 // The vendor panel when the sender map did not finish inside the audit. The
 // PDF prints the same words (pdf_report.VENDORS_UNCHECKED).
 const VENDORS_UNCHECKED = 'Not checked. The lookups that find your email services did not finish in time, so no services are listed. Re-run the audit in a few minutes.';
+// The same state when the domain's nameservers stopped answering the DKIM
+// check (vendors_reason queries_dropped): the map was not drawn at all.
+const VENDORS_DROPPED = 'Not checked. Your domain\'s nameservers stopped answering during the DKIM check, so the lookups that find your email services were not run. Re-run the audit in a few minutes.';
 
 // Severity sort order (lower = higher priority = displayed first)
 const SEVERITY_ORDER = { fail: 0, warn: 1, pass: 2, absent: 3, unavailable: 4 };
@@ -1037,7 +1040,7 @@ function renderResults(data, selector = '') {
         vendorsSection.style.display = 'block';
         const note = document.createElement('p');
         note.className = 'vendors-unchecked';
-        note.textContent = VENDORS_UNCHECKED;
+        note.textContent = data.vendors_reason === 'queries_dropped' ? VENDORS_DROPPED : VENDORS_UNCHECKED;
         vendorsGrid.appendChild(note);
     } else if (hasVendors) {
         vendorsSection.style.display = 'block';
