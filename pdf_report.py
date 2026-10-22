@@ -1786,6 +1786,11 @@ def _dkim_deep_section(dkim_deep, S):
 VENDORS_UNCHECKED = ("Not checked. The lookups that find your email services did not "
                      "finish in time, so no services are listed. Re-run the audit in a "
                      "few minutes.")
+# The same state when the domain's nameservers stopped answering the DKIM
+# check (vendors_reason queries_dropped), in app.js VENDORS_DROPPED's words.
+VENDORS_DROPPED = ("Not checked. Your domain's nameservers stopped answering during the "
+                   "DKIM check, so the lookups that find your email services were not "
+                   "run. Re-run the audit in a few minutes.")
 
 
 def _vendors(data, S):
@@ -1793,7 +1798,8 @@ def _vendors(data, S):
     vs = data.get("vendors", [])
     if data.get("vendors_status") == "unavailable":
         return [Spacer(1, SP_MD), Paragraph("Detected Email Services", S["heading2"]),
-                Paragraph(_safe(VENDORS_UNCHECKED), S["body_small"])]
+                Paragraph(_safe(VENDORS_DROPPED if data.get("vendors_reason") == "queries_dropped"
+                                else VENDORS_UNCHECKED), S["body_small"])]
     if not vs:
         return []
     els = [Spacer(1, SP_MD), Paragraph("Detected Email Services", S["heading2"])]
