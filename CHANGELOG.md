@@ -16,6 +16,12 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - CI workflow `lint.yml`: `ruff check` as a gate, mypy in report-only mode.
 - `tools/gen_requirements.py` and a test that the requirements files match
   pyproject.toml.
+- Sendermap, step 1 of 2 (shadow run, nothing a visitor sees):
+  `sendermap==0.1.2` as a dependency; `sendermap_adapter.py`, whose
+  AuditResolver answers Sendermap from the audit's cached resolver and whose
+  map_senders runs a DNS-only map within a budget; and
+  `tools/compare_senders.py` with its 20-domain list, which holds the map
+  against the fingerprinter. Nothing in the audit calls it yet.
 
 ### Changed
 - The DANE card on a Microsoft 365 legacy MX says "Exchange Online can
@@ -31,6 +37,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   verdict) instead of blank space. With three long items under "Do these
   first" it drops to a two-column name and status list; the plan always
   starts on page 2.
+- Python 3.12 is the floor (`requires-python = ">=3.12"`), because
+  sendermap requires it. The 3.11 CI jobs in `tests.yml` and `lint.yml` now
+  run on 3.12, and ruff targets py312. Production already runs 3.12.3.
 - pyproject.toml is the one place the Python floor and dependencies are
   declared; requirements.txt and requirements-dev.txt are generated from it.
 - ruff's rule set is named in pyproject.toml (E4, E7, E9, F) so a ruff upgrade

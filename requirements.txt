@@ -13,3 +13,4 @@ cryptography>=42.0.0
 tldextract==5.3.2
 sentry-sdk[fastapi]==2.71.0
 reportlab>=4.0.0
+sendermap==0.1.2

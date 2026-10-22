@@ -48,11 +48,12 @@ dkim_formatter.py          DKIM key analysis
 comprehensive_selectors.py Known DKIM selectors
 advanced_fingerprinting.py Vendor fingerprinting
 vendor_patterns.py         Vendor table: SPF, MX, DKIM CNAME, selector names
+sendermap_adapter.py       Sendermap on the audit's resolver (step 1: shadow run, not called by the audit)
 anomaly_detector.py        Cross-check anomalies
 ua_classify.py             Browser and bot labels for the audit log
 
 static/                    App shell, app.js, style.css, theme.js, articles
-tools/                     Operator scripts: live_check.py, rewrite_audit_log_ua.py, gen_requirements.py
+tools/                     Operator scripts: live_check.py, rewrite_audit_log_ua.py, gen_requirements.py, compare_senders.py
 deploy/                    systemd unit template
 ```
 
