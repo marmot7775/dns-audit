@@ -16,56 +16,48 @@ import audit_engine
 import checks_extra
 import pdf_report
 import result_transformer
-from advanced_fingerprinting import AdvancedVendorFingerprinter
+from sendermap_adapter import catalog
 
 
 # ---------------------------------------------------------------------------
 # Finding 6: vendor attribution must be on label boundaries
 # ---------------------------------------------------------------------------
 
-def _fingerprint(spf_record, mx_hosts):
-    fp = AdvancedVendorFingerprinter("victim.example", prefetch={
-        "spf_record": spf_record, "mx_hosts": mx_hosts, "dmarc_record": None,
-        "tls_rpt_record": None, "mta_sts_record": None, "bimi_record": None,
-        "txt_ttl": None,
-    })
-    return {v["vendor"] for v in fp.fingerprint_all().get("vendors", [])}
+def _matched(spf_hosts, mx_hosts):
+    """The services the vendor panel's matcher (Sendermap's catalog) names
+    for these SPF include and MX hosts."""
+    c = catalog()
+    return {c.spf(h) for h in spf_hosts} | {c.mx(h) for h in mx_hosts}
 
 
 def test_lookalike_domains_do_not_wear_a_vendor_badge():
     """A substring match handed an attacker's domain the real vendor's name.
 
-    This module produces the entire vendors list the report shows, in the web
-    card and the PDF. spf_execution_engine and spf_intelligence were moved onto
-    label boundaries; this one was missed, so the badge survived at 0.99
-    confidence in the place users actually read it.
+    This matcher produces the entire vendors list the report shows, in the
+    web card and the PDF. spf_execution_engine and spf_intelligence were
+    moved onto label boundaries; the fingerprinter was missed, so the badge
+    survived in the place users actually read it. The panel now reads
+    Sendermap's catalog, whose host tables match on label boundaries.
     """
-    found = _fingerprint(
-        "v=spf1 include:sendgrid.net.attacker.example -all",
-        ["mx.google.com.attacker.example"],
-    )
+    found = _matched(["sendgrid.net.attacker.example"], ["mx.google.com.attacker.example"])
     assert "SendGrid" not in found
     assert "Google Workspace" not in found
 
 
 def test_genuine_vendors_are_still_detected():
     """Control: the real domains, and subdomains of them, must still match."""
-    found = _fingerprint(
-        "v=spf1 include:sendgrid.net include:eu._spf.google.com -all",
-        ["aspmx.l.google.com"],
-    )
+    found = _matched(["sendgrid.net", "eu._spf.google.com"], ["aspmx.l.google.com"])
     assert "SendGrid" in found
     assert "Google Workspace" in found
 
 
 @pytest.mark.parametrize("matcher,candidate", [
-    ("_match_spf_vendor", "sendgrid.net.evil.example"),
-    ("_match_mx_vendor", "google.com.evil.example"),
-    ("_match_reporting_vendor", "rua@dmarcian.com.evil.example"),
+    ("spf", "sendgrid.net.evil.example"),
+    ("mx", "google.com.evil.example"),
+    ("reporting", "dmarcian.com.evil.example"),
 ])
 def test_every_matcher_rejects_a_suffix_lookalike(matcher, candidate):
-    fp = AdvancedVendorFingerprinter("victim.example", prefetch={})
-    assert getattr(fp, matcher)(candidate) is None
+    assert getattr(catalog(), matcher)(candidate) is None
 
 
 # ---------------------------------------------------------------------------
