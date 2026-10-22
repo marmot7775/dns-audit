@@ -15,6 +15,10 @@ const SCOPE_CHECKS = {
     security_scan: ['DMARC', 'SPF', 'DKIM', 'DNSSEC', 'DANE', 'Certificate Transparency', 'CAA', 'MTA-STS'],
 };
 
+// The vendor panel when the sender map did not finish inside the audit. The
+// PDF prints the same words (pdf_report.VENDORS_UNCHECKED).
+const VENDORS_UNCHECKED = 'Not checked. The lookups that find your email services did not finish in time, so no services are listed. Re-run the audit in a few minutes.';
+
 // Severity sort order (lower = higher priority = displayed first)
 const SEVERITY_ORDER = { fail: 0, warn: 1, pass: 2, absent: 3, unavailable: 4 };
 
@@ -1025,8 +1029,17 @@ function renderResults(data, selector = '') {
     const vendorsGrid = document.getElementById('vendors-grid');
     vendorsGrid.innerHTML = '';
 
-    const hasVendors = !!(data.vendors && data.vendors.length > 0);
-    if (hasVendors) {
+    // The sender map did not finish: say so, like a card whose lookup did
+    // not complete, rather than show an empty list that reads as "none".
+    const vendorsUnchecked = data.vendors_status === 'unavailable';
+    const hasVendors = vendorsUnchecked || !!(data.vendors && data.vendors.length > 0);
+    if (vendorsUnchecked) {
+        vendorsSection.style.display = 'block';
+        const note = document.createElement('p');
+        note.className = 'vendors-unchecked';
+        note.textContent = VENDORS_UNCHECKED;
+        vendorsGrid.appendChild(note);
+    } else if (hasVendors) {
         vendorsSection.style.display = 'block';
         data.vendors.forEach(v => {
             const card = document.createElement('div');
@@ -1045,9 +1058,12 @@ function renderResults(data, selector = '') {
                 ? `Detected via ${escapeHtml(via || 'SPF/MX')} (${escapeHtml(v.detected_via)})`
                 : via ? `Detected via ${escapeHtml(via)}` : 'Detected via DNS records';
             const tier = v.role === 'reporting' ? 'Reporting service' : (v.tier || '');
+            // The record that names the service, the one that set its tier.
+            const record = (v.signals && v.signals.length) ? v.signals[0].record : '';
             card.innerHTML = `
                 <div class="vendor-name">${escapeHtml(v.name)}${tier ? ` <span class="tag vendor-tier">${escapeHtml(tier)}</span>` : ''}</div>
                 <div class="vendor-confidence">${detail}</div>
+                ${record ? `<code class="vendor-record">${escapeHtml(record)}</code>` : ''}
                 ${(v.missing || []).map(m => `<div class="vendor-missing">${escapeHtml(m)}</div>`).join('')}
             `;
             vendorsGrid.appendChild(card);

@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from audit_engine import VENDOR_SPF_INCLUDES, _build_suggested_spf  # noqa: E402
+from audit_engine import _build_suggested_spf  # noqa: E402
 
 GOOGLE_MX = [(1, "aspmx.l.google.com"), (5, "alt1.aspmx.l.google.com")]
 MIMECAST_MX = [(10, "us-smtp-inbound-1.mimecast.com"), (10, "us-smtp-inbound-2.mimecast.com")]
@@ -61,10 +61,10 @@ def _spf_card(result):
 def test_builder_never_appends_after_redirect():
     # The exact servicenow.com record.
     record = "v=spf1 redirect=8sfr6god._spf._d.mim.ec"
-    assert _build_suggested_spf(record, [VENDOR_SPF_INCLUDES["Mimecast"]]) is None
+    assert _build_suggested_spf(record, ["include:_netblocks.mimecast.com"]) is None
     assert _build_suggested_spf(
         "v=spf1 include:one.test redirect=_spf.vsp.test",
-        [VENDOR_SPF_INCLUDES["Google Workspace"]],
+        ["include:_spf.google.com"],
     ) is None
 
 

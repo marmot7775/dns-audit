@@ -1781,9 +1781,19 @@ def _dkim_deep_section(dkim_deep, S):
     return els
 
 
+# The vendor panel when the sender map did not finish inside the audit, in
+# the web page's words (app.js VENDORS_UNCHECKED).
+VENDORS_UNCHECKED = ("Not checked. The lookups that find your email services did not "
+                     "finish in time, so no services are listed. Re-run the audit in a "
+                     "few minutes.")
+
+
 def _vendors(data, S):
     """Render detected email service providers."""
     vs = data.get("vendors", [])
+    if data.get("vendors_status") == "unavailable":
+        return [Spacer(1, SP_MD), Paragraph("Detected Email Services", S["heading2"]),
+                Paragraph(_safe(VENDORS_UNCHECKED), S["body_small"])]
     if not vs:
         return []
     els = [Spacer(1, SP_MD), Paragraph("Detected Email Services", S["heading2"])]
@@ -1816,8 +1826,12 @@ def _vendors(data, S):
         # Records the vendor's setup docs require that the audit checked for
         # and did not find, under the name as on the web page.
         missing = "".join(f"<br/><font size=\"8\">{_safe(m)}</font>" for m in v.get("missing") or [])
+        # The record that names the service, as on the web page.
+        signals = v.get("signals") or []
+        record = (f"<br/><font name=\"Courier\" size=\"7\">{_safe(signals[0].get('record', ''))}</font>"
+                  if signals else "")
         rows.append([
-            Paragraph(f"<b>{_safe(v.get('name', ''))}</b>{missing}", S["body"]),
+            Paragraph(f"<b>{_safe(v.get('name', ''))}</b>{record}{missing}", S["body"]),
             Paragraph(_safe(side), S["body_small"]),
             Paragraph(_safe(status) if status
                       else f'<font color="{c_clr.hexval()}">{conf}%</font>', S["body_small" if status else "body"]),

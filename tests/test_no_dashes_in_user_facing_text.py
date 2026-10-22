@@ -45,7 +45,6 @@ USER_FACING_MODULES = [
     "pdf_report.py",
     "dmarc_tree_walk.py",
     "mx_check.py",
-    "advanced_fingerprinting.py",
     "anomaly_detector.py",
     "dns_tools.py",
 ]
