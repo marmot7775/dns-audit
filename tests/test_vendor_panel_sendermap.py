@@ -207,6 +207,51 @@ def test_a_scope_without_email_checks_runs_no_map(audit, monkeypatch):
     assert result["sendermap"] is None
 
 
+# allbirds.com's record as published on 2026-10-22: EasyDMARC's flattened
+# include, whose ranges the map credits to Google Workspace, Mailgun, Mailjet
+# and Zendesk among others.
+EASYDMARC_ZONE = {
+    "allbirds.com": {"TXT": ["v=spf1 include:allbirds_com._es.easydmarc.com "
+                             "include:spf.protection.outlook.com ~all"],
+                     "MX": [(0, "allbirds-com.mail.protection.outlook.com")]},
+    "_dmarc.allbirds.com": {"TXT": ["v=DMARC1; p=reject; rua=mailto:d@allbirds.com"]},
+}
+
+
+def _spf_fix(result):
+    spf = next(c for c in result["checks"] if c["name"] == "SPF")
+    return spf.get("fix") or ""
+
+
+def test_a_vendor_the_map_found_in_the_apex_spf_is_not_sent_to_check_it(audit, allbirds,
+                                                                         monkeypatch):
+    monkeypatch.setattr(audit_engine, "map_senders", lambda domain, budget: allbirds)
+    assert "Detected services" not in _spf_fix(audit(EASYDMARC_ZONE, "allbirds.com",
+                                                     scope="email_full"))
+    # Without the map's SPF signals the same audit asks about them, so the
+    # skip is what removes the hint.
+    monkeypatch.setattr(audit_engine, "_spf_signal_at", lambda v, domain: False)
+    assert "Detected services" in _spf_fix(audit(EASYDMARC_ZONE, "allbirds.com",
+                                                 scope="email_full"))
+
+
+def test_an_spf_signal_counts_only_at_the_domain_itself():
+    row = {"signals": [{"source": "SPF", "where": "Allbirds.com.", "record": "x"}]}
+    assert audit_engine._spf_signal_at(row, "allbirds.com")
+    row = {"signals": [{"source": "SPF", "where": "mail.allbirds.com", "record": "x"},
+                       {"source": "MX", "where": "allbirds.com", "record": "x"}]}
+    assert not audit_engine._spf_signal_at(row, "allbirds.com")
+
+
+def test_dropped_nameservers_read_the_same_on_the_page_and_in_the_pdf():
+    app = (ROOT / "static" / "app.js").read_text()
+    m = re.search(r"const VENDORS_DROPPED = '((?:[^'\\]|\\.)+)';", app)
+    assert m and m.group(1).replace("\\'", "'") == pdf_report.VENDORS_DROPPED
+    els = pdf_report._vendors({"vendors": [], "vendors_status": "unavailable",
+                               "vendors_reason": "queries_dropped"}, pdf_report._styles())
+    assert any("stopped answering" in getattr(e, "text", "") for e in els)
+
+
 def test_not_assessed_reads_the_same_on_the_page_and_in_the_pdf():
     app = (ROOT / "static" / "app.js").read_text()
     m = re.search(r"const VENDORS_UNCHECKED = '([^']+)';", app)

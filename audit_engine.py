@@ -5023,6 +5023,15 @@ def _needs_apex_spf_include(v: Dict) -> bool:
         sources and sources <= _SUBDOMAIN_ONLY_SOURCES)
 
 
+def _spf_signal_at(v: Dict, domain: str) -> bool:
+    """Whether the sender map credits this vendor from the SPF record at the
+    domain itself (an include, a range it owns, or an evaluated pass)."""
+    apex = domain.lower().rstrip(".")
+    return any(sig.get("source") == "SPF"
+               and (sig.get("where") or "").lower().rstrip(".") == apex
+               for sig in v.get("signals") or [])
+
+
 def _spf_managed_by(current_spf: str) -> Optional[str]:
     """The hosted SPF service (Valimail, OnDMARC, EasyDMARC, AutoSPF, as
     Sendermap's catalog lists them) or "a macro include" when
@@ -5581,7 +5590,11 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     sender_map = None
     _email_checks = {"dmarc", "spf", "dkim", "mx"}
     _map_in_scope = scope_set is None or bool(scope_set & _email_checks)
-    if _map_in_scope and not _time_up():
+    # Doc 72: a zone that dropped the DKIM sweep's probes keeps dropping for
+    # seconds after, so the map would spend its whole budget on silence. It
+    # is not drawn, and the panel says the nameservers stopped answering.
+    _zone_dropping = (raw_results.get("dkim") or {}).get("stopped_reason") == "queries_dropped"
+    if _map_in_scope and not _time_up() and not _zone_dropping:
         _map_budget = SENDER_MAP_BUDGET
         if deadline is not None:
             _map_budget = min(_map_budget, deadline - time.monotonic())
@@ -5924,6 +5937,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     vendors_status = None
     if _map_in_scope:
         vendors_status = "assessed" if sender_map is not None else "unavailable"
+    # Why the panel is not checked when the reason is not time: the page and
+    # the PDF pick their words from it.
+    vendors_reason = ("queries_dropped"
+                      if vendors_status == "unavailable" and _zone_dropping else None)
 
     # --- Provider Intelligence (Prompt 19) ---
     provider_intelligence = _build_provider_intelligence(raw_results, checks)
@@ -5949,6 +5966,12 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             # account with nothing set up to send: neither sends as the domain.
             # A bounce or tracking CNAME alone puts the sending on a subdomain.
             if not _needs_apex_spf_include(v):
+                continue
+            # The map already found the vendor in this record: an include,
+            # a range it owns inside a flattened record, or a pass for one
+            # of its addresses. allbirds.com publishes EasyDMARC's flattened
+            # record and was told to check four services with EasyDMARC.
+            if _spf_signal_at(v, domain):
                 continue
             spf_inc = spf_include(v["name"])
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
@@ -6186,6 +6209,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "anomalies": anomalies,
         "vendors": vendors,
         "vendors_status": vendors_status,
+        "vendors_reason": vendors_reason,
         # Sendermap's map as it made it (SenderMap.to_dict(), the
         # sendermap/1 contract), or None when it did not run or finish.
         "sendermap": raw_results.get("sendermap"),
