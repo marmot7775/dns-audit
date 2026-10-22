@@ -17,6 +17,7 @@ import os
 import sys
 import threading
 import time
+from collections import Counter
 
 import dns.exception
 
@@ -43,9 +44,15 @@ class _DroppingZone(FakeZone):
         self._lock = threading.Lock()
         self.nx_answered = 0
         self.dropped = 0
+        # Questions the sender map asked (its own pool's threads), which run
+        # their own sweep inside the map's budget, apart from the audit's.
+        self.map_queries = []
 
     def resolve(self, name, rdtype="A", *args, **kwargs):
         key = self._key(name, rdtype)
+        if threading.current_thread().name.startswith("sendermap"):
+            with self._lock:
+                self.map_queries.append(key)
         if "._domainkey." in key[0] and key not in self._records:
             with self._lock:
                 drop = self.nx_answered >= self._answer_first
@@ -87,8 +94,9 @@ def _found(card):
 
 def _dkim_queries(zone):
     # _aprf._domainkey names are the APRF check's own few lookups, not
-    # DKIM selector probes.
-    return [q for q in zone.queries if "._domainkey." in q[0] and "_dkimwildcardtest" not in q[0]
+    # DKIM selector probes, and the sender map's are its own sweep.
+    audit = Counter(zone.queries) - Counter(getattr(zone, "map_queries", ()))
+    return [q for q in audit.elements() if "._domainkey." in q[0] and "_dkimwildcardtest" not in q[0]
             and "_aprf._domainkey." not in q[0]]
 
 

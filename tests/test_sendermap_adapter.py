@@ -201,13 +201,37 @@ def test_map_senders_asks_dns_only(monkeypatch):
     assert seen["checked_at"].tzinfo is not None
 
 
-def test_the_audit_does_not_import_sendermap_yet():
-    """Step 1 is a shadow run: loading the app loads neither the adapter nor
-    the package, so the audit and its tests run exactly as before."""
+def test_the_audit_reads_sendermap_and_not_the_fingerprinter():
+    """Step 2: the vendor panel and the DKIM card read the map, so loading
+    the app loads the adapter and the package, and nothing loads the
+    fingerprinter or its pattern table, which are gone."""
     out = subprocess.run(
         [sys.executable, "-c",
-         "import sys, audit_engine, result_transformer; "
-         "print('sendermap_adapter' in sys.modules, 'sendermap' in sys.modules)"],
+         "import sys, audit_engine, result_transformer, pdf_report; "
+         "print(*(m in sys.modules for m in ('sendermap_adapter', 'sendermap', "
+         "'advanced_fingerprinting', 'vendor_patterns')))"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
-    assert out == ["False", "False"]
+    assert out == ["True", "True", "False", "False"]
+
+
+def test_a_map_past_its_budget_leaves_the_shared_pool_working(monkeypatch):
+    """A map that times out cancels its own questions, never the pool every
+    other audit's map runs on."""
+    async def slow(domain, **kwargs):
+        await kwargs["resolver"].query(domain, "MX")
+        await asyncio.sleep(5)
+
+    calls = []
+    monkeypatch.setattr(AuditResolver, "_query",
+                        lambda self, name, rtype: calls.append(name) or "answer")
+    monkeypatch.setattr(sendermap_adapter, "map_domain", slow)
+    assert map_senders("slow.test", 0.2) is None
+    assert not sendermap_adapter._MAP_EXECUTOR._shutdown
+
+    async def quick(domain, **kwargs):
+        return await kwargs["resolver"].query(domain, "MX")
+
+    monkeypatch.setattr(sendermap_adapter, "map_domain", quick)
+    assert map_senders("quick.test", 5) == "answer"
+    assert calls == ["slow.test", "quick.test"]

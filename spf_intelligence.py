@@ -207,9 +207,8 @@ def detect_vendors_from_spf(spf_record: str) -> List[Dict]:
 # MX hostname to vendor name, for the handful of vendors that both receive
 # and sign mail on the same hosted platform (Google Workspace, Microsoft
 # 365), or run as a relay that resigns outbound mail (Proofpoint, Mimecast).
-# Deliberately the same small set advanced_fingerprinting.py's MX matcher
-# uses, keyed to the same vendor names SPF_VENDOR_MAP already has selectors
-# for, so a domain that never mentions its vendor in SPF (self-hosted DNS in
+# Deliberately a small set, keyed to the same vendor names SPF_VENDOR_MAP
+# already has selectors for, so a domain that never mentions its vendor in SPF (self-hosted DNS in
 # front of a hosted mailbox, or an SPF record this audit could not read) can
 # still have its selectors prioritized instead of falling straight to the
 # generic sweep.
@@ -289,13 +288,13 @@ def _classify_dangling(dangling: List[Dict], found: List[Dict]) -> List[Dict]:
     """
     from concurrent.futures import ThreadPoolExecutor, wait
     from dmarc_tree_walk import _tld_extract
-    from vendor_patterns import DKIM_CNAME_VENDORS, match_host
+    from sendermap_adapter import dkim_cname_service
 
     out = []
     microsoft = []
     others = []
     for d in dangling:
-        vendor = match_host(d['cname_target'], DKIM_CNAME_VENDORS)
+        vendor = dkim_cname_service(d['cname_target'])
         if vendor == 'Microsoft 365':
             microsoft.append(d)
         else:
@@ -303,7 +302,7 @@ def _classify_dangling(dangling: List[Dict], found: List[Dict]) -> List[Dict]:
                            'registrable': _tld_extract(d['cname_target']).top_domain_under_public_suffix or ''})
 
     live_microsoft = any(
-        match_host(f.get('cname_target'), DKIM_CNAME_VENDORS) == 'Microsoft 365' for f in found)
+        dkim_cname_service(f.get('cname_target')) == 'Microsoft 365' for f in found)
     if len(microsoft) >= 2 and not live_microsoft:
         out.append({**microsoft[0], 'selector': ', '.join(m['selector'] for m in microsoft),
                     'vendor': 'Microsoft 365', 'registrable': '', 'status': 'microsoft_unfilled'})
