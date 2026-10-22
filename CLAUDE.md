@@ -118,11 +118,11 @@ requirements.txt automatically, so a new or bumped dependency (e.g.
 cryptography, added for DNSSEC/RSA key generation) installs fine in a
 fresh CI venv but crash-loops the live service if this step is skipped.
 
-Python versions: the droplet runs Python 3.12.3 (`python3 --version` on the
-server, read during the Doc 51 deploy on 2026-09-14). CI runs the tests on
-3.11 and the security scans on 3.12. pyproject.toml's floor is 3.10, the
-lowest version every pinned dependency installs on. Read the droplet's
-version again after an OS upgrade and update this paragraph.
+Python versions: the droplet runs Python 3.12.3, system and ~/.venv alike
+(read again 2026-10-22). pyproject.toml's floor is 3.12 because sendermap
+requires it, and CI runs every job on 3.12. Read the droplet's version again
+after an OS upgrade and update this paragraph; below 3.12 the pip install
+step fails on sendermap.
 
 Confirm the restart took: `curl -s https://dns-audit.com/api/health` reports
 `version`, the short commit SHA of the running process. The cache-busting
