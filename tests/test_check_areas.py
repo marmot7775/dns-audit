@@ -215,8 +215,9 @@ def test_cards_sort_inside_their_area(browser, audit):  # noqa: F811
 def test_status_line_words(browser):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
-        say = lambda **c: page.evaluate("c => areaStatusText(Object.assign(" \
-            "{pass: 0, warn: 0, fail: 0, absent: 0, unavailable: 0, not_applicable: 0}, c))", c)
+        def say(**c):
+            return page.evaluate("c => areaStatusText(Object.assign(" \
+                "{pass: 0, warn: 0, fail: 0, absent: 0, unavailable: 0, not_applicable: 0}, c))", c)
         assert say() == ""
         assert say(**{"pass": 4}) == "All passing"
         assert say(fail=1, warn=2, **{"pass": 1}) == "1 needs fixing · 2 could be stronger · 1 passing"
