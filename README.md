@@ -90,7 +90,7 @@ DNS cannot list DKIM selectors, so name yours for the best result; an undetected
 - **Anomalies**: cross-check findings, such as MTA-STS without TLS-RPT.
 - **PDF report**: executive summary, priorities, detected vendors, and every check card.
 - **Scoped audits**: six scopes, each running only the checks it needs.
-- **Vendor detection**: from MX hosts, SPF includes, and DMARC and TLS-RPT `rua` addresses.
+- **Vendor detection**: built by [Sendermap](https://github.com/marmot7775/sendermap) from DNS (MX, the SPF tree, DKIM keys, bounce and tracking CNAMEs, verification tokens, report addresses), each sender shown with the record that names it and the records its setup still needs.
 - **Roadmap**: one prioritized fix list across all protocols, in four tiers.
 
 ## Architecture

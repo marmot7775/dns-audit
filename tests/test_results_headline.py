@@ -10,6 +10,7 @@ import os
 import sys
 
 import dns.resolver
+from types import SimpleNamespace
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -181,7 +182,10 @@ def test_a_domain_that_does_not_exist_gets_one_message(monkeypatch):
     def _nx(*_a, **_k):
         raise dns.resolver.NXDOMAIN()
 
-    monkeypatch.setattr(server._preflight_resolver, "resolve", _nx)
+    # Swap the module's resolver, not the instance's method: undoing an
+    # instance attribute leaves the bound method on the instance, which then
+    # shadows the class-level patch fake_dns makes for every later test.
+    monkeypatch.setattr(server, "_preflight_resolver", SimpleNamespace(resolve=_nx))
     out = server._preflight_dns_check("example.comds")
     assert out["checks"] == []
     assert out["error"] == "domain_not_found"

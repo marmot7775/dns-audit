@@ -14,8 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import vendor_patterns  # noqa: E402
-from audit_engine import VENDOR_SPF_INCLUDES  # noqa: E402
+from sendermap_adapter import catalog, spf_include  # noqa: E402
 
 DKIM_KEY = ("v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwQ7hD3Cj2Nk5vH9g"
             "YxBf3m6QeZ4j1T2nYh6uJ0rP8kL5sA7dE9fG2hI4jK6lM8nO0pQ2rS4tU6vW8xY0zA2bC4dE6fG8hI"
@@ -61,14 +60,17 @@ def test_proton_mail_gets_its_include_now_that_the_name_matches(audit):
     assert "Proton Mail" in fix and "include:_spf.protonmail.ch" in fix, fix
 
 
-def test_barracuda_gets_the_ess_include_its_docs_give(audit):
+def test_barracuda_as_a_gateway_gets_no_include(audit):
+    """Sendermap's catalog describes Barracuda's setup as an MX gateway, with
+    no include its documentation requires, so the card asks for none. The
+    fingerprinter's table had asked for spf.ess.barracudanetworks.com."""
     domain = "bc.test"
     zone = _zone(domain, "v=spf1 ip4:203.0.113.0/24 -all",
                  [(10, "d123.ess.barracudanetworks.com")],
                  {"spf.ess.barracudanetworks.com": {"TXT": ["v=spf1 ip4:209.222.80.0/21 ~all"]}})
     fix, vendors = _fix_and_vendors(audit, zone, domain)
     assert "Barracuda" in vendors
-    assert "include:spf.ess.barracudanetworks.com" in fix, fix
+    assert "include:spf.ess.barracudanetworks.com" not in fix, fix
 
 
 def test_an_older_zoho_include_already_covers_zoho(audit):
@@ -81,18 +83,20 @@ def test_an_older_zoho_include_already_covers_zoho(audit):
     assert "Detected services" not in fix, fix
 
 
-def test_every_key_is_a_name_the_vendor_panel_can_produce():
-    names = (set(vendor_patterns.SPF_INCLUDE_VENDORS.values())
-             | set(vendor_patterns.MX_VENDORS.values())
-             | set(vendor_patterns.DKIM_CNAME_VENDORS.values())
-             | set(vendor_patterns.DKIM_SELECTOR_VENDORS.values()))
-    assert set(VENDOR_SPF_INCLUDES) <= names, set(VENDOR_SPF_INCLUDES) - names
+def test_every_include_comes_from_a_service_the_panel_can_name():
+    """The includes the card asks for are the catalog's own setups, so each
+    belongs to a service the sender map can produce."""
+    c = catalog()
+    asked = {name: spf_include(name) for name in c if spf_include(name)}
+    assert asked["Google Workspace"] == "include:_spf.google.com"
+    assert asked["Microsoft 365"] == "include:spf.protection.outlook.com"
+    assert set(asked) <= set(c.services)
 
 
 def test_no_include_for_a_vendor_whose_footprint_needs_none():
     for name in ("Mailchimp", "Postmark", "SparkPost", "Brevo", "SendGrid",
-                 "Amazon SES", "HubSpot", "Salesforce", "Zendesk", "Freshdesk", "Intercom"):
-        assert name not in VENDOR_SPF_INCLUDES, name
+                 "Amazon SES", "HubSpot", "Salesforce", "Freshdesk", "Intercom"):
+        assert spf_include(name) is None, name
 
 
 def test_a_hosted_spf_record_gets_no_include_suggestion():
