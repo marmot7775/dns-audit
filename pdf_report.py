@@ -154,17 +154,70 @@ TEAL_ACCENT = colors.HexColor("#0e7268")   # --dmarcbis (light)
 SURFACE_BG  = colors.HexColor("#f4f6f9")   # --bg (light)
 LIGHT_BLUE_BG = colors.HexColor("#eaf0fb")
 
-# The order _protocol_details renders protocol cards in, and the shorter names
-# the table of contents uses for two of them. Both read from here so the
-# contents page cannot promise a section the body does not contain.
-# The site's card order: the three email authentication checks first, then
-# the rest. DMARC is in this list now because the Checks section renders all
-# twelve; its deep material is Appendix A.
-PROTOCOL_SECTION_ORDER = [
-    "DMARC", "SPF", "DKIM", "MTA-STS", "TLS-RPT", "DANE", "DNSSEC",
-    "CAA", "MX Records", "Nameservers", "BIMI", "Certificate Transparency",
-]
+def _app_js_check_areas():
+    """CHECK_AREAS and SEVERITY_ORDER, read from static/app.js.
+
+    Doc 101 made CHECK_AREAS in app.js the one map from card to area, so the
+    report reads it rather than keeping a second copy that could drift from
+    the page. Returns ([(key, heading, lead, checks, pin)], {status: rank}).
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "app.js")
+    with open(path, encoding="utf-8") as f:
+        js = f.read()
+    # The map's strings carry no escapes: 'single' or "double" quoted.
+    string = r"'([^']*)'|\"([^\"]*)\""
+
+    def strings(text):
+        return [a or b for a, b in re.findall(string, text)]
+
+    block = re.search(r"const CHECK_AREAS = \{(.*?)\n\};", js, re.S).group(1)
+    areas = []
+    for key, body in re.findall(r"\n    (\w+): \{(.*?)\n    \},", block, re.S):
+        def field(name):
+            return re.search(rf"\b{name}: ([^\n]*),$", body, re.M).group(1)
+        areas.append((key, strings(field("heading"))[0], strings(field("lead"))[0],
+                      strings(field("checks")), strings(field("pin"))))
+    order = re.search(r"const SEVERITY_ORDER = \{([^}]*)\}", js).group(1)
+    severity = {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", order)}
+    if not areas or not severity:
+        raise RuntimeError("could not read CHECK_AREAS or SEVERITY_ORDER from static/app.js")
+    return areas, severity
+
+
+CHECK_AREAS, SEVERITY_ORDER = _app_js_check_areas()
+
+# Every check the report can render, in area order. The contents page and
+# the appendix loop over it; the Checks section and the page-one table use
+# _ordered_checks, which sorts inside each area the way the page does.
+PROTOCOL_SECTION_ORDER = [n for _k, _h, _l, checks, _p in CHECK_AREAS for n in checks]
 PROTOCOL_TOC_LABELS = {"MX Records": "MX"}
+
+
+def _area_groups(data):
+    """The audit's checks grouped as the results page groups them.
+
+    [(heading, lead, [checks])] in CHECK_AREAS order, empty areas left out.
+    Inside an area the pinned names come first in their order, then the rest
+    by SEVERITY_ORDER; Python's sort is stable, like the page's, so equal
+    ranks keep the engine's order.
+    """
+    present = [c for c in data.get("checks", []) or [] if c.get("name") in PROTOCOL_SECTION_ORDER]
+    groups = []
+    for _key, heading, lead, names, pin in CHECK_AREAS:
+        cards = [c for c in present if c.get("name") in names]
+
+        def rank(c, pin=pin):
+            if c["name"] in pin:
+                return (0, pin.index(c["name"]))
+            return (1, SEVERITY_ORDER.get(c.get("status"), 3))
+        if cards:
+            groups.append((heading, lead, sorted(cards, key=rank)))
+    return groups
+
+
+def _ordered_checks(data):
+    """The checks in the results page's order: area by area, sorted inside each."""
+    return [c for _h, _l, cards in _area_groups(data) for c in cards]
 
 STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
 STATUS_LBL = {"pass": "Pass", "warn": "Could be stronger", "fail": "Needs fixing",
@@ -518,7 +571,7 @@ def _checks_at_a_glance(data, S):
     room, so the table drops to name and status, and past that it is left
     off: the plan always starts on page 2.
     """
-    checks = [c for c in (_get_check(data, n) for n in PROTOCOL_SECTION_ORDER) if c]
+    checks = _ordered_checks(data)
     if not checks:
         return []
     name_style = ParagraphStyle("GlName", parent=S["body_small"], textColor=TEXT_PRI,
@@ -1453,10 +1506,17 @@ def _protocol_details(data, S, number=3, appendix=None):
     els.extend(_section_header(str(number), "Checks", S))
 
     pointers = appendix or {}
-    for name in PROTOCOL_SECTION_ORDER:
-        check = _get_check(data, name)
-        if check:
-            els.extend(_protocol_card(check, S, pointer=pointers.get(name)))
+    # Doc 101: the same three areas, order and wording as the results page.
+    # The heading and lead travel with the area's first card, so a heading
+    # never ends a page on its own.
+    lead_style = ParagraphStyle("AreaLead", parent=S["body_small"], spaceAfter=SP_SM)
+    for heading, lead, cards in _area_groups(data):
+        rendered = [_protocol_card(c, S, pointer=pointers.get(c.get("name"))) for c in cards]
+        els.append(KeepTogether([Paragraph(_safe(heading), S["heading2"]),
+                                 Paragraph(_safe(lead), lead_style),
+                                 *_unwrap_keep(rendered[0])]))
+        for card in rendered[1:]:
+            els.extend(card)
 
     # Detected vendors
     els.extend(_vendors(data, S))
@@ -1899,10 +1959,8 @@ def _deep_analysis_page(data, S, number="C"):
         body.extend(_dkim_deep_section(dkim["dkim_deep"], S))
 
     explanations = []
-    for name in PROTOCOL_SECTION_ORDER:
-        check = _get_check(data, name)
-        if not check:
-            continue
+    for check in _ordered_checks(data):
+        name = check.get("name")
         text = _strip_html(check.get("explanation") or "")
         if not text or text == check.get("verdict"):
             continue
