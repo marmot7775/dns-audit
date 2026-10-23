@@ -16,6 +16,20 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - CI workflow `lint.yml`: `ruff check` as a gate, mypy in report-only mode.
 - `tools/gen_requirements.py` and a test that the requirements files match
   pyproject.toml.
+- Sendermap, step 1 of 2 (shadow run, nothing a visitor sees):
+  `sendermap==0.1.2` as a dependency; `sendermap_adapter.py`, whose
+  AuditResolver answers Sendermap from the audit's cached resolver and whose
+  map_senders runs a DNS-only map within a budget; and
+  `tools/compare_senders.py` with its 20-domain list, which holds the map
+  against the fingerprinter. Nothing in the audit calls it yet.
+- Sendermap, step 2 of 2: the vendor panel is built by Sendermap. Each
+  sender is shown with the record that names it and the records its
+  documented setup still needs, each with what was asked. The DKIM card
+  names a key's provider from the map, then from Sendermap's catalog. The
+  API carries the map whole as `sendermap` (the sendermap/1 contract), and
+  `vendors_status` says whether the panel was assessed. A map that does not
+  finish inside its 8 s budget leaves the panel "Not checked", with no
+  services listed and no missing records claimed.
 
 ### Changed
 - The DANE card on a Microsoft 365 legacy MX says "Exchange Online can
@@ -31,6 +45,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   verdict) instead of blank space. With three long items under "Do these
   first" it drops to a two-column name and status list; the plan always
   starts on page 2.
+- Python 3.12 is the floor (`requires-python = ">=3.12"`), because
+  sendermap requires it. The 3.11 CI jobs in `tests.yml` and `lint.yml` now
+  run on 3.12, and ruff targets py312. Production already runs 3.12.3.
 - pyproject.toml is the one place the Python floor and dependencies are
   declared; requirements.txt and requirements-dev.txt are generated from it.
 - ruff's rule set is named in pyproject.toml (E4, E7, E9, F) so a ruff upgrade
@@ -51,14 +68,19 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   "Optional extras" could end a page alone (#197).
 
 ### Removed
+- The vendor fingerprinter (`advanced_fingerprinting.py`), its pattern table
+  (`vendor_patterns.py`), the audit's vendor CNAME wave, `_vendor_missing_records`,
+  the SPF include tables in audit_engine and `tools/compare_senders.py`, with
+  their tests: Sendermap replaces all of them. The panel no longer drops a
+  service under a confidence floor; every service shows with its tier.
 - Dead code found by vulture and ruff: `AdvancedFingerprinter._matches_suffix`,
   `config.API_BASE_URL`, four unused PDF colours, and unused locals in
   audit_engine, dmarc_tree_walk, mx_check, pdf_report and result_transformer.
 
 ### Type checking
-- mypy 2.4.0 reports **423 errors in 15 files** (`mypy`, config in
+- mypy 2.4.0 reports **421 errors in 14 files** (`mypy`, config in
   pyproject.toml). That is the number to drive to zero, after which the CI
-  step stops being report only. Under `--strict` it is 1,328 in 19 files.
+  step stops being report only. Under `--strict` it is 1,330 in 17 files.
 
 ## 2026-10: changes outside a numbered doc
 

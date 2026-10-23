@@ -215,6 +215,13 @@ class FakeZone:
             raise failure
         values = self._records.get(key)
         if values is None:
+            # A name with nothing of its own but names below it (an empty
+            # non-terminal, _domainkey.<domain> under its selectors) exists:
+            # real servers answer it with no data, not no such name, and
+            # RFC 8020 lets a resolver read no such name there as "nothing
+            # below it either". Sendermap does, so the harness must not lie.
+            if any(n.endswith("." + key[0]) for n, _t in self._records):
+                raise dns.resolver.NoAnswer()
             raise dns.resolver.NXDOMAIN()
         factory = _RDATA_BY_TYPE.get(key[1])
         if factory is None:

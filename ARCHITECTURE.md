@@ -16,7 +16,10 @@ beyond a DNS snapshot table, no accounts. Why things are the way they are:
    whether the domain takes mail, which vendors SPF and MX name.
 3. **Phase 2.** DKIM, MTA-STS, TLS-RPT, BIMI, CAA, nameservers, DANE,
    Certificate Transparency and APRF run in parallel, each under its own
-   timeout, inside one deadline for the whole audit.
+   timeout, inside one deadline for the whole audit. Then Sendermap maps the
+   domain's senders from DNS (`sendermap_adapter.map_senders`, 8 s budget)
+   on the answers the checks cached; the vendor panel and the DKIM card's
+   providers read that map.
 4. **Cards.** Each raw result goes through its `transform_*` function in
    `result_transformer.py`, which sets the status, pill, verdict, details and
    fix. The engine then adds the cross-check layers: no-mail domains, DMARC
@@ -46,8 +49,7 @@ checks_extra.py            MTA-STS, TLS-RPT, BIMI
 mx_check.py                MX analysis
 dkim_formatter.py          DKIM key analysis
 comprehensive_selectors.py Known DKIM selectors
-advanced_fingerprinting.py Vendor fingerprinting
-vendor_patterns.py         Vendor table: SPF, MX, DKIM CNAME, selector names
+sendermap_adapter.py       Sendermap on the audit's resolver: the sender map behind the vendor panel, catalog lookups
 anomaly_detector.py        Cross-check anomalies
 ua_classify.py             Browser and bot labels for the audit log
 

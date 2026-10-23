@@ -13,10 +13,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from comprehensive_selectors import ESP_SELECTORS
 from result_transformer import (
-    _DKIM_SELECTOR_PROVIDERS,
     _build_dkim_key_analysis,
     transform_dkim,
 )
+from sendermap_adapter import dkim_key_provider
 from test_dkim_discovery_starvation import DKIM_RECORD
 
 DOMAIN = "esp.test"
@@ -37,16 +37,21 @@ def _raw(selectors, vendors=None, method="spf_intelligent"):
     }
 
 
-def test_every_esp_selector_but_api_names_a_vendor():
-    """api is the one ESP name too common to credit to Elastic Email."""
-    unnamed = [s for s in ESP_SELECTORS if s not in _DKIM_SELECTOR_PROVIDERS]
-    assert unnamed == ["api"]
+def test_every_esp_selector_names_a_vendor_but_the_unproven_and_shared():
+    """The names come from Sendermap's catalog now, which credits a selector
+    only with a live proof. api is too common to credit to Elastic Email;
+    s1 and s2 are plain names many hosts use (Klaviyo earns them only where
+    SPF, MX or an NS delegation shows Klaviyo, SendGrid by its CNAME); km,
+    kt, ks and gor2 have no live proof yet."""
+    unnamed = [s for s in ESP_SELECTORS if dkim_key_provider(s) is None]
+    assert unnamed == ["s1", "s2", "km1", "km2", "kt1", "kt2", "ks1", "ks2", "api", "gor2"]
 
 
-def test_sendgrid_s1_s2_are_not_generic():
-    assert _DKIM_SELECTOR_PROVIDERS["s1"] == "SendGrid"
-    assert _DKIM_SELECTOR_PROVIDERS["s2"] == "SendGrid"
-    assert not any("." in k for k in _DKIM_SELECTOR_PROVIDERS)
+def test_sendgrid_s1_s2_are_named_by_their_cname():
+    hop = "s1.domainkey.u1.wl.sendgrid.net"
+    assert dkim_key_provider("s1", [hop]) == "SendGrid"
+    assert dkim_key_provider("s2", [hop.replace("s1", "s2", 1)]) == "SendGrid"
+    assert dkim_key_provider("s1") is None
 
 
 def test_card_lists_providers_found_by_selector_name():
@@ -54,14 +59,17 @@ def test_card_lists_providers_found_by_selector_name():
                vendors={"google": "Google Workspace"})
     card = transform_dkim(raw, DOMAIN)
     assert ("Sending providers detected: Campaign Monitor, Google Workspace, "
-            "Mailchimp, Mandrill, SendGrid.") in card["explanation"]
+            "Mailchimp, Mandrill.") in card["explanation"]
     texts = " ".join(d["text"] for d in card["details"])
     assert "k1:" in texts and "(Mailchimp)" in texts
-    assert "(SendGrid)" in texts
+    # s1 with no CNAME and nothing else showing SendGrid names nobody.
+    assert "(SendGrid)" not in texts
 
 
 def test_spf_vendor_tag_wins_over_the_name():
-    raw = _raw(["s1"], vendors={"s1": "Some Relay"})
+    # k1 is Mailchimp by name; the tag from SPF or MX wins. (s1 no longer
+    # serves: the catalog credits it only to Klaviyo, and only when backed.)
+    raw = _raw(["k1"], vendors={"k1": "Some Relay"})
     card = transform_dkim(raw, DOMAIN)
     assert "Sending providers detected: Some Relay." in card["explanation"]
 
@@ -86,10 +94,10 @@ def test_discovery_sentence_mentions_the_esp_names():
 
 
 def test_retired_key_names_no_sending_provider():
-    raw = _raw(["s1"])
+    raw = _raw(["mandrill"])
     raw["found_selectors"].append({"selector": "k1", "record": "v=DKIM1; k=rsa; p=", "vendor": None})
     card = transform_dkim(raw, DOMAIN)
-    assert "Sending providers detected: SendGrid." in card["explanation"]
+    assert "Sending providers detected: Mandrill." in card["explanation"]
     assert "Mailchimp" not in card["explanation"]
 
 

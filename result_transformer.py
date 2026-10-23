@@ -22,7 +22,7 @@ Each card looks like:
 }
 """
 
-from vendor_patterns import DKIM_SELECTOR_VENDORS, dkim_key_vendor
+from sendermap_adapter import dkim_key_provider
 import re
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
@@ -6653,13 +6653,11 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
     for sel in found:
         selector = sel.get("selector", "unknown")
         sel_record = sel.get("record", "")
-        # One rule with the key table and the vendor panel
-        # (vendor_patterns.dkim_key_vendor): the CNAME target first, then
-        # the vendor discovery tagged from SPF or MX, then the name.
-        # selector1 and selector2 need Microsoft's CNAME, and a generic
-        # name needs the tag. "Generic" is not a sender.
-        vendor = dkim_key_vendor(selector, sel.get("cname_target"), sel.get("vendor"),
-                                 sel.get("cname_chain"))
+        # One rule with the key table and the vendor panel (_key_provider):
+        # the sender map first, then Sendermap's catalog. selector1 and
+        # selector2 need Microsoft's CNAME, and a generic name needs the
+        # tag. "Generic" is not a sender.
+        vendor = _key_provider(sel, raw)
 
         # Analyze key strength
         key_analysis = analyze_dkim_key_strength(sel_record)
@@ -6988,9 +6986,24 @@ def _is_microsoft_dkim_cname(target) -> bool:
     return t.endswith(".dkim.mail.microsoft") or t.endswith(".onmicrosoft.com")
 
 
-# One table with the vendor panel (vendor_patterns.py), so the card, the key
-# table and the panel cannot name different senders for the same key.
-_DKIM_SELECTOR_PROVIDERS = DKIM_SELECTOR_VENDORS
+def _key_provider(sel: Dict, raw: Dict) -> Optional[str]:
+    """Who a DKIM key belongs to, by the same evidence the vendor panel reads,
+    so the card, the key table and the panel cannot name different senders
+    for one key.
+
+    The sender map first: the DKIM claim at that selector, a CNAME into the
+    service's zone before the selector name (raw["map_providers"], set by
+    the audit once the map has run). Then, for a key the audit's own probe
+    found and the map did not, Sendermap's catalog: the CNAME chain, then
+    the selector name, with the vendor the discovery tagged from SPF or MX
+    standing in for the services those records show.
+    """
+    selector = (sel.get("selector") or "").lower()
+    by_map = (raw.get("map_providers") or {}).get(selector)
+    if by_map:
+        return by_map
+    chain = sel.get("cname_chain") or ([sel["cname_target"]] if sel.get("cname_target") else [])
+    return dkim_key_provider(selector, chain, sel.get("vendor"))
 
 
 def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
@@ -7009,7 +7022,6 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
     for sel in found:
         selector = sel.get("selector", "unknown")
         sel_record = sel.get("record", "")
-        vendor = sel.get("vendor")
         key_analysis = analyze_dkim_key_strength(sel_record)
         bits = key_analysis.get("key_bits", 0)
         key_type = key_analysis.get("key_type", "RSA")
@@ -7129,7 +7141,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             dkim_tags.append(tag_info)
 
         # Provider from selector name
-        provider = dkim_key_vendor(selector, sel.get("cname_target"), vendor, sel.get("cname_chain"))
+        provider = _key_provider(sel, raw)
         if not provider and selector.lower() in ("selector1", "selector2"):
             provider = "Vendor: unknown"
 

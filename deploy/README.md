@@ -1,5 +1,7 @@
 # deploy
 
+Python: 3.12 or newer, because the sendermap dependency requires it. The droplet runs 3.12.3 for both the system Python and `~/.venv` (checked 2026-10-22), and the Sendermap service on the same droplet (`sendermap.service`, its own `~/sendermap-venv`) runs on it too. After an OS upgrade, check `~/.venv/bin/python --version` before `pip install -r requirements.txt`.
+
 - `dns-auditor.service`: template of the systemd unit. The live copy is `/etc/systemd/system/dns-auditor.service` on the droplet.
 - `nginx.conf`: copy of the droplet's nginx site config, with the user replaced by DEPLOY_USER. The live file is `/etc/nginx/sites-enabled/dns-audit`; change it there, run `sudo nginx -t`, reload nginx, then update this copy.
 - `no-dns-default-route.conf`: systemd-networkd drop-in that keeps the private interface out of DNS routing. On a droplet with a private network interface, install it and reload:

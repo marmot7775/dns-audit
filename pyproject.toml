@@ -2,10 +2,9 @@
 name = "dns-audit"
 version = "2.0.0"
 description = "DNS and email security audit: DMARC, SPF, DKIM, MTA-STS, DNSSEC, DANE, CAA, BIMI, TLS-RPT, MX, nameservers, Certificate Transparency."
-# The one statement of the Python floor. 3.10 is the lowest version every
-# pinned dependency installs on (seven of them require it). CI tests on 3.11;
-# production runs 3.12.
-requires-python = ">=3.10"
+# The one statement of the Python floor. sendermap requires 3.12, so 3.12 it
+# is; production runs 3.12.3 and CI tests on 3.12.
+requires-python = ">=3.12"
 
 # The one list of dependencies. requirements.txt and requirements-dev.txt are
 # generated from these two lists by tools/gen_requirements.py, because the
@@ -38,6 +37,11 @@ dependencies = [
     # reportlab, so /api/audit/{domain}/pdf returns 503 without it. Runtime,
     # not test-only: the deploy installs requirements.txt only.
     "reportlab>=4.0.0",
+    # The sender engine (github.com/marmot7775/sendermap). Pinned exactly:
+    # sendermap_adapter.py imports SystemResolver's rendering helpers, which
+    # are private to the package, so a release has to be checked before it
+    # is taken. Requires Python 3.12.
+    "sendermap==0.1.2",
 ]
 
 [project.optional-dependencies]
@@ -65,13 +69,16 @@ dev = [
     #   python -m playwright install --with-deps chromium
     # Without it those tests skip rather than fail.
     "playwright>=1.47.0",
+    # Validates the audit's sendermap field against Sendermap's own JSON
+    # Schema (sendermap.schema(), the sendermap/1 contract).
+    "jsonschema>=4.23.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 # The rule set is named, not left to ruff's default. ruff 0.16 widened its
