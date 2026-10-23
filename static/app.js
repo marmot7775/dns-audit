@@ -25,6 +25,77 @@ const VENDORS_DROPPED = 'Not checked. Your domain\'s nameservers stopped answeri
 // Severity sort order (lower = higher priority = displayed first)
 const SEVERITY_ORDER = { fail: 0, warn: 1, pass: 2, absent: 3, unavailable: 4 };
 
+// Doc 101: the result cards sit in three areas, in this order. The one
+// place a card name maps to an area; tests/test_check_areas.py fails if the
+// engine can emit a card name that is not listed here. `pin` keeps those
+// cards first, in that order, ahead of the severity sort.
+const CHECK_AREAS = {
+    sending: {
+        heading: 'Sending your mail',
+        lead: 'Proves mail from your domain is really from you.',
+        checks: ['DMARC', 'SPF', 'DKIM', 'BIMI'],
+        pin: ['DMARC', 'SPF', 'DKIM'],
+    },
+    receiving: {
+        heading: 'Receiving your mail',
+        lead: 'Where your mail is delivered and whether it arrives encrypted.',
+        checks: ['MX Records', 'MTA-STS', 'TLS-RPT', 'DANE'],
+        pin: [],
+    },
+    dns: {
+        heading: "Your domain's DNS",
+        lead: 'Protects the records everything else depends on.',
+        checks: ['DNSSEC', 'CAA', 'Nameservers', 'Certificate Transparency'],
+        pin: [],
+    },
+};
+
+// The area a card belongs to. A name missing from CHECK_AREAS still renders,
+// under the last area, rather than vanishing from the page.
+function checkAreaKey(name) {
+    const keys = Object.keys(CHECK_AREAS);
+    return keys.find(k => CHECK_AREAS[k].checks.includes(name)) || keys[keys.length - 1];
+}
+
+// Sorts an area's cards in place: pinned names first in their order, then
+// everything else by SEVERITY_ORDER (Array.sort is stable, so equal
+// severities keep the engine's order).
+function sortAreaChecks(checks, pin) {
+    return checks.sort((a, b) => {
+        const aPin = pin.indexOf(a.name);
+        const bPin = pin.indexOf(b.name);
+        if (aPin !== -1 && bPin !== -1) return aPin - bPin;
+        if (aPin !== -1) return -1;
+        if (bPin !== -1) return 1;
+        return (SEVERITY_ORDER[a.status] ?? 3) - (SEVERITY_ORDER[b.status] ?? 3);
+    });
+}
+
+// The checks grouped by area, in CHECK_AREAS order, each sorted. An area
+// the scope leaves empty is left out, so its heading never renders.
+function groupChecksByArea(checks) {
+    const groups = Object.keys(CHECK_AREAS).map(key => ({ key, area: CHECK_AREAS[key], checks: [] }));
+    for (const c of checks) groups.find(g => g.key === checkAreaKey(c.name)).checks.push(c);
+    return groups
+        .filter(g => g.checks.length > 0)
+        .map(g => ({ ...g, checks: sortAreaChecks(g.checks, g.area.pin) }));
+}
+
+// The status line beside an area heading, from the same statusCounts the
+// summary tiles use, in the tiles' own words, so the areas add up to them.
+function areaStatusText(counts) {
+    const total = Object.values(counts).reduce((s, n) => s + n, 0);
+    if (total > 0 && counts.pass === total) return 'All passing';
+    const parts = [];
+    if (counts.fail) parts.push(`${counts.fail} need${counts.fail === 1 ? 's' : ''} fixing`);
+    if (counts.warn) parts.push(`${counts.warn} could be stronger`);
+    if (counts.pass) parts.push(`${counts.pass} passing`);
+    if (counts.absent) parts.push(`${counts.absent} optional, not set up`);
+    if (counts.not_applicable) parts.push(`${counts.not_applicable} ${counts.not_applicable === 1 ? 'does' : 'do'} not apply`);
+    if (counts.unavailable) parts.push(`${counts.unavailable} not checked`);
+    return parts.join(' · ');
+}
+
 // The shape a domain has to have before we send it to the API. Doc 68 made
 // this one constant; it was three identical literals (the ?d= handler, the
 // submit handler and the live validity indicator), which is three places to
@@ -722,6 +793,13 @@ function renderResults(data, selector = '') {
         // and lands on it instead of on the top of the list.
         const hashId = (window.location.hash || '').replace(/^#/, '');
         if (hashId && document.getElementById(hashId)) {
+            // The section's fade and the cards' entrance start at an 8px and
+            // a 12px offset, so a scroll aimed now lands 20px short and the
+            // card sits under the sticky header. A reader jumping to a card
+            // does not need the entrance; end it first.
+            resultsSection.getAnimations({ subtree: true })
+                .filter(a => ['fadeIn', 'cardEntrance'].includes(a.animationName))
+                .forEach(a => a.finish());
             openCard(hashId);
         } else {
             // Clear the sticky header, or it covers the domain line and the
@@ -812,22 +890,11 @@ function renderResults(data, selector = '') {
         });
     }
 
-    // -- Sort: email auth first (DMARC, SPF, DKIM), then severity --
-    const PIN_TOP = ['DMARC', 'SPF', 'DKIM'];
-    checks.sort((a, b) => {
-        const aPin = PIN_TOP.indexOf(a.name);
-        const bPin = PIN_TOP.indexOf(b.name);
-        const aIsPinned = aPin !== -1;
-        const bIsPinned = bPin !== -1;
-        // Pinned checks always first, in defined order
-        if (aIsPinned && bIsPinned) return aPin - bPin;
-        if (aIsPinned) return -1;
-        if (bIsPinned) return 1;
-        // Everything else sorted by severity
-        const sa = SEVERITY_ORDER[a.status] ?? 3;
-        const sb = SEVERITY_ORDER[b.status] ?? 3;
-        return sa - sb;
-    });
+    // -- Group into the three areas (Doc 101); each area sorts its own
+    // cards. `checks` takes the page order, which the plan rows and the
+    // card numbering below read. --
+    const areaGroups = groupChecksByArea(checks);
+    checks = areaGroups.flatMap(g => g.checks);
 
     // Summary counts (scoped)
     const counts = statusCounts(checks);
@@ -959,6 +1026,28 @@ function renderResults(data, selector = '') {
     // DNSSEC (the word itself appears at scroll 0, in the marketing
     // subtitle), and a screen reader met eight empty boxes. A card that
     // exists only after you scroll past it is not in the document.
+    // Doc 101: one section per area, an h3 under the results heading. The
+    // card ids are unchanged, so every #check-* link still finds its card.
+    const areaLists = new Map();
+    areaGroups.forEach(g => {
+        const section = document.createElement('section');
+        section.className = 'check-area';
+        section.id = `area-${g.key}`;
+        section.setAttribute('aria-labelledby', `area-${g.key}-heading`);
+        const counts = statusCounts(g.checks);
+        // The tally behind the status line, for tests and anyone reading the DOM.
+        section.dataset.counts = JSON.stringify(counts);
+        section.innerHTML = `
+            <h3 class="check-area-heading" id="area-${g.key}-heading">
+                <span class="check-area-title">${escapeHtml(g.area.heading)}</span>
+                <span class="check-area-count">${escapeHtml(areaStatusText(counts))}</span>
+            </h3>
+            <p class="check-area-lead">${escapeHtml(g.area.lead)}</p>
+            <div class="check-area-list"></div>`;
+        resultsList.appendChild(section);
+        const list = section.querySelector('.check-area-list');
+        g.checks.forEach(c => areaLists.set(c, list));
+    });
     checks.forEach((check, i) => {
         // Attach tree walk + DMARC eval + subdomain audit data to the DMARC check
         if ((check.name || '').toUpperCase().includes('DMARC') && data.tree_walk) {
@@ -1010,7 +1099,7 @@ function renderResults(data, selector = '') {
             }
         }
 
-        resultsList.appendChild(createResultCard(check, i));
+        areaLists.get(check).appendChild(createResultCard(check, i));
     });
 
     // Draft standards (APRF): informational cards from their own list, never
@@ -1216,6 +1305,8 @@ function createResultCard(check, index) {
     card.dataset.status = check.status;
     card.dataset.check = check.name || '';
     card.style.animationDelay = `${index * 60}ms`;
+    // Off-screen paint skip from the sixth card on (style.css).
+    if (index >= 5) card.classList.add('result-card-deferred');
 
     const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
 
@@ -3945,6 +4036,15 @@ function openCard(id) {
         }
         syncToggleAllLabel();
     }
+    // A card that skips painting off screen is held at a 300px guess until
+    // it renders. Any such card above the target (or holding it) would
+    // shrink to its real height mid-scroll and carry the target up under
+    // the header, so it paints for real first.
+    document.querySelectorAll('.result-card-deferred').forEach(c => {
+        if (c.contains(target) || (c.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            c.classList.remove('result-card-deferred');
+        }
+    });
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
