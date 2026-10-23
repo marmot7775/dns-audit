@@ -24,6 +24,11 @@ log = logging.getLogger(__name__)
 # Per-check timeout in seconds (prevents hung DNS queries from blocking the audit)
 CHECK_TIMEOUT = 15
 
+# Seconds the sender map (Sendermap) gets inside the audit's deadline, the
+# fingerprinter's 8 s before it. Measured over tools' 20 step 1 domains on a
+# warm and a cold cache: see the Sendermap step 2 commit.
+SENDER_MAP_BUDGET = 8
+
 # CT (crt.sh) result cache -- 24-hour TTL because CT data rarely changes
 # and crt.sh is frequently slow or unavailable. Expired entries are kept
 # deliberately (see _get_stale_ct), so this is the one cache in the process
@@ -122,7 +127,10 @@ def _is_private_ip(ip_str: str) -> bool:
 from checks_extra import check_mta_sts, check_tls_rpt, check_bimi
 from mx_check import check_mx
 from spf_recursive import SPF_LOOKUP_LIMIT, count_spf_lookups, repair_spf_missing_spaces
-from advanced_fingerprinting import AdvancedVendorFingerprinter
+from sendermap.model import Claim, Kind, Need, Role, SenderMap, Service, State, Tier
+from sendermap.setup import WORDS as SETUP_WORDS
+from sendermap_adapter import (MAP_THREADS, hosted_spf_service, map_dkim_providers,
+                               map_senders, spf_hosts, spf_include)
 from dkim_formatter import analyze_dkim_key_strength
 from anomaly_detector import detect_anomalies
 
@@ -188,43 +196,6 @@ from result_transformer import (
     RFC9989_RETIRED_TAGS,
 )
 from dns_snapshots import store_audit_snapshots, get_all_history, purge_old_snapshots
-
-
-# ============================================================
-# Vendor SPF Include Mapping (for remediation suggestions)
-# ============================================================
-
-# Only vendors whose own setup docs require an include in the domain's SPF
-# record, per the footprints in Neil's sender discovery vendors.json
-# (Toolkit/templates, read 2026-10-08). The ESPs that send with their own
-# return path (Mailchimp, Postmark, SparkPost, Brevo) need none, and the ones
-# whose include is optional (SendGrid, Amazon SES, HubSpot, Salesforce,
-# Zendesk, Freshdesk, Intercom) authorize through a CNAME on a subdomain:
-# suggesting their include spent a lookup out of ten on nothing.
-VENDOR_SPF_INCLUDES = {
-    "Google Workspace": "include:_spf.google.com",
-    "Microsoft 365": "include:spf.protection.outlook.com",
-    "Zoho Mail": "include:zohomail.com",
-    "Fastmail": "include:spf.messagingengine.com",
-    "Proton Mail": "include:_spf.protonmail.ch",
-    "Rackspace Email": "include:emailsrvr.com",
-    "Mailgun": "include:mailgun.org",
-    "Mimecast": "include:_netblocks.mimecast.com",
-    "Barracuda": "include:spf.ess.barracudanetworks.com",
-    "Omnivery/Mailkit": "include:spf.mailkit.eu",
-}
-
-# Other names that already cover a vendor anywhere in the SPF tree: older or
-# alternative includes (zoho.com, spf.fastmail.com, Barracuda's regional and
-# pre-ESS names, Mimecast's regional _netblocks), and hosted SPF zones that
-# publish a vendor's ranges under their own name. Mimecast's hosted SPF
-# (servicenow.com redirects to a mim.ec name) is the case seen in the wild.
-VENDOR_SPF_HOSTED_ZONES = {
-    "Mimecast": ("mim.ec", "mimecast.com"),
-    "Zoho Mail": ("zoho.com", "zoho.eu", "zoho.in", "zoho.com.au"),
-    "Fastmail": ("spf.fastmail.com",),
-    "Barracuda": ("barracudanetworks.com",),
-}
 
 
 # ============================================================
@@ -2446,10 +2417,6 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
         result["lookup_target"] = domain
         return result
 
-    # Kept for vendor fingerprinting: verification tokens at the apex name
-    # mail services the SPF record may not (a hosted or flattened SPF, or a
-    # vendor that sends from its own Return-Path).
-    result["apex_txt"] = [r for r in all_txt if not is_spf_record(r)]
     spf_records = [r for r in all_txt if is_spf_record(r)]
 
     # A record that starts with v=spf1 but fails the version match, most
@@ -4629,9 +4596,10 @@ _shared_executor = ThreadPoolExecutor(
 # was fine for one audit at a time, but 8 concurrent audits each probing
 # len(_SUBDOMAIN_PREFIXES) subdomains queues far more than 20 workers can hold,
 # so the tail waits out its own timeout budget before a probe ever runs.
-# len(_SUBDOMAIN_PREFIXES) (20, defined below) plus the vendor CNAME wave
-# (23 labels and a wildcard canary), which can overlap with it in one audit.
-_PROBE_WIDTH = 44
+# len(_SUBDOMAIN_PREFIXES) (20, defined below). It was 44 while the vendor
+# CNAME wave (23 labels and a canary) ran here too; Sendermap asks those
+# labels itself, on its own pool.
+_PROBE_WIDTH = 20
 _probe_executor = ThreadPoolExecutor(
     max_workers=max(20, _MAX_CONCURRENT_AUDITS * _PROBE_WIDTH),
     thread_name_prefix="probe",
@@ -4665,9 +4633,11 @@ _dkim_executor = ThreadPoolExecutor(
 # server.py and sentry: on 2026-10-15 the default TasksMax (1107) sat below
 # the pools' 1112 and every audit failed with "can't start new thread" until
 # a restart. server.py logs a warning at startup when the unit's limit is too
-# low, and /api/health reports this beside the live thread count.
+# low, and /api/health reports this beside the live thread count. The sender
+# maps share one pool of MAP_THREADS per concurrent audit (sendermap_adapter).
 AUDIT_THREAD_CEILING = (_shared_executor._max_workers + _probe_executor._max_workers
-                        + _dkim_executor._max_workers)
+                        + _dkim_executor._max_workers
+                        + _MAX_CONCURRENT_AUDITS * MAP_THREADS)
 
 
 # ============================================================
@@ -4833,55 +4803,6 @@ def _sends_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
     return _publishes_null_mx(raw_mx) and not _has_sending_spf(raw_spf)
 
 
-def _probe_vendor_cname(name: str) -> Optional[str]:
-    """The CNAME target at name, or None for no CNAME or no answer."""
-    try:
-        answer = _get_resolver(_SUBDOMAIN_TIMEOUT).resolve(name, "CNAME")
-        return str(answer[0].target).rstrip(".").lower()
-    except (dns.exception.DNSException, OSError):
-        # Only DNS outcomes mean "no CNAME". Anything else is a bug, and is
-        # logged by the caller rather than read as an empty answer.
-        return None
-
-
-def _probe_vendor_cnames(domain: str, budget: float) -> Dict[str, str]:
-    """{label: target} for the vendor return path, tracking and autodiscover
-    labels (vendor_patterns.VENDOR_CNAME_LABELS) that are CNAMEs.
-
-    One parallel wave on _probe_executor, never _shared_executor (the
-    fingerprinting that reads it runs there) or _dkim_executor. A random
-    label is asked too: a wildcard CNAME answers every name, so a label that
-    returns the wildcard's own target is not evidence of anything.
-    """
-    from vendor_patterns import VENDOR_CNAME_LABELS
-    futures = {_probe_executor.submit(_probe_vendor_cname, f"{label}.{domain}"): label
-               for label in VENDOR_CNAME_LABELS}
-    canary = _probe_executor.submit(_probe_vendor_cname, f"dnsaudit{secrets.token_hex(6)}.{domain}")
-    try:
-        for _ in as_completed([*futures, canary], timeout=budget):
-            pass
-    except FuturesTimeoutError:
-        log.warning("Vendor CNAME probe for %s hit its %.1fs budget", domain, budget)
-    if not canary.done():
-        # Without the canary's answer a wildcard cannot be ruled out, so no
-        # label's answer can be trusted.
-        canary.cancel()
-        for future in futures:
-            future.cancel()
-        log.warning("Vendor CNAME canary for %s did not finish; discarding the wave", domain)
-        return {}
-    wildcard = canary.result()
-    found = {}
-    for future, label in futures.items():
-        if not future.done():
-            future.cancel()
-            continue
-        target = future.result()
-        if target and target != wildcard:
-            found[label] = target
-    return found
-
-
 def _audit_subdomains(domain: str) -> Dict[str, Any]:
     """Probe common subdomains in parallel and return raw discovery results.
 
@@ -4953,7 +4874,7 @@ def _count_checks_for_scope(scope_set) -> int:
         if _should_include(ck, scope_set):
             count += 1
 
-    # Vendor fingerprinting runs when email checks are in scope
+    # The sender map runs when email checks are in scope
     _email_checks = {"dmarc", "spf", "dkim", "mx"}
     if scope_set is None or bool(scope_set & _email_checks):
         count += 1
@@ -5090,7 +5011,8 @@ def _spf_tree_names(current_spf: str, spf_recursive: Optional[Dict]) -> set:
 # link tracking name CNAMEd into the vendor), whose SPF the vendor publishes
 # there. Seen only that way, the vendor needs nothing in the apex record:
 # allbirds.com has a Mailgun tracking CNAME and was told to add mailgun.org.
-_SUBDOMAIN_ONLY_SOURCES = {"tracking CNAME", "return path CNAME"}
+_SUBDOMAIN_ONLY_SOURCES = {"tracking CNAME", "return path CNAME", "NS delegation",
+                           "subdomain MX"}
 
 
 def _needs_apex_spf_include(v: Dict) -> bool:
@@ -5101,8 +5023,18 @@ def _needs_apex_spf_include(v: Dict) -> bool:
         sources and sources <= _SUBDOMAIN_ONLY_SOURCES)
 
 
+def _spf_signal_at(v: Dict, domain: str) -> bool:
+    """Whether the sender map credits this vendor from the SPF record at the
+    domain itself (an include, a range it owns, or an evaluated pass)."""
+    apex = domain.lower().rstrip(".")
+    return any(sig.get("source") == "SPF"
+               and (sig.get("where") or "").lower().rstrip(".") == apex
+               for sig in v.get("signals") or [])
+
+
 def _spf_managed_by(current_spf: str) -> Optional[str]:
-    """The hosted SPF service (Valimail, OnDMARC) or "a macro include" when
+    """The hosted SPF service (Valimail, OnDMARC, EasyDMARC, AutoSPF, as
+    Sendermap's catalog lists them) or "a macro include" when
     the record authorizes through one: either can authorize a vendor without
     naming it, so no include can be called missing. glossier.com publishes
     only a Valimail macro include and was told to add include:_spf.google.com.
@@ -5111,7 +5043,6 @@ def _spf_managed_by(current_spf: str) -> Optional[str]:
     before the all term. "-include:" or a term after all says nothing about
     who may send. Hosted services sit in the top-level record.
     """
-    from vendor_patterns import HOSTED_SPF_VENDORS, SPF_INCLUDE_VENDORS, match_host
     targets = []
     for term in _spf_terms(current_spf):
         bare = term.lstrip(_SPF_QUALIFIERS).lower()
@@ -5122,18 +5053,19 @@ def _spf_managed_by(current_spf: str) -> Optional[str]:
         targets.append(bare.split(":", 1)[1] if bare.startswith("include:")
                        else bare.split("=", 1)[1])
     for t in targets:
-        if match_host(t.rstrip("."), SPF_INCLUDE_VENDORS) in HOSTED_SPF_VENDORS:
-            return match_host(t.rstrip("."), SPF_INCLUDE_VENDORS)
+        if hosted := hosted_spf_service(t.rstrip(".")):
+            return hosted
     if any("%{" in t for t in targets):
         return "a macro include"
     return None
 
 
 def _vendor_in_spf_tree(vendor: str, spf_inc: str, tree_names: set) -> bool:
-    """True when the vendor's include, a name under it, or the vendor's
-    hosted SPF zone appears anywhere in the SPF tree."""
+    """True when the vendor's include, a name under it, or any other include
+    host Sendermap's catalog knows for the vendor appears anywhere in the
+    SPF tree: an older or regional include covers the vendor too."""
     target = spf_inc.split(":", 1)[1].lower().rstrip(".")
-    zones = (target,) + VENDOR_SPF_HOSTED_ZONES.get(vendor, ())
+    zones = (target,) + tuple(h.lower() for h in spf_hosts(vendor))
     return any(n == z or n.endswith("." + z) for n in tree_names for z in zones)
 
 
@@ -5162,7 +5094,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     deadline: an optional time.monotonic() value. The six serial per-check
         timeouts in Phase 1 alone sum to well over a minute in the worst
-        case, on top of the Phase 2 batch, fingerprinting and subdomain
+        case, on top of the Phase 2 batch, the sender map and subdomain
         probing, so a caller with its own wall-clock budget (e.g. the 90s
         an HTTP request can hold open before its own proxy or load balancer
         gives up) needs to bound the whole audit, not just one check.
@@ -5608,6 +5540,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     _CARD_ORDER = ["mta_sts", "tls_rpt", "bimi", "dnssec", "caa",
                     "nameservers", "dane", "ct"]
     _p2_cards = {}  # key -> card
+    _p2_transforms = {}  # key -> transform, for a card built from a completed lookup
 
     # The budget belongs on as_completed, not on future.result. as_completed
     # only ever yields futures that are already done, so a timeout on result()
@@ -5622,6 +5555,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 raw = future.result(timeout=CHECK_TIMEOUT + 5)
                 raw_results[key] = raw
                 _p2_cards[key] = transform_fn(raw)
+                _p2_transforms[key] = transform_fn
             except FuturesTimeoutError:
                 errors.append(f"{label}: timed out")
                 if key == "dkim":
@@ -5647,6 +5581,43 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     raw_results["dkim"] = {"found_selectors": [], "tested_count": 0, "timed_out": True}
                 _p2_cards[key] = _timeout_card(label)
                 _notify(label)
+
+    # --- Sender map (Sendermap) ---
+    # After Phase 2, so the map reads the answers the checks cached, and
+    # before the DKIM card goes in, so the card names each key's provider
+    # from the map. A map that does not finish leaves the vendor panel not
+    # assessed: no vendors listed, no missing records claimed.
+    sender_map = None
+    _email_checks = {"dmarc", "spf", "dkim", "mx"}
+    _map_in_scope = scope_set is None or bool(scope_set & _email_checks)
+    # Doc 72: a zone that dropped the DKIM sweep's probes keeps dropping for
+    # seconds after, so the map would spend its whole budget on silence. It
+    # is not drawn, and the panel says the nameservers stopped answering.
+    _zone_dropping = (raw_results.get("dkim") or {}).get("stopped_reason") == "queries_dropped"
+    if _map_in_scope and not _time_up() and not _zone_dropping:
+        _map_budget = SENDER_MAP_BUDGET
+        if deadline is not None:
+            _map_budget = min(_map_budget, deadline - time.monotonic())
+        if _map_budget > 0:
+            try:
+                # map_senders keeps its own budget; this ceiling only guards
+                # a map that fails to give up.
+                sender_map = _run_with_timeout(map_senders, domain, _map_budget,
+                                               timeout=_map_budget + 2)
+            except FuturesTimeoutError:
+                log.warning("Sender map for %s exceeded its %gs budget", domain, _map_budget)
+            except Exception:
+                log.debug("Sender map failed", exc_info=True)
+        _notify("Vendor Fingerprinting")
+    if sender_map is not None:
+        raw_results["sendermap"] = sender_map.to_dict()
+        _map_keys = map_dkim_providers(sender_map)
+        if _map_keys and "dkim" in _p2_transforms and raw_results.get("dkim"):
+            raw_results["dkim"]["map_providers"] = _map_keys
+            try:
+                _p2_cards["dkim"] = _p2_transforms["dkim"](raw_results["dkim"])
+            except Exception:
+                log.warning("DKIM card with the map's providers failed", exc_info=True)
 
     # Insert DKIM card at position 2 (after DMARC+SPF), others in order
     if "dkim" in _p2_cards:
@@ -5958,66 +5929,18 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                                 card["status"] = _xc_downgrade
                         break
 
-    # --- Vendor Fingerprinting (only useful for email scopes) ---
-    fp_vendors = []
-    _email_checks = {"dmarc", "spf", "dkim", "mx"}
-    if (scope_set is None or bool(scope_set & _email_checks)) and not _time_up():
-        # Seven of the eight probes re-queried a record this audit already
-        # holds, strictly sequentially, on the module default resolver with no
-        # timeout above them: worst case roughly 50 seconds bolted onto every
-        # email-scope audit, transport included. Hand them the answers instead.
-        _raw_spf = raw_results.get("spf") or {}
-        _raw_mx = raw_results.get("mx") or {}
-        _raw_dmarc = raw_results.get("dmarc") or {}
-        _raw_tls_rpt = raw_results.get("tls_rpt") or {}
-        _raw_mta_sts = raw_results.get("mta_sts") or {}
-        _raw_bimi = raw_results.get("bimi") or {}
-        _fp_mx_hosts = [
-            d["hostname"] for d in _raw_mx.get("mx_details", []) if d.get("hostname")
-        ] or [
-            rec.strip().split()[-1].rstrip(".")
-            for rec in _raw_mx.get("records", [])
-            if len(rec.strip().split()) >= 2
-        ]
-        _fp_prefetch = {
-            "spf_record": _raw_spf.get("record"),
-            # The resolved tree, for vendors behind the domain's own nested
-            # includes and a top-level redirect=.
-            "spf_chain": (_raw_spf.get("spf_recursive") or {}).get("chain"),
-            "mx_hosts": _fp_mx_hosts,
-            "dmarc_record": _raw_dmarc.get("record"),
-            "tls_rpt_record": _raw_tls_rpt.get("record"),
-            # Live keys only: a retired selector (empty p=) says who signed
-            # once, not who signs now.
-            "dkim_selectors": _live_dkim_selectors(raw_results.get("dkim")),
-            "apex_txt": _raw_spf.get("apex_txt") or [],
-        }
-        # Return path, tracking and autodiscover CNAMEs: the one signal here
-        # that needs its own queries. A short budget inside the audit's.
-        _cname_budget = 3.0
-        if deadline is not None:
-            _cname_budget = min(_cname_budget, deadline - time.monotonic())
-        try:
-            # Past the deadline, skip the wave rather than overrun it.
-            if _cname_budget > 0:
-                _fp_prefetch["label_cnames"] = _probe_vendor_cnames(domain, _cname_budget)
-        except Exception:
-            log.warning("Vendor CNAME probe failed for %s", domain, exc_info=True)
-        # Every probe now reads from prefetch, so this makes no DNS query of
-        # its own. The ceiling stays as a guard for any signal added later.
-        try:
-            fp = AdvancedVendorFingerprinter(domain, prefetch=_fp_prefetch)
-            fp_result = _run_with_timeout(fp.fingerprint_all, timeout=8)
-            fp_vendors = fp_result.get("vendors", [])
-        except FuturesTimeoutError:
-            log.warning("Vendor fingerprinting for %s exceeded its 8s budget", domain)
-        except Exception:
-            log.debug("Vendor fingerprinting failed", exc_info=True)
-        _notify("Vendor Fingerprinting")
-
     # --- Vendor list for frontend ---
-    vendors = _format_vendors(fp_vendors)
-    _vendor_missing_records(vendors, raw_results)
+    # "assessed" when the sender map finished, "unavailable" when it ran out
+    # of time or failed (the panel then reads like a DKIM card whose lookup
+    # did not complete), None when the scope has no email checks.
+    vendors = _format_vendors(sender_map)
+    vendors_status = None
+    if _map_in_scope:
+        vendors_status = "assessed" if sender_map is not None else "unavailable"
+    # Why the panel is not checked when the reason is not time: the page and
+    # the PDF pick their words from it.
+    vendors_reason = ("queries_dropped"
+                      if vendors_status == "unavailable" and _zone_dropping else None)
 
     # --- Provider Intelligence (Prompt 19) ---
     provider_intelligence = _build_provider_intelligence(raw_results, checks)
@@ -6044,7 +5967,13 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
             # A bounce or tracking CNAME alone puts the sending on a subdomain.
             if not _needs_apex_spf_include(v):
                 continue
-            spf_inc = VENDOR_SPF_INCLUDES.get(v["name"])
+            # The map already found the vendor in this record: an include,
+            # a range it owns inside a flattened record, or a pass for one
+            # of its addresses. allbirds.com publishes EasyDMARC's flattened
+            # record and was told to check four services with EasyDMARC.
+            if _spf_signal_at(v, domain):
+                continue
+            spf_inc = spf_include(v["name"])
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
                 missing_includes.append(spf_inc)
                 matched_vendors.append(v["name"])
@@ -6279,6 +6208,11 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "checks": checks,
         "anomalies": anomalies,
         "vendors": vendors,
+        "vendors_status": vendors_status,
+        "vendors_reason": vendors_reason,
+        # Sendermap's map as it made it (SenderMap.to_dict(), the
+        # sendermap/1 contract), or None when it did not run or finish.
+        "sendermap": raw_results.get("sendermap"),
         "provider_intelligence": provider_intelligence,
         "tree_walk": tree_walk_result,
         "spf_execution": spf_execution,
@@ -6313,145 +6247,115 @@ def _live_dkim_selectors(raw_dkim: Optional[Dict]) -> List[Dict]:
     return live
 
 
-# Record type each fingerprint technique reads, in the order the panel names
-# them. Every technique the fingerprinter has is here: a DMARC or TLS-RPT
-# report address used to be counted but never named, so a vendor found only
-# that way read "Detected via DNS records" at 90 percent, as if it sent mail.
-_VENDOR_SOURCES = (("SPF Include", "SPF"), ("MX Record", "MX"), ("DKIM Key", "DKIM"),
-                   ("Return path CNAME", "return path CNAME"),
-                   ("Tracking CNAME", "tracking CNAME"),
-                   ("Verification TXT", "TXT"), ("Autodiscover CNAME", "autodiscover CNAME"),
-                   ("DMARC Reporting", "DMARC reports"), ("TLS-RPT", "TLS-RPT reports"))
-_REPORTING_TECHNIQUES = {"DMARC Reporting", "TLS-RPT"}
+# What each kind of claim in the sender map reads as in the panel's source
+# list, and which side of the domain's mail it shows: MX kinds are inbound;
+# SPF, DKIM, bounce and tracking kinds are outbound. A delegation, a token,
+# an autodiscover CNAME, a revoked or dangling key and a report address show
+# neither. A kind not listed (the website and certificate log sources, which
+# the audit's DNS-only map never runs) reads as Sendermap words it.
+_KIND_SOURCE = {
+    Kind.MX: ("MX", "inbound"),
+    Kind.SUBDOMAIN_MAILBOX: ("subdomain MX", "inbound"),
+    Kind.SUBDOMAIN_MX: ("subdomain MX", "inbound"),
+    Kind.MTA_STS: ("MTA-STS", "inbound"),
+    Kind.SPF_INCLUDE: ("SPF", "outbound"),
+    Kind.SPF_NETWORK: ("SPF", "outbound"),
+    Kind.SPF_EVALUATED: ("SPF", "outbound"),
+    Kind.DKIM_CNAME: ("DKIM CNAME", "outbound"),
+    Kind.DKIM_NAME: ("DKIM", "outbound"),
+    Kind.RETURN_PATH: ("return path CNAME", "outbound"),
+    Kind.TRACKING: ("tracking CNAME", "outbound"),
+    Kind.DELEGATION: ("NS delegation", None),
+    Kind.TOKEN: ("TXT", None),
+    Kind.AUTODISCOVER: ("autodiscover CNAME", None),
+    Kind.DKIM_REVOKED: ("revoked DKIM key", None),
+    Kind.DKIM_DANGLING: ("dangling DKIM CNAME", None),
+    Kind.DMARC_REPORTS: ("DMARC reports", None),
+    Kind.TLSRPT_REPORTS: ("TLS-RPT reports", None),
+}
+_SIDES = ("outbound", "inbound")
 
-# The sender discovery script's four tiers, strongest first, in place of a
-# percentage that read 99 for nearly every vendor. In use: MX, mail is
-# delivered there now. Configured: an SPF include, a DKIM key the vendor
-# hosts through a CNAME, or a return path or tracking CNAME. Likely: a DKIM
-# key known only by its selector name. Account only: a verification token,
-# an autodiscover CNAME or a report address, a trace of an account with
-# nothing set up to send through it.
-VENDOR_TIERS = ("In use", "Configured", "Likely", "Account only")
-
-
-def _format_vendors(fp_vendors: List) -> List[Dict]:
-    """Format pre-computed vendor fingerprint results for frontend."""
-    vendors = []
-    for v in fp_vendors:
-        confidence = v.get("confidence", 0)
-        if confidence >= 0.5:  # Only show meaningful detections
-            # A vendor authorized in SPF can send as you (outbound) without
-            # ever receiving your mail, and a vendor named in MX receives
-            # your mail (inbound) without necessarily being authorized to
-            # send. Naming just the vendor, with no side, reads as "this
-            # vendor handles your mail" when it may only do one half.
-            techniques = {s.get("technique") for s in v.get("signals", [])}
-            sides = []
-            # A DKIM key is the vendor signing mail as you: outbound, the
-            # same side as an SPF include.
-            # A return path or tracking CNAME is the vendor sending as you.
-            if techniques & {"SPF Include", "DKIM Key", "Return path CNAME", "Tracking CNAME"}:
-                sides.append("outbound")
-            if "MX Record" in techniques:
-                sides.append("inbound")
-            signals = v.get("signals", [])
-            # A key published as a CNAME into the vendor's zone is the vendor
-            # hosting it, stronger than a key known only by its selector name.
-            dkim_label = ("DKIM CNAME" if any(s.get("cname") for s in signals
-                                              if s.get("technique") == "DKIM Key") else "DKIM")
-            by_cname = dkim_label == "DKIM CNAME"
-            if "MX Record" in techniques:
-                tier = "In use"
-            elif (techniques & {"SPF Include", "Return path CNAME", "Tracking CNAME"}) or by_cname:
-                tier = "Configured"
-            elif "DKIM Key" in techniques:
-                tier = "Likely"
-            else:
-                tier = "Account only"
-            if techniques and techniques <= _REPORTING_TECHNIQUES:
-                # Found only as a report address: a reporting service, not
-                # something that sends this domain's mail.
-                role = "reporting"
-            elif tier == "Account only":
-                role = "account"
-            else:
-                role = "sender"
-            vendors.append({
-                "name": v["vendor"],
-                "tier": tier,
-                "confidence": int(confidence * 100),
-                "detected_via": " + ".join(sides) if sides else None,
-                "sources": [dkim_label if t == "DKIM Key" else label
-                            for t, label in _VENDOR_SOURCES if t in techniques],
-                "role": role,
-            })
-
-    # Deduplicate by name, keep highest confidence
-    seen = {}
-    for v in vendors:
-        name = v["name"]
-        if name not in seen or v["confidence"] > seen[name]["confidence"]:
-            seen[name] = v
-    # Strongest tier first; reporting services last.
-    return sorted(seen.values(), key=lambda x: (x["role"] == "reporting",
-                                                VENDOR_TIERS.index(x["tier"]), -x["confidence"],
-                                                x["name"].lower()))
+# Sendermap's four tiers, strongest first. In use: MX, mail is delivered
+# there now. Configured: an SPF include or network, a DKIM key the vendor
+# hosts through a CNAME, a return path, tracking or delegation. Likely: a
+# DKIM key known only by its selector name. Account only: a verification
+# token, an autodiscover CNAME or a revoked or dangling key, a trace of an
+# account with nothing set up to send through it. A reporting service has
+# no tier: nothing shows that it sends.
+VENDOR_TIERS = tuple(t.value for t in Tier)
 
 
-def _vendor_missing_records(vendors: List[Dict], raw_results: Dict) -> None:
-    """Set each vendor's "missing": the records its own setup docs require
-    that this audit checked for and did not find (vendor gap report, step 8).
+def _claim_signal(claim: Claim) -> Dict:
+    """One claim as the panel reads it: what kind of record, where, and the
+    record itself."""
+    source, _side = _KIND_SOURCE.get(claim.kind, (claim.kind.value, None))
+    return {"source": source, "where": claim.where, "record": str(claim.evidence)}
 
-    Only for senders the panel calls In use or Configured: a key known only by
-    its name, a verification token or a report address says too little about
-    how the vendor is set up. Only what the audit can check, so silence means
-    "not shown missing", never "present":
 
-    - SPF: the same rule as the SPF card's suggestion (VENDOR_SPF_INCLUDES,
-      anywhere in the resolved tree, not for a vendor seen only by a bounce or
-      tracking CNAME), so the panel and the card agree. Skipped
-      when there is no SPF record at all (the SPF card already says so),
-      part of the tree did not resolve, or a hosted SPF service or macro
-      include could cover the vendor without naming it.
-    - DKIM: only vendors with a fixed selector list (VENDOR_DKIM_SELECTORS),
-      and only when the scan got an answer at every one of those names. Not
-      under a _domainkey wildcard, after a timed out scan, when a vendor
-      selector is a dangling CNAME (the DKIM card reports that), or when a
-      live key names no vendor (it may be this vendor's).
+def _setup_missing(service: Service) -> List[str]:
+    """The records a service's documented setup requires that the map shows
+    missing, each with what was asked. An optional record the domain does
+    not publish is a choice, not a gap, and an item the map could not check
+    says nothing, so neither is listed."""
+    missing = []
+    for setup in service.setups:
+        for item in setup.items:
+            if item.state is not State.MISSING or item.need is not Need.REQUIRED:
+                continue
+            word = SETUP_WORDS.get(item.record, item.record)
+            line = f"No {word} for {service.name} at {setup.where}"
+            if item.detail:
+                line += f": {item.detail}"
+            if item.asked:
+                line += f". Asked: {item.asked}"
+            missing.append(line + ".")
+    return missing
+
+
+def _format_vendors(sender_map: Optional[SenderMap]) -> List[Dict]:
+    """The vendor panel's rows, one per service in the sender map.
+
+    Each row keeps the fields the page and the PDF read: name, category,
+    tier, detected_via (the sides its claims show), sources (one label per
+    kind of record), role (sender, account or reporting) and missing. signals
+    carries every claim with the record it shows, the record that decided
+    the tier first. Account only and reporting services list nothing
+    missing: a token or a report address says nothing about a setup.
     """
-    from vendor_patterns import VENDOR_DKIM_SELECTORS, dkim_key_vendor
-    raw_spf = raw_results.get("spf") or {}
-    raw_dkim = raw_results.get("dkim") or {}
-    spf_record = raw_spf.get("record") or ""
-    tree_names = None
-    # An indeterminate tree left a branch unread, and the include may be in it.
-    if raw_spf.get("status") != "unavailable" and spf_record and not raw_spf.get("spf_indeterminate"):
-        tree_names = _spf_tree_names(spf_record, raw_spf.get("spf_recursive"))
-        if _spf_managed_by(spf_record):
-            tree_names = None
-    answered = {(x or "").lower() for x in raw_dkim.get("answered_selectors") or []}
-    live = _live_dkim_selectors(raw_dkim)
-    dkim_checkable = bool(answered) and not (
-        raw_dkim.get("wildcard_detected") or raw_dkim.get("timed_out")
-        or raw_dkim.get("status") == "unavailable"
-        or any(dkim_key_vendor(k.get("selector"), k.get("cname_target"), k.get("vendor"),
-                               k.get("cname_chain")) is None for k in live))
-    dangling = {(d.get("selector") or "").lower() for d in raw_dkim.get("dangling_selectors") or []}
-    for v in vendors:
-        v["missing"] = []
-        if v.get("role") != "sender" or v.get("tier") not in ("In use", "Configured"):
-            continue
-        name = v["name"]
-        spf_inc = VENDOR_SPF_INCLUDES.get(name)
-        if (tree_names is not None and spf_inc and _needs_apex_spf_include(v)
-                and not _vendor_in_spf_tree(name, spf_inc, tree_names)):
-            v["missing"].append(f"Not in your SPF record. {name} asks for {spf_inc}.")
-        selectors = VENDOR_DKIM_SELECTORS.get(name)
-        has_key = any(src.startswith("DKIM") for src in v.get("sources") or [])
-        if (dkim_checkable and selectors and not has_key
-                and set(selectors) <= answered and not set(selectors) & dangling):
-            names = ", ".join(selectors[:-1]) + " or " + selectors[-1]
-            v["missing"].append(f"No DKIM key from {name}. Nothing is published at {names}.")
+    if sender_map is None:
+        return []
+    vendors = []
+    for service in sender_map.services:
+        decided = service.decided_by
+        claims = [decided] + [c for c in service.claims if c is not decided]
+        sides, sources = set(), []
+        for claim in claims:
+            source, side = _KIND_SOURCE.get(claim.kind, (claim.kind.value, None))
+            if source not in sources:
+                sources.append(source)
+            if side:
+                sides.add(side)
+        if service.role is Role.REPORTING:
+            role = "reporting"
+        elif service.tier is Tier.ACCOUNT_ONLY:
+            role = "account"
+        else:
+            role = "sender"
+        detected_via = " + ".join(s for s in _SIDES if s in sides)
+        vendors.append({
+            "name": service.name,
+            "category": service.category,
+            "tier": service.tier.value if service.tier else None,
+            "detected_via": detected_via or None,
+            "sources": sources,
+            "signals": [_claim_signal(c) for c in claims],
+            "role": role,
+            "missing": _setup_missing(service) if role == "sender" else [],
+        })
+    # Strongest tier first; reporting services last.
+    return sorted(vendors, key=lambda v: (v["role"] == "reporting",
+                                          VENDOR_TIERS.index(v["tier"]) if v["tier"] else len(VENDOR_TIERS),
+                                          v["name"].lower()))
 
 
 # ============================================================

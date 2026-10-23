@@ -29,11 +29,18 @@ UNIT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                     "deploy", "dns-auditor.service")
 
 
-def test_ceiling_is_the_sum_of_the_three_pools():
+def test_ceiling_is_the_sum_of_the_three_pools_and_the_maps():
+    """Each audit's sender map runs on a pool of MAP_THREADS of its own."""
+    from sendermap_adapter import MAP_THREADS
     assert audit_engine.AUDIT_THREAD_CEILING == (
         audit_engine._shared_executor._max_workers
         + audit_engine._probe_executor._max_workers
-        + audit_engine._dkim_executor._max_workers)
+        + audit_engine._dkim_executor._max_workers
+        + MAX_CONCURRENT_AUDITS * MAP_THREADS)
+    # The maps' share is one bounded pool, not a pool per map, so a map that
+    # outlives its budget cannot push the process past the ceiling.
+    from sendermap_adapter import _MAP_EXECUTOR
+    assert _MAP_EXECUTOR._max_workers == MAX_CONCURRENT_AUDITS * MAP_THREADS
 
 
 def test_dkim_pool_holds_a_fallback_chunk_per_audit():

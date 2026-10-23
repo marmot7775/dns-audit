@@ -17,6 +17,7 @@ import os
 import sys
 import threading
 import time
+from collections import Counter
 
 import dns.exception
 
@@ -43,9 +44,15 @@ class _DroppingZone(FakeZone):
         self._lock = threading.Lock()
         self.nx_answered = 0
         self.dropped = 0
+        # Questions the sender map asked (its own pool's threads), which run
+        # their own sweep inside the map's budget, apart from the audit's.
+        self.map_queries = []
 
     def resolve(self, name, rdtype="A", *args, **kwargs):
         key = self._key(name, rdtype)
+        if threading.current_thread().name.startswith("sendermap"):
+            with self._lock:
+                self.map_queries.append(key)
         if "._domainkey." in key[0] and key not in self._records:
             with self._lock:
                 drop = self.nx_answered >= self._answer_first
@@ -87,8 +94,9 @@ def _found(card):
 
 def _dkim_queries(zone):
     # _aprf._domainkey names are the APRF check's own few lookups, not
-    # DKIM selector probes.
-    return [q for q in zone.queries if "._domainkey." in q[0] and "_dkimwildcardtest" not in q[0]
+    # DKIM selector probes, and the sender map's are its own sweep.
+    audit = Counter(zone.queries) - Counter(getattr(zone, "map_queries", ()))
+    return [q for q in audit.elements() if "._domainkey." in q[0] and "_dkimwildcardtest" not in q[0]
             and "_aprf._domainkey." not in q[0]]
 
 
@@ -189,3 +197,17 @@ def test_answered_selectors_holds_only_names_that_got_an_answer():
     assert len(raw["answered_selectors"]) == raw["tested_count"]
     dropped = {q[0].split("._domainkey.")[0] for q in _dkim_queries(zone)} - set(raw["answered_selectors"])
     assert len(dropped) == raw["unanswered_count"]
+
+
+def test_a_zone_that_drops_queries_gets_no_sender_map_and_the_panel_says_why(monkeypatch):
+    # Doc 72: the zone keeps dropping after the DKIM sweep, so the map would
+    # spend its whole budget on silence. It is not drawn.
+    def fail(domain, budget):
+        raise AssertionError("the sender map ran on a zone dropping queries")
+
+    monkeypatch.setattr(audit_engine, "map_senders", fail)
+    with fake_dns(_zone()):
+        result = audit_engine.run_full_audit(DOMAIN, scope="email_full")
+    assert result["vendors_status"] == "unavailable"
+    assert result["vendors_reason"] == "queries_dropped"
+    assert result["vendors"] == []
