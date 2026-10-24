@@ -56,9 +56,8 @@ def test_summary_buttons_open_the_panel_they_name(browser, audit, dmarc, mode): 
         ctx.close()
 
 
-@pytest.mark.parametrize("scope", ["transport", "dns_infra"])
-def test_no_attack_surface_button_without_a_dmarc_card(browser, audit, scope):  # noqa: F811
-    data = _data(audit, f"v=DMARC1; p=none; {RUA}", scope=scope)
+def test_no_attack_surface_button_without_a_dmarc_card(browser, audit):  # noqa: F811
+    data = _data(audit, f"v=DMARC1; p=none; {RUA}", scope="dns_security")
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
         _render(page, data)
@@ -73,13 +72,13 @@ def test_the_page_uses_the_results_scope_not_the_selected_button(browser, audit)
     data = _data(audit, f"v=DMARC1; p=none; {RUA}")
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
-        page.evaluate("() => { currentScope = 'transport'; }")
+        page.evaluate("() => { currentScope = 'dns_security'; }")
         _render(page, data)
         cards = page.eval_on_selector_all("#results-list .result-card", "els => els.length")
         assert cards == len(data["checks"])
         assert page.query_selector("#check-dmarc") is not None
-        assert "scope=transport" not in page.evaluate("() => _getShareUrl()")
-        assert "scope=transport" not in page.url
+        assert "scope=dns_security" not in page.evaluate("() => _getShareUrl()")
+        assert "scope=dns_security" not in page.url
         assert not errors, errors
     finally:
         ctx.close()

@@ -412,7 +412,7 @@ NEAR_MISS_ZONE = {
 @pytest.fixture
 def near_miss(audit):
     return audit(
-        NEAR_MISS_ZONE, DOMAIN, scope="transport", mta_sts_policy=MTA_STS_POLICY
+        NEAR_MISS_ZONE, DOMAIN, scope="email_security", mta_sts_policy=MTA_STS_POLICY
     )
 
 

@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 from test_dmarc_grades import RUA, _run
 from test_ui_consistency_a11y import _page, _render, browser  # noqa: F401
 
-SCOPES = ["complete", "email_full", "dmarc", "transport", "dns_infra", "security_scan"]
+SCOPES = ["complete", "deliverability", "email_security", "dmarc", "dns_security"]
 AREA_ORDER = ["sending", "receiving", "dns"]
 HEADINGS = {"sending": "Sending your mail", "receiving": "Receiving your mail",
             "dns": "Your domain's DNS"}
@@ -178,8 +178,9 @@ def test_area_counts_add_up_to_the_summary_grid(browser, audit, scope):  # noqa:
 
 @pytest.mark.parametrize("scope,expected", [
     ("dmarc", ["area-sending"]),
-    ("transport", ["area-receiving"]),
-    ("dns_infra", ["area-receiving", "area-dns"]),
+    ("deliverability", ["area-sending", "area-receiving"]),
+    ("email_security", ["area-sending", "area-receiving"]),
+    ("dns_security", ["area-receiving", "area-dns"]),
     ("complete", ["area-sending", "area-receiving", "area-dns"]),
 ])
 def test_an_area_the_scope_empties_has_no_heading(browser, audit, scope, expected):  # noqa: F811

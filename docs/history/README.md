@@ -87,4 +87,5 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 100](doc-100.md): Audit resolvers skip the stub, health probes negative lookups, lookup cards stop blaming the domain
 - [Doc 101](doc-101.md): Result cards grouped into three areas: sending, receiving, the domain's DNS
 - [Doc 102](doc-102.md): Thread cap: TasksMax on the unit, AUDIT_THREAD_CEILING, health thread fields, chunked DKIM priority wave
+- [Doc 103](doc-103.md): Five audit scopes grouped by the visitor's question; old scope keys map to new ones
 - [Making the standard visible](standard-visible.md): Architecture page, decisions, CI lint, packaging, cleanup

@@ -125,7 +125,7 @@ def test_positive_non_mail_signal_fires_on_null_mx_or_null_spf():
 # --- end to end: the cards a user actually sees -----------------------------
 
 def test_send_only_subdomain_dkim_is_a_real_finding(audit):
-    result = audit(SEND_ONLY_ZONE, SEND_ONLY, scope="email_full")
+    result = audit(SEND_ONLY_ZONE, SEND_ONLY, scope="email_security")
     assert result["defensive_dns"] is False
 
     dkim = _card(result, "DKIM")
@@ -149,7 +149,7 @@ def test_send_only_subdomain_dkim_is_a_real_finding(audit):
 
 
 def test_parked_domain_dkim_is_still_waived(audit):
-    result = audit(PARKED_ZONE, PARKED, scope="email_full")
+    result = audit(PARKED_ZONE, PARKED, scope="email_security")
     assert result["defensive_dns"] is True
     dkim = _card(result, "DKIM")
     assert dkim is not None

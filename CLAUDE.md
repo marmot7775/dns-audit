@@ -66,13 +66,18 @@
 
 ## Architecture
 - API: /api/audit (JSON), /api/audit/stream (SSE), /api/audit/{domain}/pdf
-- 6 audit scopes: complete, email_full, dmarc, transport, dns_infra, security_scan
+- 5 audit scopes: complete, deliverability, email_security, dmarc, dns_security
+  (Doc 103). The old keys email_full, transport, dns_infra and security_scan
+  still work: audit_engine.resolve_scope maps them through LEGACY_SCOPES
+  before anything reads the scope, so results, cache keys and the log carry
+  the new key.
 - Server-side scope filtering skips unneeded checks
 - Cache key format: "domain:selector:scope" (5 min TTL)
 - Audit log: audit.log (JSON-lines, GDPR-safe). Fields: ts, domain, scope,
   duration_s, checks, ua, bot, source, status, vid, plus error when status is
   not "ok", ref when a Referer was sent, and aprf (none, published, ignored,
-  unavailable) when the APRF check ran (complete and email_full scopes). It is
+  unavailable) when the APRF check ran (complete, email_security and
+  deliverability scopes). It is
   the one per card status the log records, kept for an adoption count. Fields
   are added, never renamed or
   removed, so older entries carry fewer of them.
