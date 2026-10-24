@@ -168,7 +168,7 @@ ZONE = {
 
 def test_the_audit_carries_the_map_and_builds_the_panel_from_it(audit, allbirds, monkeypatch):
     monkeypatch.setattr(audit_engine, "map_senders", lambda domain, budget: allbirds)
-    result = audit(ZONE, "allbirds.com", scope="email_full")
+    result = audit(ZONE, "allbirds.com", scope="email_security")
     assert result["vendors_status"] == "assessed"
     assert result["sendermap"] == allbirds.to_dict()
     assert [v["name"] for v in result["vendors"]] == [v["name"] for v in _format_vendors(allbirds)]
@@ -176,7 +176,7 @@ def test_the_audit_carries_the_map_and_builds_the_panel_from_it(audit, allbirds,
 
 def test_a_map_that_does_not_finish_leaves_the_panel_not_assessed(audit, monkeypatch):
     monkeypatch.setattr(audit_engine, "map_senders", lambda domain, budget: None)
-    result = audit(ZONE, "allbirds.com", scope="email_full")
+    result = audit(ZONE, "allbirds.com", scope="email_security")
     assert result["vendors_status"] == "unavailable"
     assert result["vendors"] == []
     assert result["sendermap"] is None
@@ -193,7 +193,7 @@ def test_the_budget_reaches_the_map_inside_the_deadline(audit, monkeypatch):
         return None
 
     monkeypatch.setattr(audit_engine, "map_senders", fake)
-    audit(ZONE, "allbirds.com", scope="email_full")
+    audit(ZONE, "allbirds.com", scope="email_security")
     assert 0 < seen["budget"] <= audit_engine.SENDER_MAP_BUDGET == 8
 
 
@@ -202,7 +202,7 @@ def test_a_scope_without_email_checks_runs_no_map(audit, monkeypatch):
         raise AssertionError("the map ran for a scope with no email checks")
 
     monkeypatch.setattr(audit_engine, "map_senders", fail)
-    result = audit(ZONE, "allbirds.com", scope="dns_infra")
+    result = audit(ZONE, "allbirds.com", scope="dns_security")
     assert result["vendors_status"] is None
     assert result["sendermap"] is None
 
@@ -227,12 +227,12 @@ def test_a_vendor_the_map_found_in_the_apex_spf_is_not_sent_to_check_it(audit, a
                                                                          monkeypatch):
     monkeypatch.setattr(audit_engine, "map_senders", lambda domain, budget: allbirds)
     assert "Detected services" not in _spf_fix(audit(EASYDMARC_ZONE, "allbirds.com",
-                                                     scope="email_full"))
+                                                     scope="email_security"))
     # Without the map's SPF signals the same audit asks about them, so the
     # skip is what removes the hint.
     monkeypatch.setattr(audit_engine, "_spf_signal_at", lambda v, domain: False)
     assert "Detected services" in _spf_fix(audit(EASYDMARC_ZONE, "allbirds.com",
-                                                 scope="email_full"))
+                                                 scope="email_security"))
 
 
 def test_an_spf_signal_counts_only_at_the_domain_itself():
@@ -320,7 +320,7 @@ def test_the_audit_hands_the_maps_providers_to_the_card(audit, allbirds, monkeyp
     monkeypatch.setattr(audit_engine, "map_senders", lambda domain, budget: allbirds)
     # Only the map can name it here.
     monkeypatch.setattr(result_transformer, "dkim_key_provider", lambda *a, **k: None)
-    result = audit(zone, "allbirds.com", scope="email_full", dkim_selector="krs")
+    result = audit(zone, "allbirds.com", scope="email_security", dkim_selector="krs")
     card = next(c for c in result["checks"] if c["name"] == "DKIM")
     assert "Customer.io" in card["explanation"], card["explanation"]
 
@@ -341,7 +341,7 @@ def test_the_api_payload_carries_the_map_and_it_validates(allbirds, monkeypatch)
     monkeypatch.setattr(server_module, "run_full_audit", audit_engine.run_full_audit)
     with fake_dns(FakeZone(ZONE)):
         response = TestClient(server_module.app).get(
-            "/api/audit", params={"domain": "allbirds.com", "scope": "email_full"})
+            "/api/audit", params={"domain": "allbirds.com", "scope": "email_security"})
     assert response.status_code == 200, response.text
     payload = response.json()
     assert "sendermap" in payload, (sorted(payload), payload.get("error"), payload.get("vendors"))

@@ -199,7 +199,7 @@ def _pdf_text(audit_result: dict) -> str:
 
 SCOPED_DOMAIN = "doc28-scoped.test"
 _SCOPED_ZONE = {
-    # No MX: DANE (which dns_infra does run) then reports pill "Does not apply" rather
+    # No MX: DANE (which dns_security does run) then reports pill "Does not apply" rather
     # than "Optional, not set up", so the roadmap stays empty and this test is
     # actually exercising an empty roadmap rather than one DANE item.
     # Two nameservers: since Doc 48 a red Nameservers card (one NS is a
@@ -214,7 +214,7 @@ _SCOPED_ZONE = {
 
 
 def test_scoped_empty_roadmap_pdf_does_not_print_a_hardcoded_all_clear(audit):
-    result = audit(FakeZone(dict(_SCOPED_ZONE)), SCOPED_DOMAIN, scope="dns_infra")
+    result = audit(FakeZone(dict(_SCOPED_ZONE)), SCOPED_DOMAIN, scope="dns_security")
     assert result["security_roadmap"]["items"] == [], (
         "expected an empty roadmap for this fixture"
     )

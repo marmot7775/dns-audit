@@ -133,6 +133,21 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-23: Doc 103. Five audit scopes, grouped by the visitor's question
+
+Review doc: [docs/history/doc-103.md](docs/history/doc-103.md).
+
+- Five scopes grouped by the question a visitor is asking: Complete Audit,
+  Email Deliverability (new: DMARC, SPF, DKIM, MX), Email Security, DMARC
+  Check and DNS Security. Email Security now also runs DANE.
+- Transport Security is folded into Email Security and Security Scan into
+  Complete Audit. DNS Infrastructure is renamed DNS Security.
+- Old scope keys in links and API calls still work: `email_full` and
+  `transport` run Email Security, `dns_infra` runs DNS Security and
+  `security_scan` runs Complete Audit. The result, cache, log, PDF and
+  share link carry the new key.
+- The APRF check also runs for Email Deliverability.
+
 ## 2026-10-09: Doc 99. Report copy part 1, address obfuscation, false statements, one name for What to do
 
 Review doc: [docs/history/doc-99.md](docs/history/doc-99.md).

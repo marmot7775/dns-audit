@@ -388,7 +388,7 @@ def test_the_card_changes_no_count_on_the_web_page(browser, with_and_without):  
 
 
 # 12
-@pytest.mark.parametrize("scope", ["dmarc", "transport", "dns_infra", "security_scan"])
+@pytest.mark.parametrize("scope", ["dmarc", "dns_security"])
 def test_out_of_scope_runs_make_no_aprf_queries(scope):
     zone = _ui_zone(extra={f"_aprf._domainkey.{UI_DOMAIN}": {"TXT": ["v=APRFv1; rua=mailto:r@x.test"]}})
     with fake_dns(zone):

@@ -43,7 +43,7 @@ def _card_text(card):
 
 
 def test_null_mx_domain_gets_the_null_mx_card(audit):
-    card = _mx_card(audit(ZONE, DOMAIN, scope="email_full"))
+    card = _mx_card(audit(ZONE, DOMAIN, scope="email_security"))
 
     assert card is not None
     assert card["pill_label"] == "No mail, by design", (
@@ -55,7 +55,7 @@ def test_null_mx_domain_gets_the_null_mx_card(audit):
 
 
 def test_null_mx_record_renders_as_valid_zone_file_syntax(audit):
-    card = _mx_card(audit(ZONE, DOMAIN, scope="email_full"))
+    card = _mx_card(audit(ZONE, DOMAIN, scope="email_security"))
 
     assert card["record"] == "0 .", (
         f"The hostname is stripped of its trailing dot upstream, so the "
@@ -65,7 +65,7 @@ def test_null_mx_record_renders_as_valid_zone_file_syntax(audit):
 
 def test_null_mx_card_carries_no_failover_warning(audit):
     """The two halves of the old card contradicted each other."""
-    text = _card_text(_mx_card(audit(ZONE, DOMAIN, scope="email_full")))
+    text = _card_text(_mx_card(audit(ZONE, DOMAIN, scope="email_security")))
 
     assert "failover" not in text.lower(), (
         f"A domain that declares it accepts no mail cannot also be warned "
@@ -84,7 +84,7 @@ def test_a_real_single_mx_domain_still_gets_its_failover_warning(audit):
         "mail." + domain: {"A": ["198.51.100.4"]},
         "_dmarc." + domain: {"TXT": [f"v=DMARC1; p=reject; rua=mailto:d@{domain}"]},
     }
-    card = _mx_card(audit(zone, domain, scope="email_full"))
+    card = _mx_card(audit(zone, domain, scope="email_security"))
 
     assert card["pill_label"] != "No mail, by design"
     assert "Single MX host" in _card_text(card)

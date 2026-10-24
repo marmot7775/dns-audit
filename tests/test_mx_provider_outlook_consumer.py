@@ -30,7 +30,7 @@ def test_mx_card_names_the_consumer_service(audit):
         DOMAIN: {"MX": [(5, mx)], "TXT": ["v=spf1 include:spf.protection.outlook.com -all"]},
         mx: {"A": ["52.101.0.1"]},
     }
-    result = audit(zone, DOMAIN, scope="transport")
+    result = audit(zone, DOMAIN, scope="email_security")
     card = next(c for c in result["checks"] if c["name"] == "MX Records")
     assert "Outlook.com (consumer)" in card["verdict"], card["verdict"]
     assert "GCC" not in str(card)

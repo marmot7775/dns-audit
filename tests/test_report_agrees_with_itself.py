@@ -188,7 +188,7 @@ def test_the_dmarc_details_list_contains_exactly_one_ruf_line(audit):
         ]},
         f"mail.{DOMAIN}": {"A": ["203.0.113.10"]},
     }
-    card = next(c for c in audit(zone, DOMAIN, scope="email_full")["checks"]
+    card = next(c for c in audit(zone, DOMAIN, scope="email_security")["checks"]
                 if c["name"] == "DMARC")
     ruf_lines = [d["text"] for d in card["details"] if "(ruf)" in d["text"]]
 
@@ -233,7 +233,7 @@ def test_the_spf_card_at_one_lookup_is_singular_too(audit):
     zone = _spf_zone(1)
     zone[DOMAIN]["MX"] = [(10, f"mail.{DOMAIN}")]
     zone[f"mail.{DOMAIN}"] = {"A": ["203.0.113.10"]}
-    card = next(c for c in audit(zone, DOMAIN, scope="email_full")["checks"]
+    card = next(c for c in audit(zone, DOMAIN, scope="email_security")["checks"]
                 if c["name"] == "SPF")
     blob = " ".join(d["text"] for d in card["details"])
 

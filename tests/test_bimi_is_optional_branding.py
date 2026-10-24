@@ -42,7 +42,7 @@ def _zone(bimi_record, policy):
 
 
 def _run(audit, bimi_record, policy="reject"):
-    return audit(_zone(bimi_record, policy), DOMAIN, scope="email_full")
+    return audit(_zone(bimi_record, policy), DOMAIN, scope="email_security")
 
 
 def _card(result):

@@ -207,7 +207,7 @@ def test_a_zone_that_drops_queries_gets_no_sender_map_and_the_panel_says_why(mon
 
     monkeypatch.setattr(audit_engine, "map_senders", fail)
     with fake_dns(_zone()):
-        result = audit_engine.run_full_audit(DOMAIN, scope="email_full")
+        result = audit_engine.run_full_audit(DOMAIN, scope="email_security")
     assert result["vendors_status"] == "unavailable"
     assert result["vendors_reason"] == "queries_dropped"
     assert result["vendors"] == []

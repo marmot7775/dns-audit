@@ -55,7 +55,7 @@ def test_mx_card_fix_carries_the_new_advice(audit):
         },
         "aspmx.l.google.com": {"A": ["192.0.2.1"]},
     }
-    result = audit(zone, DOMAIN, scope="email_full")
+    result = audit(zone, DOMAIN, scope="email_security")
     card = next(c for c in result["checks"] if c["name"] == "MX Records")
     assert "Remove the MX record pointing at" in (card.get("fix") or "")
     assert "Add A/AAAA" not in repr(card)
