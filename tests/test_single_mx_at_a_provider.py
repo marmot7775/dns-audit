@@ -48,7 +48,7 @@ def _zone(domain, hosts):
 
 
 def _mx(audit, domain, hosts):
-    result = audit(_zone(domain, hosts), domain, scope="email_full")
+    result = audit(_zone(domain, hosts), domain, scope="email_security")
     return next(c for c in result["checks"] if c["name"] == "MX Records")
 
 

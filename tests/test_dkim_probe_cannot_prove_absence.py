@@ -113,7 +113,7 @@ def _text(card):
 
 def test_a_live_key_is_still_graded(audit):
     """The grading path is untouched. Nothing below may soften it."""
-    card = _card(audit(_zone({"google": LIVE_KEY}), DOMAIN, scope="email_full"))
+    card = _card(audit(_zone({"google": LIVE_KEY}), DOMAIN, scope="email_security"))
 
     assert card["status"] == "pass"
     assert card["verdict"] == "1 DKIM public key published in DNS"
@@ -124,7 +124,7 @@ def test_a_retired_selector_alongside_a_live_one_does_not_fail_the_card(audit):
     """Rotating away from a key leaves exactly this shape behind. The old
     selector is the rotation advice having been followed, not a defect."""
     zone = _zone({"google": LIVE_KEY, "20230601": GOOGLE_REVOKED["20230601"]})
-    card = _card(audit(zone, DOMAIN, scope="email_full"))
+    card = _card(audit(zone, DOMAIN, scope="email_security"))
 
     assert card["status"] == "pass", (
         f"a retired selector next to a live key must not fail the card; got "
@@ -145,7 +145,7 @@ def test_a_retired_selector_alongside_a_live_one_does_not_fail_the_card(audit):
 
 @pytest.fixture
 def google_result(audit):
-    return audit(_zone(GOOGLE_REVOKED), DOMAIN, scope="email_full")
+    return audit(_zone(GOOGLE_REVOKED), DOMAIN, scope="email_security")
 
 
 def test_google_com_revoked_selectors_are_not_a_failure(google_result):
@@ -236,7 +236,7 @@ def test_a_named_selector_that_is_retired_does_not_hedge_about_probing(audit):
     record" advice was. This audit did settle the question for the name it was
     given."""
     zone = _zone({"20230601": GOOGLE_REVOKED["20230601"]})
-    card = _card(audit(zone, DOMAIN, scope="email_full", dkim_selector="20230601"))
+    card = _card(audit(zone, DOMAIN, scope="email_security", dkim_selector="20230601"))
 
     text = _text(card)
     assert "probing" not in text, f"nothing was probed: {text!r}"
@@ -258,7 +258,7 @@ def test_a_named_selector_that_is_retired_does_not_hedge_about_probing(audit):
 
 def test_a_named_selector_that_does_not_resolve_is_unchanged(audit):
     """The carve-out in the doc: this path keeps its existing handling."""
-    card = _card(audit(_zone(GOOGLE_REVOKED), DOMAIN, scope="email_full",
+    card = _card(audit(_zone(GOOGLE_REVOKED), DOMAIN, scope="email_security",
                        dkim_selector="nosuch"))
 
     assert card["status"] == "fail"
@@ -272,7 +272,7 @@ def test_a_named_selector_that_does_not_resolve_is_unchanged(audit):
 
 @pytest.fixture
 def nothing_found(audit):
-    return audit(_zone(), DOMAIN, scope="email_full")
+    return audit(_zone(), DOMAIN, scope="email_security")
 
 
 def test_nothing_found_is_not_stated_as_an_absence(nothing_found):
@@ -310,7 +310,7 @@ def test_the_summary_does_not_say_the_dkim_lookup_failed(audit, selectors):
     cards was written for the first one. Every DKIM lookup here completed and
     answered NXDOMAIN, so saying the nameservers did not respond would trade
     one false statement for another."""
-    result = audit(_zone(selectors), DOMAIN, scope="email_full")
+    result = audit(_zone(selectors), DOMAIN, scope="email_security")
     es = result["executive_summary"]
 
     prose = " ".join([
@@ -329,7 +329,7 @@ def test_the_summary_does_not_say_the_dkim_lookup_failed(audit, selectors):
 def test_the_summary_does_not_issue_an_all_clear_covering_dkim(audit, selectors):
     """The other direction. DKIM was not established either way, so the
     deliverability line must not fold it into a clean bill of health."""
-    result = audit(_zone(selectors), DOMAIN, scope="email_full")
+    result = audit(_zone(selectors), DOMAIN, scope="email_security")
     deliv = result["executive_summary"]["deliverability_summary"].lower()
 
     assert "spf, dkim, and dmarc are properly set up" not in deliv

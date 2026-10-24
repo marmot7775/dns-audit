@@ -63,7 +63,7 @@ def _zone(selectors):
 
 
 def _dmarc_text(audit, selectors, **kw):
-    result = audit(_zone(selectors), DOMAIN, scope="email_full", **kw)
+    result = audit(_zone(selectors), DOMAIN, scope="email_security", **kw)
     card = next(c for c in result["checks"] if c["name"] == "DMARC")
     return card, " ".join(d["text"] for d in card["details"])
 

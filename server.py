@@ -46,7 +46,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import dns.resolver
 import dns.exception
 
-from audit_engine import AUDIT_THREAD_CEILING, run_full_audit
+from audit_engine import AUDIT_THREAD_CEILING, SCOPE_CHECKS, resolve_scope, run_full_audit
 from config import (
     LOG_DIR, LOG_LEVEL, CACHE_TTL, CACHE_MAX_SIZE,
     RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX_IPS,
@@ -773,20 +773,20 @@ def _validate_domain(domain: str) -> str:
     return d
 
 
-_VALID_SCOPES = {"complete", "email_full", "dmarc", "transport", "dns_infra", "security_scan"}
-
-
 def _validate_scope(scope: Optional[str]) -> Optional[str]:
-    """Validate scope parameter. Returns None for default (complete)."""
+    """Validate scope parameter. Returns None for default (complete).
+
+    Legacy keys (Doc 103) come back as the scope they map to, so the cache
+    key, the log and the result all carry the new key."""
     if not scope:
         return None
-    s = scope.strip().lower()
-    if s not in _VALID_SCOPES:
+    try:
+        return resolve_scope(scope.strip().lower())
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid scope '{scope}'. Valid scopes: {', '.join(sorted(_VALID_SCOPES))}",
+            detail=f"Invalid scope '{scope}'. Valid scopes: {', '.join(SCOPE_CHECKS)}",
         )
-    return s
 
 
 # Preflight resolver, built once from the resolv.conf configuration dns_tools
@@ -851,7 +851,7 @@ async def audit_domain(
     request: Request,
     domain: str = Query(..., description="Domain to audit (e.g., example.com)"),
     selector: Optional[str] = Query(None, description="DKIM selector (e.g., google, s1)"),
-    scope: Optional[str] = Query(None, description="Audit scope: complete, email_full, dmarc, transport, dns_infra, security_scan"),
+    scope: Optional[str] = Query(None, description="Audit scope: complete, deliverability, email_security, dmarc, dns_security"),
 ):
     """
     Run a comprehensive DNS and email security audit.
@@ -1025,7 +1025,7 @@ async def audit_stream(
     request: Request,
     domain: str = Query(..., description="Domain to audit"),
     selector: Optional[str] = Query(None, description="DKIM selector"),
-    scope: Optional[str] = Query(None, description="Audit scope"),
+    scope: Optional[str] = Query(None, description="Audit scope: complete, deliverability, email_security, dmarc, dns_security"),
 ):
     """Stream audit progress via Server-Sent Events."""
     global _active_audits
@@ -1294,7 +1294,7 @@ async def audit_stream(
 async def audit_pdf(
     request: Request,
     domain: str,
-    scope: Optional[str] = Query("complete", description="Audit scope"),
+    scope: Optional[str] = Query("complete", description="Audit scope: complete, deliverability, email_security, dmarc, dns_security"),
     selector: Optional[str] = Query(None, description="DKIM selector"),
 ):
     """

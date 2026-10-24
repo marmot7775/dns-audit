@@ -102,7 +102,7 @@ def test_dmarc_lookup_unavailable_asks_for_a_rerun(audit):
 
 
 def test_dmarc_out_of_scope_has_no_headline(audit):
-    es = _es(audit, f"v=DMARC1; p=reject; rua=mailto:d@{D}", scope="dns_infra")
+    es = _es(audit, f"v=DMARC1; p=reject; rua=mailto:d@{D}", scope="dns_security")
     assert es["headline"] is None
     assert es["headline_icon"] is None
 

@@ -53,7 +53,7 @@ def _suggested_from_fix(fix):
 
 
 def test_suggested_record_keeps_every_published_authorization_source(audit):
-    result = audit(ZONE, DOMAIN, scope="email_full")
+    result = audit(ZONE, DOMAIN, scope="email_security")
     suggested = _suggested_from_fix(_spf_card(result).get("fix"))
 
     for ip4 in ("ip4:198.51.100.0/24", "ip4:203.0.113.5"):

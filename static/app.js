@@ -8,11 +8,18 @@ const API_BASE = '/api';
 // -- Scope definitions: which checks to show per scope --
 const SCOPE_CHECKS = {
     complete: null, // null = show all
-    email_full: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX', 'MTA-STS', 'TLS-RPT', 'BIMI'],
+    deliverability: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX'],
+    email_security: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX',
+                     'MTA-STS', 'TLS-RPT', 'DANE', 'BIMI'],
     dmarc: ['DMARC', 'SPF', 'DKIM'],
-    transport: ['MTA-STS', 'TLS-RPT', 'DANE', 'MX Records', 'MX'],
-    dns_infra: ['DNSSEC', 'CAA', 'DANE', 'Nameservers', 'Certificate Transparency'],
-    security_scan: ['DMARC', 'SPF', 'DKIM', 'DNSSEC', 'DANE', 'Certificate Transparency', 'CAA', 'MTA-STS'],
+    dns_security: ['DNSSEC', 'CAA', 'DANE', 'Nameservers',
+                   'Certificate Transparency'],
+};
+// Scope keys from before Doc 103, mapped to the scope that runs at least
+// the same checks, so old shared links and bookmarks keep working.
+const LEGACY_SCOPES = {
+    email_full: 'email_security', transport: 'email_security',
+    dns_infra: 'dns_security', security_scan: 'complete',
 };
 
 // The vendor panel when the sender map did not finish inside the audit. The
@@ -252,7 +259,7 @@ if (servicesToggle) wireDisclosure(servicesToggle);
 // -- Scope selector --
 // The visible line under the buttons and the hover tooltip are the same
 // text, read from the active button's title. A title alone never shows on a
-// touch screen, so a phone visitor had no way to learn what the six scopes
+// touch screen, so a phone visitor had no way to learn what the five scopes
 // meant.
 function syncScopeDesc() {
     const desc = document.getElementById('scope-desc');
@@ -313,11 +320,15 @@ document.getElementById('selector-toggle').addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const domain = params.get('d');
-    const scope = params.get('scope');
+    const rawScope = params.get('scope');
+    const scope = (rawScope && LEGACY_SCOPES[rawScope]) || rawScope;
     if (scope && SCOPE_CHECKS[scope]) {
         currentScope = scope;
         document.querySelectorAll('.scope-btn').forEach(b => {
-            b.classList.toggle('active', b.dataset.scope === scope);
+            const on = b.dataset.scope === scope;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-checked', on ? 'true' : 'false');
+            b.setAttribute('tabindex', on ? '0' : '-1');
         });
         syncScopeDesc();
     }
@@ -3156,7 +3167,7 @@ function renderExecutiveSummary(es, roadmap) {
 
     // The panel shortcuts point at panels inside the DMARC card's collapsed
     // Details; openCard opens every section around them. A run with no DMARC
-    // card (transport, dns_infra) gets neither.
+    // card (dns_security) gets neither.
     let techActions = '';
     const dmarcCard = (lastAuditData && lastAuditData.checks || []).find(c => c.name === 'DMARC');
     if (dmarcCard && dmarcCard.attack_surface) {
