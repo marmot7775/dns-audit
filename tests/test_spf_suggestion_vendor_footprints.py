@@ -35,7 +35,7 @@ def _zone(domain, spf, mx, extra=None):
 
 
 def _fix_and_vendors(audit, zone, domain):
-    result = audit(zone, domain, scope="email_full")
+    result = audit(zone, domain, scope="email_security")
     card = next(c for c in result["checks"] if c["name"] == "SPF")
     return card.get("fix") or "", [v["name"] for v in result["vendors"]]
 

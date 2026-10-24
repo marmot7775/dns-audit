@@ -50,7 +50,7 @@ PARKED_ZONE = {
 
 
 def test_send_only_subdomain_is_not_treated_as_non_mail(audit):
-    result = audit(SEND_ONLY_ZONE, SEND_ONLY, scope="email_full")
+    result = audit(SEND_ONLY_ZONE, SEND_ONLY, scope="email_security")
 
     assert result["defensive_dns"] is False, (
         "A send-only subdomain (no MX, a live SPF include, p=reject) sends "
@@ -89,7 +89,7 @@ def test_send_only_subdomain_is_not_treated_as_non_mail(audit):
 def test_null_mx_plus_null_spf_is_still_treated_as_non_mail(audit):
     """The positive signal still has to work: a real parked domain must keep
     its email-specific cards waived."""
-    result = audit(PARKED_ZONE, PARKED, scope="email_full")
+    result = audit(PARKED_ZONE, PARKED, scope="email_security")
 
     assert result["defensive_dns"] is True, (
         "RFC 7505 null MX plus v=spf1 -all plus p=reject is a domain "

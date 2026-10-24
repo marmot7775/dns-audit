@@ -118,9 +118,9 @@ def test_the_contents_page_lists_both_parts_in_order(complete):
 
 
 def test_a_section_that_did_not_render_gets_no_contents_line(key_record):
-    # dns_infra runs no DMARC, SPF or DKIM card, so Appendix A, B, C and D
+    # dns_security runs no DMARC, SPF or DKIM card, so Appendix A, B, C and D
     # have nothing to build and the letters close up.
-    pages = _pages(_run(_zone(key_record), scope="dns_infra", selector=None))
+    pages = _pages(_run(_zone(key_record), scope="dns_security", selector=None))
     cover = pages[_divider_index(pages)]
 
     assert "A. What each check means" in cover

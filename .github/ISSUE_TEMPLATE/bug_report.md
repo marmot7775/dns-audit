@@ -11,7 +11,7 @@ assignees: ''
 The domain, or "cannot share".
 
 **Scope**
-Complete Audit, Email Security, DMARC Check, Transport Security, DNS Infrastructure or Security Scan.
+Complete Audit, Email Deliverability, Email Security, DMARC Check or DNS Security.
 
 **Request ID**
 Shown on the results page, under the audit time.

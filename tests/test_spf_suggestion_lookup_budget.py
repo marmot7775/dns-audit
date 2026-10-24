@@ -79,7 +79,7 @@ def test_hosted_spf_behind_redirect_covers_the_vendor(audit):
         "8sfr6god1._spf._d.mim.ec": {"TXT": ["v=spf1 ip4:72.32.217.0/24 ~all"]},
     }
     result = audit(_zone(domain, f"v=spf1 redirect={hosted}", MIMECAST_MX, extra, 7),
-                   domain, scope="email_full")
+                   domain, scope="email_security")
     card = _spf_card(result)
     assert result["checks"] and card["spf_deep"]["lookup_count"] == 10
     fix = card.get("fix") or ""
@@ -92,7 +92,7 @@ def test_vendor_nested_inside_an_include_is_not_missing(audit):
     extra = {"_spf.nested.test": {"TXT": ["v=spf1 include:_spf.google.com ~all"]}}
     extra.update(GOOGLE_SPF)
     result = audit(_zone(domain, "v=spf1 include:_spf.nested.test -all", GOOGLE_MX, extra),
-                   domain, scope="email_full")
+                   domain, scope="email_security")
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" not in fix, fix
     assert "Detected services" not in fix, fix
@@ -103,7 +103,7 @@ def test_record_at_ten_lookups_gets_no_suggestion(audit):
     domain = "full.test"
     result = audit(
         _zone(domain, f"v=spf1 {_a_terms(domain, 10)} -all", GOOGLE_MX, GOOGLE_SPF, 10),
-        domain, scope="email_full")
+        domain, scope="email_security")
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" not in fix, fix
     assert "Google Workspace is not authorized" in fix, fix
@@ -118,7 +118,7 @@ def test_budget_counts_the_whole_include_tree(audit):
     domain = "seven.test"
     result = audit(
         _zone(domain, f"v=spf1 {_a_terms(domain, 7)} -all", GOOGLE_MX, GOOGLE_SPF, 7),
-        domain, scope="email_full")
+        domain, scope="email_security")
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" not in fix, fix
     assert "11 DNS lookups" in fix, fix
@@ -126,7 +126,7 @@ def test_budget_counts_the_whole_include_tree(audit):
     domain = "six.test"
     result = audit(
         _zone(domain, f"v=spf1 {_a_terms(domain, 6)} -all", GOOGLE_MX, GOOGLE_SPF, 6),
-        domain, scope="email_full")
+        domain, scope="email_security")
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" in fix, fix
     assert f"{_a_terms(domain, 6)} include:_spf.google.com -all" in fix, fix
@@ -137,7 +137,7 @@ def test_redirect_record_with_headroom_points_at_the_target(audit):
     extra = {"_spf.redir.test": {"TXT": ["v=spf1 ip4:198.51.100.0/24 -all"]}}
     extra.update(GOOGLE_SPF)
     result = audit(_zone(domain, "v=spf1 redirect=_spf.redir.test", GOOGLE_MX, extra),
-                   domain, scope="email_full")
+                   domain, scope="email_security")
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" not in fix, fix
     assert "<strong>_spf.redir.test</strong> with redirect=" in fix, fix
@@ -165,7 +165,7 @@ def test_a_slow_include_count_runs_inside_the_audit_budget(audit, monkeypatch):
     domain = "six.test"
     result = audit(
         _zone(domain, f"v=spf1 {_a_terms(domain, 6)} -all", GOOGLE_MX, GOOGLE_SPF, 6),
-        domain, scope="email_full")
+        domain, scope="email_security")
     assert calls and all(t is not None and t <= ae.CHECK_TIMEOUT for t in calls), calls
     fix = _spf_card(result).get("fix") or ""
     assert "Suggested SPF record" not in fix, fix

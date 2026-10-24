@@ -304,24 +304,45 @@ BUSINESS_RISK = {
 # ============================================================
 
 SCOPE_CHECKS = {
-    "complete":      None,  # None = run all
-    "email_full":    {"dmarc", "mx", "spf", "dkim", "mta_sts", "tls_rpt", "bimi"},
-    "dmarc":         {"dmarc", "spf", "dkim"},
-    "transport":     {"mx", "mta_sts", "tls_rpt", "dane"},
-    "dns_infra":     {"dnssec", "caa", "dane", "nameservers", "ct"},
-    "security_scan": {"dmarc", "spf", "dkim", "dnssec", "dane", "ct", "caa", "mta_sts"},
+    "complete":       None,  # None = run all
+    "deliverability": {"dmarc", "spf", "dkim", "mx"},
+    "email_security": {"dmarc", "spf", "dkim", "mx", "mta_sts", "tls_rpt", "dane", "bimi"},
+    "dmarc":          {"dmarc", "spf", "dkim"},
+    "dns_security":   {"dnssec", "caa", "dane", "nameservers", "ct"},
 }
 
 # Display name for each scope, matching the button labels in
 # static/index.html's scope selector.
 SCOPE_LABELS = {
-    "complete":      "Complete Audit",
-    "email_full":    "Email Security",
-    "dmarc":         "DMARC Check",
-    "transport":     "Transport Security",
-    "dns_infra":     "DNS Infrastructure",
-    "security_scan": "Security Scan",
+    "complete":       "Complete Audit",
+    "deliverability": "Email Deliverability",
+    "email_security": "Email Security",
+    "dmarc":          "DMARC Check",
+    "dns_security":   "DNS Security",
 }
+
+# Scope keys from before Doc 103. Each maps to the scope that runs
+# at least the checks it ran, so old links and API callers keep
+# working. Resolved by resolve_scope() before anything reads it.
+LEGACY_SCOPES = {
+    "email_full": "email_security",
+    "transport": "email_security",
+    "dns_infra": "dns_security",
+    "security_scan": "complete",
+}
+
+
+def resolve_scope(scope):
+    """Return the canonical scope key, None for complete.
+
+    Accepts a new key, a legacy key, or None. Raises ValueError
+    for anything else, naming the five valid keys."""
+    if not scope:
+        return None
+    key = LEGACY_SCOPES.get(scope, scope)
+    if key not in SCOPE_CHECKS:
+        raise ValueError(f"Invalid scope '{scope}'. Valid scopes: {', '.join(SCOPE_CHECKS)}")
+    return None if key == "complete" else key
 
 # Every check key any scope can run. A literal union, not derived at import
 # time from SCOPE_CHECKS.values(), so the PDF cover's "N of TOTAL checks"
@@ -4372,7 +4393,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
 # Informational only. The card goes in the response's draft_standards list,
 # never in checks, so no tally, score, plan or summary can see it.
 
-APRF_SCOPES = {"complete", "email_full"}
+APRF_SCOPES = {"complete", "email_security", "deliverability"}
 APRF_SELECTOR_CAP = 10
 APRF_DESTINATION_CAP = 4
 
@@ -5112,8 +5133,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         return deadline is not None and time.monotonic() >= deadline
 
     # Resolve scope to a set of check keys (None = run everything)
-    if scope and scope not in SCOPE_CHECKS:
-        raise ValueError(f"Invalid scope '{scope}'. Valid scopes: {', '.join(sorted(SCOPE_CHECKS))}")
+    scope = resolve_scope(scope)
     scope_set = SCOPE_CHECKS.get(scope) if scope else None
     total_checks = _count_checks_for_scope(scope_set)
     completed = 0
@@ -5324,8 +5344,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # and _raw_check_dane fell through to its fallback branch on every audit:
     # a second full DNSKEY query, bogus probe, both DS resolution methods
     # including the parent NS walk, and a chain re-fetch, running concurrently
-    # with the copy already in flight. The transport scope has no DNSSEC card
-    # at all and still paid for a whole DNSSEC run.
+    # with the copy already in flight. The email_security scope runs DANE
+    # with no DNSSEC card at all and still paid for a whole DNSSEC run.
     #
     # Running it once, submitted with the Phase 1 checks and awaited here,
     # removes the duplicate. DANE cannot wait on it as a future itself: DANE

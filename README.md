@@ -24,7 +24,7 @@ The last row is the rule the tool is built on: a lookup that did not complete is
 
 ## Running an audit
 
-Enter a domain at [dns-audit.com](https://dns-audit.com), or call `GET /api/audit?domain=example.com` for the same result as JSON. Optional parameters: `selector` names your DKIM selector, and `scope` limits the run to email, DMARC, transport, DNS infrastructure or the security scan. Every card shows what it read, its status, what that means, and a copy-paste fix where one applies. The [PDF report](#api) carries the same result.
+Enter a domain at [dns-audit.com](https://dns-audit.com), or call `GET /api/audit?domain=example.com` for the same result as JSON. Optional parameters: `selector` names your DKIM selector, and `scope` limits the run to email deliverability, email security, DMARC or DNS security. The older scope keys (`email_full`, `transport`, `dns_infra`, `security_scan`) still work and map to the new ones. Every card shows what it read, its status, what that means, and a copy-paste fix where one applies. The [PDF report](#api) carries the same result.
 
 ## What it does not do
 
@@ -89,7 +89,7 @@ DNS cannot list DKIM selectors, so name yours for the best result; an undetected
 - **Resilience**: whether mail still passes DMARC when SPF or DKIM fails alone.
 - **Anomalies**: cross-check findings, such as MTA-STS without TLS-RPT.
 - **PDF report**: executive summary, priorities, detected vendors, and every check card.
-- **Scoped audits**: six scopes, each running only the checks it needs.
+- **Scoped audits**: five scopes, each running only the checks it needs.
 - **Vendor detection**: built by [Sendermap](https://github.com/marmot7775/sendermap) from DNS (MX, the SPF tree, DKIM keys, bounce and tracking CNAMEs, verification tokens, report addresses), each sender shown with the record that names it and the records its setup still needs.
 - **Roadmap**: one prioritized fix list across all protocols, in four tiers.
 

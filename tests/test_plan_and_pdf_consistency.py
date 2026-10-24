@@ -105,7 +105,7 @@ def test_pdf_plan_names_no_appendix_letter_for_the_migration_path(audit):
 
 
 def test_appendix_intro_names_only_sections_that_rendered(audit):
-    text = _pdf_text(_run(audit, f"v=DMARC1; p=none; {RUA}", scope="transport"))
+    text = _pdf_text(_run(audit, f"v=DMARC1; p=none; {RUA}", scope="dns_security"))
     start = text.index("This appendix holds")
     intro = text[start:text.index("Nothing in it", start)]
     assert "DMARC" not in intro and "migration path" not in intro, intro

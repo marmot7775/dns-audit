@@ -224,10 +224,10 @@ _SCOPED_ZONE = {
 
 
 def test_scoped_pdf_names_its_scope_on_the_cover(audit):
-    result = audit(FakeZone(dict(_SCOPED_ZONE)), SCOPED_DOMAIN, scope="dns_infra")
+    result = audit(FakeZone(dict(_SCOPED_ZONE)), SCOPED_DOMAIN, scope="dns_security")
     text = _pdf_text(result)
 
-    assert "DNS Infrastructure" in text, (
+    assert "DNS Security" in text, (
         "the PDF cover does not name the scope this report actually ran"
     )
     assert "5 of 12 checks" in text, (

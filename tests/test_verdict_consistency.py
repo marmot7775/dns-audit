@@ -189,6 +189,6 @@ def test_mta_sts_policy_with_unknown_charset_is_read():
     # fake_dns patches the fetch itself, so this patch goes inside it.
     with conftest.fake_dns(zone, mta_sts_policy=policy):
         with patch("checks_extra._safe_fetch", lambda url, *a, **k: Binary(policy)):
-            result = audit_engine.run_full_audit(DOMAIN, scope="transport")
+            result = audit_engine.run_full_audit(DOMAIN, scope="email_security")
     card = _card(result, "MTA-STS")
     assert card["status"] == "pass", (card["status"], card.get("verdict"))

@@ -3,7 +3,7 @@ sentence on scoped reports.
 
 The fixture zone is the one the doc was reproduced against: SPF, one DKIM
 selector, DMARC p=none with pct and ri, two MX, no DNSSEC, no MTA-STS.
-Rendered once complete and once with scope=dns_infra.
+Rendered once complete and once with scope=dns_security.
 """
 import base64
 import io
@@ -65,7 +65,7 @@ def _pdf_text(result):
 # ---------------------------------------------------------------------------
 
 def test_scoped_run_says_out_of_scope_not_that_dns_failed(audit, zone):
-    result = audit(FakeZone(dict(zone)), DOMAIN, scope="dns_infra")
+    result = audit(FakeZone(dict(zone)), DOMAIN, scope="dns_security")
     es = result["executive_summary"]
     verdict = es["verdict"]
     assert "did not answer" not in verdict, verdict
@@ -176,7 +176,7 @@ def test_scoped_pdf_toc_lists_only_the_sections_it_contains(audit, zone):
     # Doc 65: Part 1 is numbered, the appendix is lettered, and a scoped run
     # that produces no DMARC card gets neither Appendix A nor B, so the
     # letters close up behind them.
-    text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN, scope="dns_infra"))
+    text = _pdf_text(audit(FakeZone(dict(zone)), DOMAIN, scope="dns_security"))
     assert "1. The short answer" in text
     assert "2. What to do" in text
     assert "3. Checks" in text

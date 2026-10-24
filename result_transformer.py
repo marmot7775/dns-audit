@@ -513,7 +513,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     def _scoped_out(name):
         """This run's scope never queried this check at all.
 
-        scope=dns_infra and scope=transport never run DMARC/SPF/DKIM, so
+        scope=dns_security never runs DMARC/SPF/DKIM, so
         those checks are absent from check_map entirely rather than marked
         "unavailable". Falling through to the else branch below asserted
         "Your domain has email authentication configured" from checks that

@@ -251,7 +251,7 @@ def test_signed_unanchored_dane_does_not_read_as_dnssec_missing_in_the_summary(a
 # it never ran
 # ---------------------------------------------------------------
 #
-# scope=dns_infra and scope=transport never run DMARC, SPF or DKIM at all,
+# scope=dns_security never runs DMARC, SPF or DKIM at all,
 # so those checks are absent from check_map entirely rather than marked
 # "unavailable". build_executive_summary's _unavailable() only tested
 # status == "unavailable", so an absent check fell through to the same
@@ -271,8 +271,8 @@ _SCOPED_BASE = {
 }
 
 
-def test_dns_infra_scope_does_not_assert_email_authentication_is_configured(audit):
-    result = audit(FakeZone(dict(_SCOPED_BASE)), SCOPED_DOMAIN, scope="dns_infra")
+def test_dns_security_scope_does_not_assert_email_authentication_is_configured(audit):
+    result = audit(FakeZone(dict(_SCOPED_BASE)), SCOPED_DOMAIN, scope="dns_security")
     es = _summary(result)
 
     verdict = es["verdict"].lower()
@@ -292,15 +292,6 @@ def test_dns_infra_scope_does_not_assert_email_authentication_is_configured(audi
         f"{es['dmarcbis_readiness']!r}"
     )
     assert es["dmarcbis_readiness"]["color"] == "neutral"
-
-
-def test_transport_scope_does_not_assert_email_authentication_is_configured(audit):
-    result = audit(FakeZone(dict(_SCOPED_BASE)), SCOPED_DOMAIN, scope="transport")
-    verdict = _summary(result)["verdict"].lower()
-
-    assert "has email authentication configured" not in verdict, (
-        f"scope=transport never runs DMARC, SPF or DKIM either: {verdict!r}"
-    )
 
 
 # ---------------------------------------------------------------

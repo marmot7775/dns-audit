@@ -682,7 +682,7 @@ def _cover_page(data, S):
     els.append(Paragraph(SHORT_ANSWER_POINTER, S["body"]))
     els.append(Spacer(1, SP_SM))
     # Scope line. A scoped report that does not say it is scoped implies
-    # coverage the reader has no way to know is missing: dns_infra runs five
+    # coverage the reader has no way to know is missing: dns_security runs five
     # of twelve checks and says nothing about email authentication, so the
     # verdict above reads "not assessed" with no explanation of why unless
     # this line names what was and was not run.
