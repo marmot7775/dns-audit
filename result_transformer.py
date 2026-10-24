@@ -486,7 +486,7 @@ def _registry_policy_note(suffix: str, policy: Optional[str]) -> str:
 
 
 def build_executive_summary(checks: List[Dict], roadmap: Dict,
-                            is_no_mail: bool = False) -> Dict:
+                            is_no_mail: bool = False, scope: Optional[str] = None) -> Dict:
     """Build the executive summary card shown at the very top of results.
 
     Returns a dict with: verdict, spoofing_protection, dmarcbis_readiness,
@@ -795,6 +795,13 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         if _quarantine_pct0:
             return verdict, "warn", "warning"
         if _eff_policy == "none":
+            # Doc 104: Email Deliverability asks whether the domain meets the
+            # providers' DMARC requirement, and p=none does. The card says
+            # when it graded the record that way; without rua it did not.
+            if scope == DELIVERABILITY_SCOPE and dmarc.get("graded_for_scope") == scope:
+                return ("Your domain publishes the DMARC record mailbox providers ask "
+                        "bulk senders for. It does not block forged mail yet.",
+                        "pass", "shield-check")
             return ("Your domain does not yet ask receivers to block mail that fakes it.",
                     "warn", "warning")
         if _eff_policy not in ("reject", "quarantine"):
@@ -1022,7 +1029,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         deliverability_issues.append("no DMARC record")
     elif dmarc_status == "fail" and dmarc.get("multiple_records"):
         deliverability_issues.append("more than one DMARC record")
-    elif health_status == "monitoring":
+    elif health_status == "monitoring" and scope != DELIVERABILITY_SCOPE:
+        # Under Email Deliverability p=none meets the requirement (Doc 104).
         deliverability_issues.append("DMARC is in monitoring mode (p=none)")
 
     if spf_status == "fail" and spf_check.get("pill_label") == "Missing":
@@ -1401,7 +1409,8 @@ _ATTENTION_ROWS = {
 
 
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
-                           has_mx: bool = True, domain: str = "") -> Dict:
+                           has_mx: bool = True, domain: str = "",
+                           scope: Optional[str] = None) -> Dict:
     """Synthesize all check results into a prioritized action plan.
 
     Takes the transformed checks list and returns a roadmap with
@@ -1580,7 +1589,10 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # used to get no row about the policy at all.
     _p_none = (_parse_record_tags(dmarc.get("record") or "").get("p", "").strip().lower() == "none"
                if dmarc.get("status") != "unavailable" else False)
-    if (health.get("status") == "monitoring"
+    # Doc 104: enforcement is the spoofing question, so Email Deliverability
+    # does not ask for it.
+    if scope != DELIVERABILITY_SCOPE and (
+            health.get("status") == "monitoring"
             or (health.get("status") == "attention" and _p_none)):
         items.append({"priority": "high", "protocol": "DMARC",
                       "action": "Progress from p=none to enforcement",
@@ -2903,7 +2915,20 @@ def _build_dmarcbis_card_data(readiness: Optional[Dict], record: Optional[str]) 
     }
 
 
-def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: bool = False) -> Dict:
+# Doc 104: the one scope that grades p=none by a different question.
+# Mailbox providers require bulk senders to publish DMARC and accept p=none,
+# so under Email Deliverability a p=none record meets the requirement. Every
+# other scope grades it as a spoofing question, amber.
+DELIVERABILITY_SCOPE = "deliverability"
+DMARC_P_NONE_ISSUE = "DMARC policy is none (monitoring only)"
+DELIVERABILITY_P_NONE_NOTE = (
+    "Mailbox providers require bulk senders to publish DMARC, and p=none meets "
+    "that. Blocking forged mail is graded under Email Security."
+)
+
+
+def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: bool = False,
+                    scope: Optional[str] = None) -> Dict:
     # The tree walk is optional and comes back None whenever dmarc_tree_walk
     # times out or raises, while _enrich_dmarc_inheritance still sets
     # inherited_policy from its PSL fallback. The inherited branches below
@@ -2928,7 +2953,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # parent's policy still applies. Build the inherited card, then say
         # the published record is broken; "no DMARC protection" would be false.
         if raw.get("is_subdomain") and raw.get("inherited_policy"):
-            card = transform_dmarc({**raw, "malformed_record": None}, tree_walk, is_no_mail)
+            card = transform_dmarc({**raw, "malformed_record": None}, tree_walk, is_no_mail,
+                                   scope=scope)
             _src = raw.get("inherited_from", "the organizational domain")
             card.update({
                 "status": "fail",
@@ -3038,12 +3064,12 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                  "inheritance_method": "psl"},
                 {**tw, "org_domain": _org, "applied_tag": _tag,
                  "steps": [s for s in (tw.get("steps") or []) if s.get("domain") != _registry]},
-                is_no_mail)
+                is_no_mail, scope=scope)
         _own = {k: v for k, v in raw.items()
                 if k not in ("inherited_from", "inherited_policy", "inherited_record",
                              "applied_tag", "inheritance_method")}
         _own["is_subdomain"] = False
-        card = transform_dmarc(_own, None, is_no_mail)
+        card = transform_dmarc(_own, None, is_no_mail, scope=scope)
         _owner = _registrable_domain(raw.get("domain", ""))
         _reg_policy = raw.get("inherited_policy")
         _reg_note = _registry_policy_note(_registry, _reg_policy)
@@ -3090,6 +3116,22 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     inherited_policy = raw.get("inherited_policy") if inherited else None
     inherited_source = raw.get("inherited_from") if inherited else None
 
+    # Doc 104: under Email Deliverability an effective p=none, published or
+    # inherited, is graded as meeting the mailbox providers' requirement.
+    # The engine's policy issue drops to info there (a copy, so the raw
+    # result other surfaces read is untouched); the rua issue keeps its
+    # severity and still grades the card amber.
+    _p_none_for_delivery = (
+        scope == DELIVERABILITY_SCOPE
+        and ((inherited and inherited_policy == "none")
+             or (record and not inherited and policy == "none"))
+    )
+    if _p_none_for_delivery and raw.get("issues"):
+        raw = {**raw, "issues": [
+            {**i, "severity": "info"} if i.get("issue") == DMARC_P_NONE_ISSUE else i
+            for i in raw["issues"]
+        ]}
+
     # Build verdict and override status based on policy
     if inherited:
         verdict = f"Inherited: {inherited_policy} (from {inherited_source})"
@@ -3098,7 +3140,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         elif inherited_policy == "quarantine":
             status = "pass"
         elif inherited_policy == "none":
-            status = "warn"
+            status = "pass" if _p_none_for_delivery else "warn"
         pill_label = "Inherited"
     elif not record:
         verdict = "No DMARC policy published"
@@ -3196,7 +3238,12 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # Warn with or without rua. A published record that enforces nothing
         # and reports nothing is weak, not broken: Doc 38 puts p=none and a
         # missing rua both under warn, and the details say what is missing.
-        status = "warn"
+        # Under Email Deliverability p=none meets the requirement (Doc 104),
+        # and only a missing rua keeps it amber, as at an enforcing policy.
+        if _p_none_for_delivery and (raw.get("rua") or is_no_mail):
+            status = "pass"
+        else:
+            status = "warn"
     else:
         verdict = f"Policy: {policy}" if policy else "Invalid record"
         status = "fail"
@@ -3359,7 +3406,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         elif inherited_policy == "quarantine":
             details.append({"type": "good", "text": f"Effective policy: quarantine (inherited from {inherited_source})"})
         elif inherited_policy == "none":
-            details.append({"type": "warning", "text": f"Effective policy: none (inherited from {inherited_source})"})
+            details.append({"type": "info" if _p_none_for_delivery else "warning",
+                            "text": f"Effective policy: none (inherited from {inherited_source})"})
 
         _detail_method = "DNS tree walk" if raw.get("inheritance_method") == "tree_walk" else "organizational domain lookup"
         details.append({"type": "info", "text": f"No record at _dmarc.{raw.get('domain', '')}. Policy found via {_detail_method}"})
@@ -3384,7 +3432,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         elif policy == "quarantine":
             details.append({"type": "good", "text": "Policy p=quarantine: authentication failures are sent to spam"})
         elif policy == "none":
-            details.append({"type": "warning", "text": "Policy p=none: monitoring only, no enforcement requested"})
+            details.append({"type": "info" if _p_none_for_delivery else "warning",
+                            "text": "Policy p=none: monitoring only, no enforcement requested"})
 
         report_dests = raw.get("report_destinations")
         # Destinations that have not authorized this domain's reports, for the
@@ -3493,6 +3542,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             details.append(_issue_to_detail(issue))
 
     details = _dedupe_details(details)
+    if _p_none_for_delivery:
+        details.insert(0, {"type": "info", "text": DELIVERABILITY_P_NONE_NOTE})
     if not record and not inherited:
         # The no-record explanation states the Google and Yahoo requirement,
         # and the engine's issue and its business-risk callout carry the same
@@ -3707,6 +3758,12 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": _deliverability,
         "unauthorized_reports": _unauth_reports,
+        # Doc 104: set when this card is green only because the
+        # deliverability scope grades p=none as meeting the providers'
+        # requirement, so the page, the PDF and the tests can tell it from
+        # a pass earned under the spoofing rules.
+        "graded_for_scope": (DELIVERABILITY_SCOPE
+                             if _p_none_for_delivery and status == "pass" else None),
     }
 
 

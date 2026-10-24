@@ -5232,7 +5232,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     raw_dmarc["report_auth_indeterminate"] = True
 
             if _should_include("dmarc", scope_set):
-                checks.append(transform_dmarc(raw_dmarc, tree_walk=tree_walk_result, is_no_mail=is_defensive))
+                checks.append(transform_dmarc(raw_dmarc, tree_walk=tree_walk_result, is_no_mail=is_defensive,
+                                              scope=scope))
         except FuturesTimeoutError:
             errors.append("DMARC: timed out")
             if _should_include("dmarc", scope_set):
@@ -5749,7 +5750,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         if raw_dmarc:
             for i, card in enumerate(checks):
                 if card.get("name") == "DMARC":
-                    checks[i] = transform_dmarc(raw_dmarc, tree_walk=tree_walk_result, is_no_mail=True)
+                    checks[i] = transform_dmarc(raw_dmarc, tree_walk=tree_walk_result, is_no_mail=True,
+                                                scope=scope)
                     break
 
     # --- DMARC Evaluation Summary (post-processor, zero DNS queries) ---
@@ -6219,7 +6221,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # --- Assemble final response ---
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     _roadmap = build_security_roadmap(checks, is_no_mail=is_defensive, has_mx=has_mx,
-                                      domain=domain)
+                                      domain=domain, scope=scope)
 
     return {
         "domain": domain,
@@ -6248,7 +6250,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "resilience": resilience_result,
         "security_roadmap": _roadmap,
         "executive_summary": build_executive_summary(checks, _roadmap,
-                                                     is_no_mail=is_defensive),
+                                                     is_no_mail=is_defensive, scope=scope),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
         "consistency_findings": consistency,
