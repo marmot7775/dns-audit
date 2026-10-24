@@ -133,6 +133,21 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-24: Doc 104. p=none graded by the question the scope asks
+
+Review doc: [docs/history/doc-104.md](docs/history/doc-104.md).
+
+- Under Email Deliverability a p=none DMARC record, published or
+  inherited, grades pass, because mailbox providers require DMARC of bulk
+  senders and do not condition placement on enforcement. The card carries
+  `graded_for_scope: "deliverability"` and a first detail line that says
+  so; the headline says the record meets the requirement and does not
+  block forged mail yet; the plan drops Progress from p=none to
+  enforcement. Without rua the card stays amber, for the missing reports.
+- Complete Audit, Email Security and DMARC Check still grade p=none amber.
+  The spoofing protection tile stays amber, Monitoring only, under every
+  scope.
+
 ## 2026-10-23: Doc 103. Five audit scopes, grouped by the visitor's question
 
 Review doc: [docs/history/doc-103.md](docs/history/doc-103.md).
