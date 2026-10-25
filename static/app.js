@@ -826,9 +826,7 @@ function renderResults(data, selector = '') {
         } else {
             // Clear the sticky header, or it covers the domain line and the
             // PDF, Export and Share buttons the scroll was meant to show.
-            const headerH = document.querySelector('.site-header')?.offsetHeight || 0;
-            const y = resultsSection.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
-            window.scrollTo({ top: y, behavior: 'smooth' });
+            scrollBelowHeader(resultsSection);
         }
 
         // Update URL for sharing
@@ -4389,7 +4387,17 @@ function openCard(id) {
             c.classList.remove('result-card-deferred');
         }
     });
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollBelowHeader(target);
+}
+
+// Scrolls so el sits 12px under the sticky header, whatever height the
+// header has at this width. Below about 450px the nav wraps under the
+// wordmark and the header is almost twice as tall, so the fixed
+// scroll-margin-top in style.css would leave the target under it.
+function scrollBelowHeader(el) {
+    const headerH = document.querySelector('.site-header')?.offsetHeight || 0;
+    const y = el.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
+    window.scrollTo({ top: y, behavior: 'smooth' });
 }
 
 function majorityExpanded() {

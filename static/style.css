@@ -1501,8 +1501,9 @@ a.tag { text-decoration: none; }
     border: 1px solid var(--border);
     border-left: 3px solid var(--border);
     overflow: hidden;
-    /* A #check-* link or openCard lands the card below the sticky header,
-       as .results-section does, not under it. */
+    /* A native #check-* jump lands the card below the one row sticky
+       header, as .results-section does. openCard measures the header
+       instead, since the nav wraps to a second row at phone widths. */
     scroll-margin-top: 4.5rem;
     opacity: 0;
     transform: translateY(12px);

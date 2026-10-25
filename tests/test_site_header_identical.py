@@ -55,8 +55,13 @@ def test_header_carries_the_wordmark(path):
     assert WORDMARK in header
     assert '<div class="header-right">' in header
     assert '<nav class="site-nav" aria-label="Main navigation">' in header
-    for label in ("Home", "Articles", "About"):
+    for label in ("Home", "Header Decoder", "Articles", "About"):
         assert re.search(rf'class="nav-link(?: nav-link-active)?">{label}</a>', header), label
+    # 2026-10-25: the Header Decoder lives at headers.dns-audit.com, its own
+    # static site, so its nav link is the one absolute URL in the header and
+    # it is never the active page here.
+    assert ('<a href="https://headers.dns-audit.com/" class="nav-link">Header Decoder</a>'
+            in header)
     assert 'id="theme-toggle"' in header
 
 
