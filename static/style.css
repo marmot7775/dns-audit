@@ -3377,6 +3377,14 @@ details.st-node>summary:hover {
         display: none;
     }
 
+    /* The header can take two lines here (wordmark, then nav), about
+       7.1rem tall, so a #check-* link or openCard needs more room than
+       the 4.5rem that clears the one-line header. */
+    .results-section,
+    .result-card {
+        scroll-margin-top: 7.75rem;
+    }
+
     .audit-input-section {
         padding-top: var(--space-xl);
     }
