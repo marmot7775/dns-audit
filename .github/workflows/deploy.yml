@@ -1,0 +1,51 @@
+# Deploy to production on every push to main (2026-10-25), so any session,
+# cloud or local, ships by merging a PR that passed the required checks.
+#
+# The key in DEPLOY_SSH_KEY is a forced-command key: the droplet's
+# authorized_keys runs ~/deploy-dns-audit.sh for it whatever command is
+# sent, with no shell, pty or forwarding. The script fast-forwards the
+# checkout to origin/main, installs requirements, restarts dns-auditor and
+# waits for /api/health. This job then checks the live site reports the
+# commit it was triggered by.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Run the deploy script on the droplet
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" deploy
+
+      - name: Confirm the live site runs this commit
+        run: |
+          want="${GITHUB_SHA::7}"
+          for i in $(seq 1 30); do
+            got=$(curl -s --max-time 5 https://dns-audit.com/api/health | python3 -c 'import sys,json; print(json.load(sys.stdin).get("version",""))' || true)
+            echo "attempt $i: live version ${got:-none}, want $want"
+            [ "$got" = "$want" ] && exit 0
+            sleep 5
+          done
+          exit 1

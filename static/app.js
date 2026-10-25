@@ -234,6 +234,9 @@ let auditStartTime = 0;
 let auditController = null;
 let auditReader = null;
 let auditInFlight = false;
+// Counts runAudit calls, so a result's delayed reveal can tell that a newer
+// audit has started since.
+let auditSeq = 0;
 // Ids for the collapsible sections, so each toggle can name what it controls.
 let _cdSectionSeq = 0;
 let _piGuidanceSeq = 0;
@@ -271,19 +274,26 @@ function syncScopeDesc() {
 }
 syncScopeDesc();
 
+// Marks one scope pill as selected and makes it the scope the next audit runs.
+function setActiveScope(scope) {
+    currentScope = scope;
+    document.querySelectorAll('.scope-btn').forEach(b => {
+        const on = b.dataset.scope === scope;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+        b.setAttribute('tabindex', on ? '0' : '-1');
+    });
+    syncScopeDesc();
+}
+
 document.querySelectorAll('.scope-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        document.querySelectorAll('.scope-btn').forEach(b => {
-            b.classList.remove('active');
-            b.setAttribute('aria-checked', 'false');
-            b.setAttribute('tabindex', '-1');
-        });
-        btn.classList.add('active');
-        btn.setAttribute('aria-checked', 'true');
-        btn.setAttribute('tabindex', '0');
-        const changed = currentScope !== btn.dataset.scope;
-        currentScope = btn.dataset.scope;
-        syncScopeDesc();
+        // Changed against the results on screen, not against currentScope:
+        // the arrow keys and a click during an audit move currentScope
+        // without running anything, and comparing with it then swallowed
+        // the click that should have run the selected scope.
+        const changed = !lastAuditData || _resultScope(lastAuditData) !== btn.dataset.scope;
+        setActiveScope(btn.dataset.scope);
         // On a results page the pills switch the question for the same
         // domain: run it again under the new scope.
         if (changed && lastAuditData && !auditInFlight && domainInput.value.trim()) {
@@ -313,6 +323,14 @@ document.getElementById('scope-selector').addEventListener('keydown', (e) => {
     syncScopeDesc();
 });
 
+// -- Example domains under the box: one click to a real result --
+document.querySelectorAll('.try-example').forEach(btn => {
+    btn.addEventListener('click', () => {
+        domainInput.value = btn.dataset.example;
+        auditForm.requestSubmit();
+    });
+});
+
 // -- DKIM selector toggle --
 document.getElementById('selector-toggle').addEventListener('click', () => {
     const field = document.getElementById('selector-field');
@@ -334,14 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rawScope = params.get('scope') || (domain ? 'complete' : null);
     const scope = (rawScope && LEGACY_SCOPES[rawScope]) || rawScope;
     if (scope && Object.prototype.hasOwnProperty.call(SCOPE_CHECKS, scope)) {
-        currentScope = scope;
-        document.querySelectorAll('.scope-btn').forEach(b => {
-            const on = b.dataset.scope === scope;
-            b.classList.toggle('active', on);
-            b.setAttribute('aria-checked', on ? 'true' : 'false');
-            b.setAttribute('tabindex', on ? '0' : '-1');
-        });
-        syncScopeDesc();
+        setActiveScope(scope);
     }
     // A shared link carries the selector its audit was run with. Same rule
     // as the server's SELECTOR_PATTERN (config.py); anything else is dropped.
@@ -515,6 +526,7 @@ async function runAudit(domain) {
     const controller = auditController;
     const signal = controller.signal;
     auditInFlight = true;
+    auditSeq += 1;
 
     // Idle watchdog. A stalled TCP connection (Cloudflare drops it, the laptop
     // sleeps, the phone moves from Wi-Fi to LTE) leaves reader.read() hanging:
@@ -550,7 +562,13 @@ async function runAudit(domain) {
         const resp = await fetch(streamUrl, { signal });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Audit failed (HTTP ${resp.status})`);
+            const httpErr = new Error(err.detail || `Audit failed (HTTP ${resp.status})`);
+            // The server answered: a 4xx (a bad selector, a rate limit) or a
+            // 503 at capacity gets the same answer from the JSON endpoint,
+            // and asking again costs a second rate limit slot. Only a 500,
+            // 502 or 504, which can be the stream itself failing, falls back.
+            httpErr.fromServer = resp.status < 500 || resp.status === 503;
+            throw httpErr;
         }
 
         const reader = resp.body.getReader();
@@ -803,7 +821,16 @@ function renderResults(data, selector = '') {
     // selected now: clicking another scope mid-audit made the tiles, the
     // share text, the URL and the PDF link describe different runs.
     const scopeAtRender = _resultScope(data);
+    // The pills show the question these results answer. A pill clicked
+    // while the audit ran used to stay lit over results for another scope.
+    if (Object.prototype.hasOwnProperty.call(SCOPE_CHECKS, scopeAtRender)) {
+        setActiveScope(scopeAtRender);
+    }
+    // An audit started inside the next 300 ms owns the page: this timer must
+    // not hide its loading state and show these older results over it.
+    const renderSeq = auditSeq;
     setTimeout(() => {
+        if (renderSeq !== auditSeq) return;
         hideLoading();
         resultsSection.style.display = 'block';
 
@@ -838,6 +865,9 @@ function renderResults(data, selector = '') {
         // This render's selector, not the one a link opened with.
         if (selector) url.searchParams.set('sel', selector);
         else url.searchParams.delete('sel');
+        // A #check-* hash is read once, above. Left in the URL it opened the
+        // same card on every later audit of another domain.
+        url.hash = '';
         window.history.replaceState({}, '', url);
     }, 300);
 
@@ -863,6 +893,9 @@ function renderResults(data, selector = '') {
 
     // -- What changed since this browser last audited the domain --
     renderRecheck(data);
+
+    // -- A Certificate Transparency card that came back Not checked --
+    scheduleCtRetry(data);
 
     // -- Executive Summary (Prompt 16) -- render at the very top --
     _execSummary = data.executive_summary || null;
@@ -974,7 +1007,8 @@ function renderResults(data, selector = '') {
     if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
-        priorityList.innerHTML = renderPriorities(rm, checks, data.resilience)
+        priorityList.innerHTML = renderDnsHost(data.dns_host)
+            + renderPriorities(rm, checks, data.resilience, data.dns_host)
             + renderChangeSet(rm.change_set);
         // The row opens; the link into the card is a control inside it.
         priorityList.querySelectorAll('.priority-head').forEach(head => {
@@ -1448,6 +1482,90 @@ function layoutSenderMap(canvas, nodes) {
 }
 
 // ============================================================
+// Certificate Transparency retry (2026-10-25)
+// ============================================================
+
+// crt.sh and Cert Spotter both silent leaves the CT card Not checked. The
+// rest of the results do not wait for it: the page asks /api/ct again by
+// itself after a pause and swaps the card in place. If that fails too, the
+// card offers Try again.
+const CT_NAME = 'Certificate Transparency';
+const CT_RETRY_DELAY_MS = 15000;
+let _ctRetryTimer = null;
+
+function scheduleCtRetry(data) {
+    clearTimeout(_ctRetryTimer);
+    const ct = (data.checks || []).find(c => c.name === CT_NAME);
+    if (!ct || ct.status !== 'unavailable') return;
+    _ctRetryTimer = setTimeout(() => retryCt(data, true), CT_RETRY_DELAY_MS);
+}
+
+function _ctCardEl() {
+    return document.getElementById('check-certificate-transparency');
+}
+
+function _ctRetryNote(el, html) {
+    if (!el) return;
+    let note = el.querySelector('.ct-retry');
+    if (!note) {
+        note = document.createElement('div');
+        note.className = 'ct-retry';
+        el.querySelector('.result-header').after(note);
+    }
+    note.innerHTML = html;
+    const btn = note.querySelector('button');
+    if (btn) btn.addEventListener('click', () => retryCt(lastAuditData, false));
+}
+
+async function retryCt(data, automatic) {
+    // A newer audit replaced this one, or the card is gone.
+    if (!data || lastAuditData !== data || !_ctCardEl()) return;
+    _ctRetryNote(_ctCardEl(), '<p class="ct-retry-text" role="status">Asking the certificate logs again...</p>');
+    let card = null;
+    try {
+        const r = await fetch(`/api/ct?domain=${encodeURIComponent(data.domain)}`);
+        if (r.ok) card = await r.json();
+    } catch { /* offline or blocked: falls through to Try again */ }
+    if (lastAuditData !== data) return;
+    if (card && card.name === CT_NAME && card.status !== 'unavailable') {
+        const i = data.checks.findIndex(c => c.name === CT_NAME);
+        if (i !== -1) data.checks[i] = card;
+        const old = _ctCardEl();
+        const fresh = createResultCard(card, [...document.querySelectorAll('.result-card')].indexOf(old));
+        old.replaceWith(fresh);
+        refreshStatusCounts(data);
+        showToast('Certificate Transparency checked');
+        return;
+    }
+    _ctRetryNote(_ctCardEl(),
+        '<p class="ct-retry-text">The certificate logs still did not answer. This says nothing about '
+        + 'your certificates.</p><button type="button" class="ct-retry-btn">Try again</button>');
+}
+
+// The counters, the tab title and each area's status line, from the checks
+// as they are now (after a card was swapped in place).
+function refreshStatusCounts(data) {
+    const counts = statusCounts(data.checks);
+    document.getElementById('summary-pass').textContent = counts.pass;
+    document.getElementById('summary-warn').textContent = counts.warn;
+    document.getElementById('summary-fail').textContent = counts.fail;
+    document.getElementById('summary-absent').textContent = counts.absent;
+    document.getElementById('summary-na').textContent = counts.not_applicable;
+    document.getElementById('summary-unavailable').textContent = counts.unavailable;
+    document.getElementById('summary-unavailable-card')
+        .classList.toggle('is-hidden', counts.unavailable === 0);
+    document.title = auditTabTitle(counts, data.domain);
+    groupChecksByArea([...data.checks]).forEach(g => {
+        const section = document.getElementById(`area-${g.key}`);
+        if (!section) return;
+        const c = statusCounts(g.checks);
+        section.dataset.counts = JSON.stringify(c);
+        const line = section.querySelector('.check-area-count');
+        if (line) line.textContent = areaStatusText(c);
+    });
+}
+
+// ============================================================
 // Recheck (2026-10-25): what changed since your last audit
 // ============================================================
 
@@ -1494,7 +1612,17 @@ function recheckRemember(data) {
             before = entry.previous || null;
         } else {
             before = entry ? entry.current : null;
-            all[key] = { current: now, previous: before, touched: Date.now() };
+            // A check that was not read this time keeps its last known
+            // status in storage, so the next run compares with a reading.
+            const stored = { ...now, statuses: { ...now.statuses } };
+            if (before && before.statuses) {
+                Object.keys(stored.statuses).forEach(n => {
+                    if (stored.statuses[n] === 'unavailable' && n in before.statuses) {
+                        stored.statuses[n] = before.statuses[n];
+                    }
+                });
+            }
+            all[key] = { current: stored, previous: before, touched: Date.now() };
             const keys = Object.keys(all).sort((a, b) => (all[b].touched || 0) - (all[a].touched || 0));
             keys.slice(RECHECK_KEEP).forEach(k => delete all[k]);
             localStorage.setItem(RECHECK_KEY, JSON.stringify(all));
@@ -1506,8 +1634,11 @@ function recheckRemember(data) {
 function recheckDiff(before, now) {
     const fixed = before.actions.filter(a => !now.actions.includes(a));
     const added = now.actions.filter(a => !before.actions.includes(a));
+    // "Not checked" says the lookup did not complete, nothing about the
+    // record, so a move into or out of it is neither better nor worse.
     const moved = Object.keys(now.statuses)
         .filter(n => n in before.statuses && before.statuses[n] !== now.statuses[n])
+        .filter(n => before.statuses[n] !== 'unavailable' && now.statuses[n] !== 'unavailable')
         .map(n => ({ name: n, from: before.statuses[n], to: now.statuses[n] }));
     return { fixed, added, moved };
 }
@@ -3700,7 +3831,7 @@ function priorityTierSummary(rm) {
 // passing card. Doc 92: a closed row leads with the plain consequence when
 // the backend sends one, with the instruction under it; opening it answers
 // why it matters, what to paste, who does it and how to confirm it worked.
-function renderPriorities(rm, checks, resilience) {
+function renderPriorities(rm, checks, resilience, dnsHost) {
     const cards = {};
     (checks || []).forEach(c => { if (c && c.name) cards[c.name] = c; });
 
@@ -3708,7 +3839,7 @@ function renderPriorities(rm, checks, resilience) {
     const main = items.filter(i => !isOptionalPlanItem(i));
     const extras = items.filter(i => isOptionalPlanItem(i));
 
-    let html = main.map(item => _priorityRow(item, cards, resilience, false)).join('');
+    let html = main.map(item => _priorityRow(item, cards, resilience, false, dnsHost)).join('');
     if (extras.length > 0) {
         const groupId = `plan-optional-${++_planSeq}`;
         html += `<div class="plan-optional">
@@ -3717,14 +3848,14 @@ function renderPriorities(rm, checks, resilience) {
                 <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
             </button>
             <div class="plan-optional-body is-hidden" id="${groupId}">
-                ${extras.map(item => _priorityRow(item, cards, resilience, true)).join('')}
+                ${extras.map(item => _priorityRow(item, cards, resilience, true, dnsHost)).join('')}
             </div>
         </div>`;
     }
     return html;
 }
 
-function _priorityRow(item, cards, resilience, optional) {
+function _priorityRow(item, cards, resilience, optional, dnsHost) {
     const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
     const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     const card = cards[item.protocol];
@@ -3761,11 +3892,37 @@ function _priorityRow(item, cards, resilience, optional) {
         <div class="priority-body is-hidden" id="${bodyId}">
             ${why ? part('Why it matters', why) : ''}
             ${part(what.hasRecord ? 'What to paste' : 'What to change', what.html)}
-            ${item.who ? part('Who does this', escapeHtml(item.who)) : ''}
+            ${item.who ? part('Who does this', escapeHtml(_planWho(item.who, dnsHost))) : ''}
             ${part('How to confirm', escapeHtml(confirm))}
             <button class="plan-card-link" data-scroll-to="${anchor}">Open the ${escapeHtml(item.protocol)} card</button>
         </div>
     </div>`;
+}
+
+// The DNS host's name after "Your DNS host" when the nameservers name one.
+function _planWho(who, dnsHost) {
+    return who === 'Your DNS host' && dnsHost ? `${who}, ${dnsHost.name} (steps above)` : who;
+}
+
+// Inline `code` in a host tip, after escaping.
+function _tipHtml(text) {
+    return escapeHtml(text).replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+// Where to paste: the DNS host the nameservers belong to and its steps for
+// adding a record, from dns_hosts.py. Nothing when no one host is known.
+function renderDnsHost(host) {
+    if (!host || !host.steps) return '';
+    const tips = [host.name_tip, host.value_tip].filter(Boolean)
+        .map(t => `<p class="dns-host-tip">${_tipHtml(t)}</p>`).join('');
+    const warning = host.warning
+        ? `<p class="dns-host-warning">${_tipHtml(host.warning)}</p>` : '';
+    return `<section class="dns-host" aria-labelledby="dns-host-title">
+        <h3 class="dns-host-title" id="dns-host-title">Your DNS is at ${escapeHtml(host.name)}. To add a record there:</h3>
+        <ol class="dns-host-steps">${host.steps.map(st => `<li>${escapeHtml(st)}</li>`).join('')}</ol>
+        ${tips}${warning}
+        <a class="dns-host-source" href="${escapeHtml(host.source)}" target="_blank" rel="noopener">${escapeHtml(host.name)}'s help page</a>
+    </section>`;
 }
 
 // Why it matters: the item's impact, and for a monitoring DMARC policy the
@@ -5044,10 +5201,6 @@ function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
         note.classList.add('is-hidden');
     }
 }
-
-// ============================================================
-// CSV Export (Prompt 15)
-// ============================================================
 
 // ============================================================
 // Run Another Audit helpers (Prompt 9)

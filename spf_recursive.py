@@ -119,6 +119,10 @@ def spf_lookup_band(lookups, indeterminate: bool = False) -> str:
 # More than one v=spf1 record is published at the name. RFC 7208 section 4.5
 # makes that a PermError for the whole evaluation, not just for that name.
 SPF_MULTIPLE = "multiple"
+# The name is already on the include or redirect path that led here. A real
+# evaluator follows the loop until it passes the 10 lookup limit (RFC 7208
+# section 4.6.4) and returns PermError, so this is a broken record.
+SPF_LOOP = "loop"
 
 
 def _lookup_spf(domain: str) -> Dict[str, Any]:
@@ -325,6 +329,7 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
     domain_lower = domain.lower().rstrip(".")
     if domain_lower in visited:
         node["error"] = f"Circular reference: {domain} already visited"
+        node["lookup_status"] = SPF_LOOP
         return node
     visited.add(domain_lower)
 
@@ -505,6 +510,11 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
     multiple_spf_domains = [
         e["domain"] for e in chain if e.get("lookup_status") == SPF_MULTIPLE
     ]
+    # visited is per path, so a hit is a real loop, not two includes that
+    # share a target.
+    loop_domains = [
+        e["domain"] for e in chain if e.get("lookup_status") == SPF_LOOP
+    ]
     # (domain, term) for every include or redirect whose target is macro
     # expanded. Deduplicated, since the same term can appear more than once.
     macro_terms = []
@@ -532,6 +542,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         "band": spf_lookup_band(total, bool(indeterminate_domains)),
         "permerror_domains": permerror_domains,
         "multiple_spf_domains": multiple_spf_domains,
+        "loop_domains": loop_domains,
         "macro_terms": [{"domain": d, "term": t} for d, t in macro_terms],
     }
 
@@ -657,6 +668,23 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             ),
             "impact": "Wasted lookup slot and potential PermError.",
             "fix": f"Remove the include for {target}.",
+        })
+
+    for target in loop_domains:
+        result["status"] = "fail"
+        result["issues"].append({
+            "severity": "error",
+            "issue": f"SPF include loop: {target} includes itself",
+            "plain_english": (
+                f"The SPF chain reaches {target} again through its own includes "
+                f"or redirect. Receivers follow the loop until they pass the "
+                f"10 lookup limit and return PermError (RFC 7208 section "
+                f"4.6.4), so SPF fails for every message."
+            ),
+            "impact": "SPF returns PermError. Authentication fails for every message.",
+            "fix": (
+                f"Remove the include or redirect that points back to {target}."
+            ),
         })
 
     # RFC 7208 section 4.5: exactly one SPF record per name. Two of them at

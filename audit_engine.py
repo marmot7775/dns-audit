@@ -380,6 +380,7 @@ def _should_include(check_key, scope_set):
 # Backed by the shared plain answer cache. A single complete audit used to
 # re-issue about 35 identical queries because nothing anywhere cached.
 from dns_tools import get_resolver as _get_resolver, lookup_ttl as _lookup_ttl
+from dns_hosts import dns_host_block, lookup_ns
 
 
 def _get_dnssec_resolver(timeout: float = 8.0):
@@ -2529,6 +2530,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     ip4_count = 0
     ip6_count = 0
     has_redirect = False
+    # RFC 7208 section 6: redirect and exp MUST NOT appear more than once.
+    modifier_counts = {"redirect": 0, "exp": 0}
     has_all = False
     seen_mechanisms = []
 
@@ -2565,6 +2568,16 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             # Modifier (redirect=, exp=)
             mod_name, _, mod_value = raw.partition("=")
             mod_name_lower = mod_name.lower()
+            if mod_name_lower in modifier_counts:
+                modifier_counts[mod_name_lower] += 1
+                if modifier_counts[mod_name_lower] == 2:
+                    _add_syntax(
+                        f"More than one {mod_name_lower}= modifier",
+                        f"RFC 7208 section 6 allows {mod_name_lower}= at most once. "
+                        "A second one is a syntax error, so receivers return "
+                        "PermError for the whole record.",
+                        f"Keep one {mod_name_lower}= modifier and remove the others.",
+                    )
 
             if mod_name_lower == "redirect":
                 has_redirect = True
@@ -2682,6 +2695,21 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             elif mech_lower == "ptr":
                 # Reported once, by spf_recursive (merged below).
                 seen_mechanisms.append(part)
+
+            elif mech_lower in ("include", "exists", "ip4", "ip6"):
+                # RFC 7208 sections 5.2, 5.6 and 5.7: these take a required
+                # ":" argument, unlike a, mx and ptr.
+                _add_syntax(
+                    f"'{raw}' has no value",
+                    f"The {mech_lower} mechanism needs a value after a colon, "
+                    "so on its own it is a syntax error and receivers return "
+                    "PermError for the whole record.",
+                    f"Add the value, e.g. {mech_lower}:"
+                    + ("192.0.2.1" if mech_lower == "ip4"
+                       else "2001:db8::1" if mech_lower == "ip6"
+                       else "_spf.example.com")
+                    + f", or remove '{raw}'.",
+                )
 
             elif mech_lower in KNOWN_MECHANISMS or DUAL_CIDR_MECHANISM_RE.match(mech_lower):
                 seen_mechanisms.append(part)
@@ -3632,16 +3660,21 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
             "ipv6": [],
             "resolves": False,
         }
-        try:
-            ns_info["ipv4"] = [str(r) for r in resolver.resolve(ns_host, "A")]
-        except dns.exception.DNSException:
-            pass
-        try:
-            ns_info["ipv6"] = [str(r) for r in resolver.resolve(ns_host, "AAAA")]
-        except dns.exception.DNSException:
-            pass
+        # NXDOMAIN or an empty answer says the host has no address. Any
+        # other failure (SERVFAIL, timeout) says nothing about the host, and
+        # a failed lookup is not a finding (docs/decisions/2026-09-02), so
+        # it must not read as a lame delegation.
+        failed = False
+        for qtype, key in (("A", "ipv4"), ("AAAA", "ipv6")):
+            try:
+                ns_info[key] = [str(r) for r in resolver.resolve(ns_host, qtype)]
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                pass
+            except dns.exception.DNSException:
+                failed = True
         ns_info["resolves"] = bool(ns_info["ipv4"] or ns_info["ipv6"])
         if not ns_info["resolves"]:
+            ns_info["lookup_failed"] = failed
             return ns_info, None
 
         # Use first IPv4 address for the query
@@ -3798,7 +3831,8 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
     # Two nameservers is standard and fine. No need to flag it.
 
     # 2. Unresolvable nameservers (lame delegation)
-    lame_ns = [ns for ns in ns_details if not ns["resolves"]]
+    lame_ns = [ns for ns in ns_details
+               if not ns["resolves"] and not ns.get("lookup_failed")]
     if lame_ns:
         lame_names = ", ".join(ns["hostname"] for ns in lame_ns)
         _add_issue(
@@ -4102,6 +4136,31 @@ def _raw_check_ct(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
 
     _set_cached_ct(domain, result)
     return result
+
+
+def retry_ct_card(domain: str) -> Dict[str, Any]:
+    """The Certificate Transparency card alone, asked again (2026-10-25).
+
+    The page calls this through /api/ct when an audit's card came back Not
+    checked. It asks crt.sh and Cert Spotter again even inside the timeout
+    memory, which would only replay the failure, but serves a real cached
+    result first. CAA is read so the card can still compare certificates
+    with the CAs the domain allows.
+    """
+    raw = _get_cached_ct(domain)
+    if raw is None:
+        try:
+            caa = _raw_check_caa(domain)
+        except Exception:
+            caa = {}
+        raw = _raw_check_ct_uncached(domain, {"caa": caa})
+        if not raw.get("unavailable_reason"):
+            _set_cached_ct(domain, raw)
+            with _ct_cache_lock:
+                _ct_timeout_cache.pop(domain, None)
+    card = transform_ct(raw, domain)
+    attach_what_this_is([card])
+    return card
 
 
 def _parse_ct_timestamp(value: Optional[str]) -> Optional[datetime]:
@@ -5148,6 +5207,17 @@ def _spf_include_cost(spf_inc: str):
     target = spf_inc.split(":", 1)[1]
     resolved = count_spf_lookups(target)
     return 1 + (resolved.get("total_lookups") or 0), bool(resolved.get("indeterminate"))
+
+
+def _dns_host(domain: str, raw_results: Dict) -> Optional[Dict]:
+    """Where this domain's records are edited. Reuses the nameserver check's
+    answer when that check ran, else asks NS once; a failure is None."""
+    try:
+        ns = [n.get("hostname", "") for n in
+              (raw_results.get("nameservers") or {}).get("nameservers") or []]
+        return dns_host_block(domain, ns or lookup_ns(domain, _get_resolver(4.0)))
+    except Exception:
+        return None
 
 
 def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
@@ -6305,6 +6375,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         # Gmail, Yahoo and Microsoft sender requirements (2026-10-25); None
         # when this run did not read SPF, DKIM and DMARC.
         "sender_requirements": (None if is_defensive else build_sender_requirements(checks)),
+        # The DNS host and its steps for adding a record (dns_hosts.py), or
+        # None when the nameservers do not all belong to one known host.
+        "dns_host": _dns_host(domain, raw_results),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
         "consistency_findings": consistency,

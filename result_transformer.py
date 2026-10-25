@@ -1074,8 +1074,13 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # failure mode as the auth_unavailable case above: presenting it as
         # "the biggest risk" implies real risks were weighed and lost, when
         # none were found at all.
+        # An optional protocol that is not set up is never a warning
+        # (CLAUDE.md), so it is not the biggest risk either; do_first below
+        # leaves it out on the same rule. It made "Configure MTA-STS" the
+        # biggest risk of a clean domain, ticked green on PDF page 1.
         risk_candidates = [i for i in roadmap_items if i.get("priority") != "low"
-                           and not i.get("self_clearing")]
+                           and not i.get("self_clearing")
+                           and not i.get("optional")]
         if risk_candidates:
             top = risk_candidates[0]
             # The action is the headline and the impact is the line under it.
@@ -3244,6 +3249,33 @@ DELIVERABILITY_P_NONE_NOTE = (
 )
 
 
+def _inherited_record_tags(record: Optional[str]) -> Dict[str, str]:
+    """Lowercased tag=value pairs of an inherited DMARC record."""
+    tags: Dict[str, str] = {}
+    for part in (record or "").split(";"):
+        key, sep, value = part.partition("=")
+        if sep:
+            tags.setdefault(key.strip().lower(), value.strip().lower())
+    return tags
+
+
+def _pct_below_100(value: Optional[str]) -> bool:
+    try:
+        return value is not None and int(value) < 100
+    except ValueError:
+        return False
+
+
+_REPORT_URI_NO_MAILTO = ("rua address missing 'mailto:'", "ruf address missing 'mailto:'")
+
+
+def _report_uri_unusable(raw: Dict) -> bool:
+    """True when a rua or ruf address lacks mailto:, so receivers send
+    nothing to it. The engine files it as a warning issue."""
+    return any((i.get("issue") or "").startswith(_REPORT_URI_NO_MAILTO)
+               for i in raw.get("issues", []))
+
+
 def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: bool = False,
                     scope: Optional[str] = None) -> Dict:
     # The tree walk is optional and comes back None whenever dmarc_tree_walk
@@ -3471,6 +3503,13 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             status = "pass"
         elif inherited_policy == "none":
             status = "pass" if _p_none_for_delivery else "warn"
+        # The parent's pct and t apply here too. pct below 100 is a warn rule
+        # at the parent, and t=y asks receivers for one level less (RFC 9989
+        # section 4.7); the inherited card graded both pass.
+        _parent = _inherited_record_tags(raw.get("inherited_record"))
+        if status == "pass" and inherited_policy in ("reject", "quarantine") and (
+                _parent.get("t") == "y" or _pct_below_100(_parent.get("pct"))):
+            status = "warn"
         pill_label = "Inherited"
     elif not record:
         verdict = "No DMARC policy published"
@@ -3590,7 +3629,13 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         )
         if has_fatal_syntax or has_engine_errors:
             status = "fail"
-        elif status == "pass" and (syntax or reports_dropped):
+        elif status == "pass" and (syntax or reports_dropped
+                                   or _report_uri_unusable(raw)
+                                   or (raw.get("t") == "y"
+                                       and policy in ("reject", "quarantine"))):
+            # A rua or ruf without mailto: gets no reports, and t=y asks
+            # receivers to apply one level less than p (RFC 9989 section
+            # 4.7). The card carried the warning row and still said pass.
             status = "warn"
         # sp weaker than p is one of Doc 38's warn rules: the root enforces
         # and its subdomains get less. np weaker than p is the same gap for
@@ -8871,6 +8916,11 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
             "ttl_info": format_ttl(raw.get("ttl")),
         }
 
+    # No TLSA found, but every TLSA query failed: nothing was learned, so
+    # this is not "no TLSA records" (docs/decisions/2026-09-02).
+    if tlsa_records and all(hr.get("error") for hr in tlsa_records):
+        return _lookup_unavailable_card("DANE", raw, "TLSA records")
+
     # No TLSA, has MX
     details = [
         {"type": "warning", "text": f"Checked {mx_checked} MX host{'s' if mx_checked != 1 else ''}, but no TLSA records found"},
@@ -9056,7 +9106,10 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
     not_resolving = [ns for ns in nameservers if not ns.get("resolves")]
     if not_resolving:
         for ns in not_resolving:
-            details.append({"type": "error", "text": f"{ns['hostname']} does not resolve (lame delegation)"})
+            if ns.get("lookup_failed"):
+                details.append({"type": "info", "text": f"{ns['hostname']}: address lookup did not complete, not checked"})
+            else:
+                details.append({"type": "error", "text": f"{ns['hostname']} does not resolve (lame delegation)"})
     if resolving:
         for ns in resolving:
             ip = ns.get("ipv4", [""])[0] if ns.get("ipv4") else ""
