@@ -760,6 +760,7 @@ def _enrich_dmarc_inheritance(
             raw_dmarc["is_subdomain"] = True
             raw_dmarc["applied_tag"] = tree_walk_result.get("applied_tag", "p")
             raw_dmarc["inheritance_method"] = "tree_walk"
+            _recover_inherited_policy(raw_dmarc)
             # news24.co.za: the only policy above it is the co.za registry's.
             # That makes the name its own organizational domain, not a
             # subdomain, so subdomain discovery and the alignment cross-check
@@ -812,6 +813,7 @@ def _enrich_dmarc_inheritance(
         raw_dmarc["is_subdomain"] = True
         raw_dmarc["applied_tag"] = "sp" if sp else "p"
         raw_dmarc["inheritance_method"] = "psl"
+        _recover_inherited_policy(raw_dmarc)
 
 
 # ============================================================
@@ -819,6 +821,30 @@ def _enrich_dmarc_inheritance(
 # ============================================================
 
 _RUA_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+_DMARC_POLICIES = ("none", "quarantine", "reject")
+
+
+def _recover_inherited_policy(raw_dmarc: Dict[str, Any]) -> None:
+    """RFC 7489 section 6.6.3 step 6: a record whose p= or sp= is not valid
+    is read as p=none when its rua= holds a valid reporting URI. The apex
+    applied this recovery to its own p= while an inherited sp=bogus reached
+    the card as the policy "bogus" and graded red. np= (RFC 9989) gets the
+    same reading. Without a valid rua the value is left alone and the card
+    still fails it."""
+    policy = raw_dmarc.get("inherited_policy")
+    if policy in _DMARC_POLICIES:
+        return
+    rua = ""
+    for part in (raw_dmarc.get("inherited_record") or "").split(";"):
+        key, _, value = part.partition("=")
+        if key.strip().lower() == "rua":
+            rua = value.strip()
+            break
+    if _is_rua_syntactically_valid(rua):
+        raw_dmarc["inherited_policy_invalid"] = policy
+        raw_dmarc["inherited_policy"] = "none"
 
 
 def _is_rua_syntactically_valid(rua_value: str) -> bool:
