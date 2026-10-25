@@ -974,7 +974,8 @@ function renderResults(data, selector = '') {
     if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
-        priorityList.innerHTML = renderPriorities(rm, checks, data.resilience);
+        priorityList.innerHTML = renderDnsHost(data.dns_host)
+            + renderPriorities(rm, checks, data.resilience, data.dns_host);
         // The row opens; the link into the card is a control inside it.
         priorityList.querySelectorAll('.priority-head').forEach(head => {
             const body = document.getElementById(head.getAttribute('aria-controls'));
@@ -3699,7 +3700,7 @@ function priorityTierSummary(rm) {
 // passing card. Doc 92: a closed row leads with the plain consequence when
 // the backend sends one, with the instruction under it; opening it answers
 // why it matters, what to paste, who does it and how to confirm it worked.
-function renderPriorities(rm, checks, resilience) {
+function renderPriorities(rm, checks, resilience, dnsHost) {
     const cards = {};
     (checks || []).forEach(c => { if (c && c.name) cards[c.name] = c; });
 
@@ -3707,7 +3708,7 @@ function renderPriorities(rm, checks, resilience) {
     const main = items.filter(i => !isOptionalPlanItem(i));
     const extras = items.filter(i => isOptionalPlanItem(i));
 
-    let html = main.map(item => _priorityRow(item, cards, resilience, false)).join('');
+    let html = main.map(item => _priorityRow(item, cards, resilience, false, dnsHost)).join('');
     if (extras.length > 0) {
         const groupId = `plan-optional-${++_planSeq}`;
         html += `<div class="plan-optional">
@@ -3716,14 +3717,14 @@ function renderPriorities(rm, checks, resilience) {
                 <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
             </button>
             <div class="plan-optional-body is-hidden" id="${groupId}">
-                ${extras.map(item => _priorityRow(item, cards, resilience, true)).join('')}
+                ${extras.map(item => _priorityRow(item, cards, resilience, true, dnsHost)).join('')}
             </div>
         </div>`;
     }
     return html;
 }
 
-function _priorityRow(item, cards, resilience, optional) {
+function _priorityRow(item, cards, resilience, optional, dnsHost) {
     const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
     const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     const card = cards[item.protocol];
@@ -3760,11 +3761,37 @@ function _priorityRow(item, cards, resilience, optional) {
         <div class="priority-body is-hidden" id="${bodyId}">
             ${why ? part('Why it matters', why) : ''}
             ${part(what.hasRecord ? 'What to paste' : 'What to change', what.html)}
-            ${item.who ? part('Who does this', escapeHtml(item.who)) : ''}
+            ${item.who ? part('Who does this', escapeHtml(_planWho(item.who, dnsHost))) : ''}
             ${part('How to confirm', escapeHtml(confirm))}
             <button class="plan-card-link" data-scroll-to="${anchor}">Open the ${escapeHtml(item.protocol)} card</button>
         </div>
     </div>`;
+}
+
+// The DNS host's name after "Your DNS host" when the nameservers name one.
+function _planWho(who, dnsHost) {
+    return who === 'Your DNS host' && dnsHost ? `${who}, ${dnsHost.name} (steps above)` : who;
+}
+
+// Inline `code` in a host tip, after escaping.
+function _tipHtml(text) {
+    return escapeHtml(text).replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+// Where to paste: the DNS host the nameservers belong to and its steps for
+// adding a record, from dns_hosts.py. Nothing when no one host is known.
+function renderDnsHost(host) {
+    if (!host || !host.steps) return '';
+    const tips = [host.name_tip, host.value_tip].filter(Boolean)
+        .map(t => `<p class="dns-host-tip">${_tipHtml(t)}</p>`).join('');
+    const warning = host.warning
+        ? `<p class="dns-host-warning">${_tipHtml(host.warning)}</p>` : '';
+    return `<section class="dns-host" aria-labelledby="dns-host-title">
+        <h3 class="dns-host-title" id="dns-host-title">Your DNS is at ${escapeHtml(host.name)}. To add a record there:</h3>
+        <ol class="dns-host-steps">${host.steps.map(st => `<li>${escapeHtml(st)}</li>`).join('')}</ol>
+        ${tips}${warning}
+        <a class="dns-host-source" href="${escapeHtml(host.source)}" target="_blank" rel="noopener">${escapeHtml(host.name)}'s help page</a>
+    </section>`;
 }
 
 // Why it matters: the item's impact, and for a monitoring DMARC policy the

@@ -380,6 +380,7 @@ def _should_include(check_key, scope_set):
 # Backed by the shared plain answer cache. A single complete audit used to
 # re-issue about 35 identical queries because nothing anywhere cached.
 from dns_tools import get_resolver as _get_resolver, lookup_ttl as _lookup_ttl
+from dns_hosts import dns_host_block, lookup_ns
 
 
 def _get_dnssec_resolver(timeout: float = 8.0):
@@ -5150,6 +5151,17 @@ def _spf_include_cost(spf_inc: str):
     return 1 + (resolved.get("total_lookups") or 0), bool(resolved.get("indeterminate"))
 
 
+def _dns_host(domain: str, raw_results: Dict) -> Optional[Dict]:
+    """Where this domain's records are edited. Reuses the nameserver check's
+    answer when that check ran, else asks NS once; a failure is None."""
+    try:
+        ns = [n.get("hostname", "") for n in
+              (raw_results.get("nameservers") or {}).get("nameservers") or []]
+        return dns_host_block(domain, ns or lookup_ns(domain, _get_resolver(4.0)))
+    except Exception:
+        return None
+
+
 def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                    scope: Optional[str] = None,
                    progress_callback=None,
@@ -6305,6 +6317,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         # Gmail, Yahoo and Microsoft sender requirements (2026-10-25); None
         # when this run did not read SPF, DKIM and DMARC.
         "sender_requirements": (None if is_defensive else build_sender_requirements(checks)),
+        # The DNS host and its steps for adding a record (dns_hosts.py), or
+        # None when the nameservers do not all belong to one known host.
+        "dns_host": _dns_host(domain, raw_results),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
         "consistency_findings": consistency,

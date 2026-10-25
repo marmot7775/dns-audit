@@ -1208,6 +1208,57 @@ main {
     margin-bottom: var(--space-md);
 }
 
+/* Where to paste: the DNS host's steps, once, above the plan rows. */
+.dns-host {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.dns-host-title {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-sm);
+}
+
+.dns-host-steps {
+    margin: 0 0 var(--space-sm);
+    padding-left: 1.25rem;
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+}
+
+.dns-host-steps li + li {
+    margin-top: var(--space-xs);
+}
+
+.dns-host-tip {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+}
+
+/* A tip that breaks email records when missed: same text, an amber rule. */
+.dns-host-warning {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+    border-left: 3px solid var(--warn);
+    padding-left: var(--space-sm);
+}
+
+.dns-host-source {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: var(--font-sm);
+}
+
 .plan-part-label {
     font-size: var(--font-xs);
     font-weight: 600;
