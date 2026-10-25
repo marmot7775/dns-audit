@@ -57,6 +57,8 @@ def test_header_carries_the_wordmark(path):
     assert '<nav class="site-nav" aria-label="Main navigation">' in header
     for label in ("Home", "Articles", "About"):
         assert re.search(rf'class="nav-link(?: nav-link-active)?">{label}</a>', header), label
+    # The Email Header Decoder is its own static site on a subdomain.
+    assert '<a href="https://headers.dns-audit.com/" class="nav-link">Header Decoder</a>' in header
     assert 'id="theme-toggle"' in header
 
 
