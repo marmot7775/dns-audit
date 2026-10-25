@@ -3,7 +3,7 @@
 knoxville.org sends aggregate reports to an address at lbmc.com, and
 knoxville.org._report._dmarc.lbmc.com publishes no TXT record, so receivers
 drop the reports (RFC 9990 section 4). _check_report_authorization raises
-that as an error and the DMARC card fails for it, but the card's fix said
+that as an error (the card grades it amber since 2026-10-25), but the card's fix said
 "Remove the pct tag" (the pct warning's fix came first) and the plan had no
 row for it: the fallback that gives every failing card a row skips a
 protocol that already has one.
@@ -42,7 +42,7 @@ DMARC = f"v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@{RECEIVER}"
 
 def test_card_fix_names_the_authorization_record(audit):
     card = _card(_run(audit, DMARC))
-    assert card["status"] == "fail"
+    assert card["status"] == "warn"  # amber since 2026-10-25
     assert AUTH_HOST in card["fix"], card["fix"]
     assert "pct" not in card["fix"], card["fix"]
     assert f"address at {D}" in card["fix"], card["fix"]
@@ -69,3 +69,9 @@ def test_no_row_when_the_receiver_has_authorized_the_reports(audit):
     assert _card(result)["status"] != "fail"
     assert _auth_rows(result) == []
     assert _card(result).get("unauthorized_reports") == []
+
+
+def test_card_fix_names_the_authorization_record_over_a_pct_warning(audit):
+    card = _card(_run(audit, f"v=DMARC1; p=quarantine; pct=50; rua=mailto:dmarc@{RECEIVER}"))
+    assert card["status"] == "warn"
+    assert AUTH_HOST in card["fix"], card["fix"]

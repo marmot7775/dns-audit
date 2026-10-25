@@ -25,6 +25,8 @@
   rua=, more than one record is published, a tag is duplicated, or no parser
   can read it (Doc 44). warn, amber: published and working but weak (p=none
   with or without rua, pct below 100, sp weaker than p, DMARC without rua, a
+  rua destination that has not authorized the reports (since 2026-10-25; Doc 38
+  had it red, but receivers still apply the record), a
   DMARC tag receivers ignore under RFC 9989 section 4.8 such as an unknown
   tag or a malformed optional value, a 1024-bit DKIM key, MTA-STS mode
   testing). SPF ~all and -all both pass: DMARC is the policy layer, so the
