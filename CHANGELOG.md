@@ -133,6 +133,14 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-25: Since your last check
+
+- Run the same domain again and the results open with what changed since
+  your last audit in this browser: plan items fixed and new, and checks
+  that got better or worse. Kept in local storage only (`auditHistory`,
+  ten domains, two audits each), never sent to the server; the Clear
+  button removes it with the recent list. Privacy page updated.
+
 ## 2026-10-25: Shorter reports, Cert Spotter, fewer buttons
 
 - PDF Report downloads the report a client reads: the short answer, the

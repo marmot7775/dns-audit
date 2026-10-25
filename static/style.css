@@ -8228,3 +8228,51 @@ h4.smap-detail-sub {
         justify-content: flex-start;
     }
 }
+
+/* Recheck (2026-10-25): what changed since the last audit in this browser. */
+.recheck {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius);
+    padding: 1rem 1.5rem;
+    margin-bottom: var(--space-xl);
+}
+
+.recheck-heading {
+    font-size: var(--font-md);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs);
+}
+
+.recheck-none {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.recheck-sub {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: var(--space-sm) 0 var(--space-xs);
+}
+
+.recheck-good { color: var(--pass); }
+.recheck-bad { color: var(--fail-text); }
+
+.recheck-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    line-height: 1.55;
+}
+
+.recheck-foot {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin: var(--space-sm) 0 0;
+}

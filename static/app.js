@@ -861,6 +861,9 @@ function renderResults(data, selector = '') {
     // -- Gmail, Yahoo and Microsoft sender requirements, under the headline --
     renderRequirements(data);
 
+    // -- What changed since this browser last audited the domain --
+    renderRecheck(data);
+
     // -- Executive Summary (Prompt 16) -- render at the very top --
     _execSummary = data.executive_summary || null;
     const esSlot = document.getElementById('executive-summary-slot');
@@ -1441,6 +1444,102 @@ function layoutSenderMap(canvas, nodes) {
     svg.setAttribute('width', W);
     svg.setAttribute('height', H);
     svg.innerHTML = lines;
+}
+
+// ============================================================
+// Recheck (2026-10-25): what changed since your last audit
+// ============================================================
+
+// Kept in this browser only (localStorage, like recentAudits): for the last
+// ten domain and scope pairs, the card statuses and plan rows of the latest
+// audit and the one before it. Re-rendering the same result compares with
+// the one before, so a cached result or a re-render does not read as
+// "nothing changed".
+const RECHECK_KEY = 'auditHistory';
+const RECHECK_KEEP = 10;
+const RECHECK_WORD = { pass: 'Pass', warn: 'Could be stronger', fail: 'Needs fixing',
+                       absent: 'Optional, not set up', unavailable: 'Not checked' };
+
+function _recheckSnapshot(data) {
+    const statuses = {};
+    (data.checks || []).forEach(c => { if (c.name) statuses[c.plain_name || c.name] = c.status; });
+    const actions = ((data.security_roadmap && data.security_roadmap.items) || [])
+        .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low')
+        // The action ("Publish a DMARC record") reads right under Fixed and
+        // New; the plain head describes the problem.
+        .map(i => i.action || i.plain_head || '').filter(Boolean);
+    return { at: data.audited_at || data.timestamp || '', statuses, actions };
+}
+
+function _readRecheck() {
+    try {
+        const v = JSON.parse(localStorage.getItem(RECHECK_KEY) || '{}');
+        return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch {
+        try { localStorage.removeItem(RECHECK_KEY); } catch { /* storage gone */ }
+        return {};
+    }
+}
+
+// Returns the earlier snapshot to compare with, and records this one.
+function recheckRemember(data) {
+    const key = `${data.domain}|${_resultScope(data)}`;
+    const now = _recheckSnapshot(data);
+    let before = null;
+    try {
+        const all = _readRecheck();
+        const entry = all[key];
+        if (entry && entry.current && entry.current.at === now.at) {
+            before = entry.previous || null;
+        } else {
+            before = entry ? entry.current : null;
+            all[key] = { current: now, previous: before, touched: Date.now() };
+            const keys = Object.keys(all).sort((a, b) => (all[b].touched || 0) - (all[a].touched || 0));
+            keys.slice(RECHECK_KEEP).forEach(k => delete all[k]);
+            localStorage.setItem(RECHECK_KEY, JSON.stringify(all));
+        }
+    } catch { /* localStorage unavailable: no comparison */ }
+    return { before, now };
+}
+
+function recheckDiff(before, now) {
+    const fixed = before.actions.filter(a => !now.actions.includes(a));
+    const added = now.actions.filter(a => !before.actions.includes(a));
+    const moved = Object.keys(now.statuses)
+        .filter(n => n in before.statuses && before.statuses[n] !== now.statuses[n])
+        .map(n => ({ name: n, from: before.statuses[n], to: now.statuses[n] }));
+    return { fixed, added, moved };
+}
+
+function renderRecheck(data) {
+    const slot = document.getElementById('recheck-slot');
+    if (!slot) return;
+    const { before, now } = recheckRemember(data);
+    if (!before) { slot.innerHTML = ''; return; }
+    const d = recheckDiff(before, now);
+    const when = (() => {
+        const t = new Date(before.at);
+        return isNaN(t) ? 'your last check' : `your last check on ${t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    })();
+    const list = (items, cls) => items.length
+        ? `<ul class="recheck-list ${cls}">${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '';
+    const nothing = !d.fixed.length && !d.added.length && !d.moved.length;
+    const better = d.moved.filter(m => _recheckRank(m.to) > _recheckRank(m.from));
+    const worse = d.moved.filter(m => _recheckRank(m.to) < _recheckRank(m.from));
+    const moveLine = m => `${m.name}: ${RECHECK_WORD[m.from] || m.from} to ${RECHECK_WORD[m.to] || m.to}`;
+    slot.innerHTML = `<section class="recheck" aria-labelledby="recheck-heading">
+        <h2 class="recheck-heading" id="recheck-heading">Since ${escapeHtml(when)}</h2>
+        ${nothing ? '<p class="recheck-none">Nothing changed.</p>' : ''}
+        ${d.fixed.length ? `<h3 class="recheck-sub recheck-good">Fixed (${d.fixed.length})</h3>${list(d.fixed, 'recheck-fixed')}` : ''}
+        ${better.length ? `<h3 class="recheck-sub recheck-good">Better (${better.length})</h3>${list(better.map(moveLine), 'recheck-better')}` : ''}
+        ${d.added.length ? `<h3 class="recheck-sub recheck-bad">New (${d.added.length})</h3>${list(d.added, 'recheck-new')}` : ''}
+        ${worse.length ? `<h3 class="recheck-sub recheck-bad">Worse (${worse.length})</h3>${list(worse.map(moveLine), 'recheck-worse')}` : ''}
+        <p class="recheck-foot">Compared in your browser with the last audit you ran here. Nothing is stored on the server.</p>
+    </section>`;
+}
+
+function _recheckRank(status) {
+    return { fail: 0, warn: 1, unavailable: 1, absent: 2, pass: 3 }[status] ?? 1;
 }
 
 // The checklist answers Inbox readiness's question directly, so it shows
@@ -4834,6 +4933,7 @@ function _renderRecentAudits() {
 
         container.querySelector('.recent-audits-clear').addEventListener('click', () => {
             localStorage.removeItem('recentAudits');
+            localStorage.removeItem(RECHECK_KEY);
             container.style.display = 'none';
         });
     } catch {
