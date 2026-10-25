@@ -6955,18 +6955,6 @@ h3.services-sub,
     flex-wrap: wrap;
 }
 
-/* Two classes, so it outranks every .audit-btn state it restyles. */
-.audit-btn.export-csv-btn {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-}
-
-.audit-btn.export-csv-btn:hover {
-    background: var(--surface-hover);
-    color: var(--text-primary);
-}
-
 /* ==========================================================================
    Additional Responsive (Prompt 7)
    ========================================================================== */

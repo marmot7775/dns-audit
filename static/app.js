@@ -1232,26 +1232,10 @@ function renderResults(data, selector = '') {
                     </svg>
                     <span>Run Another Audit</span>
                 </button>
-                <button class="audit-btn export-csv-btn" type="button" title="Export audit results as CSV">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    <span>Export CSV</span>
-                </button>
             </div>
         `;
         resultsSection.appendChild(runAnother);
         runAnother.querySelector('.run-another-btn').addEventListener('click', _resetAndFocusInput);
-        runAnother.querySelector('.export-csv-btn').addEventListener('click', () => _exportToCSV(data));
-    } else {
-        // Re-bind CSV export to latest data
-        const csvBtn = runAnother.querySelector('.export-csv-btn');
-        const newCsvBtn = csvBtn.cloneNode(true);
-        csvBtn.parentNode.replaceChild(newCsvBtn, csvBtn);
-        newCsvBtn.addEventListener('click', () => _exportToCSV(data));
     }
 }
 
@@ -4907,43 +4891,6 @@ function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
 // ============================================================
 // CSV Export (Prompt 15)
 // ============================================================
-
-function _exportToCSV(data) {
-    if (!data) return;
-    const rows = [['Domain', 'Check', 'Status', 'Verdict', 'Priorities', 'Timestamp']];
-    const ts = new Date().toISOString();
-    const priorities = ((data.security_roadmap && data.security_roadmap.items) || [])
-        .map(i => i.action).join('; ');
-
-    if (data.checks && data.checks.length > 0) {
-        data.checks.forEach(check => {
-            rows.push([
-                data.domain,
-                check.name || '',
-                check.status || '',
-                (check.verdict || '').replace(/,/g, ';'),
-                priorities,
-                ts,
-            ]);
-        });
-    } else {
-        rows.push([data.domain, '', '', '', priorities, ts]);
-    }
-
-    const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safeDomain = data.domain.replace(/[^a-zA-Z0-9.-]/g, '');
-    const dateStr = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `dns-audit-${safeDomain}-${dateStr}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('CSV downloaded');
-}
 
 // ============================================================
 // Run Another Audit helpers (Prompt 9)

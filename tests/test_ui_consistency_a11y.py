@@ -642,13 +642,13 @@ def test_r_before_any_audit_keeps_the_typed_domain(browser):
         ctx.close()
 
 
-def test_csv_export_of_a_result_with_no_checks_does_not_throw(browser):
+def test_the_results_page_offers_no_csv_export(browser):
+    # CSV export went on 2026-10-25: JSON export and the PDF carry the same
+    # results, and three download buttons were two too many.
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
-        page.evaluate("""() => { URL.createObjectURL = () => 'blob:x';
-                                 HTMLAnchorElement.prototype.click = () => {}; }""")
-        page.evaluate("() => _exportToCSV({domain: 'doc48.test', checks: [], security_roadmap: {items: []}})")
-        assert errors == []
+        assert page.evaluate("() => typeof _exportToCSV") == "undefined"
+        assert page.locator(".export-csv-btn").count() == 0
     finally:
         ctx.close()
 
