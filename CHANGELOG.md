@@ -133,6 +133,21 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-25: DNS changes, in order
+
+- Plan rows for SPF, DKIM, MTA-STS, TLS-RPT and BIMI carry records, as the
+  DMARC rows did: type, name and exact value where DNS tells us it (+all to
+  ~all, merged duplicate SPF records, DKIM tag fixes, a new MTA-STS policy
+  file and TXT record from the MX hosts, a TLS-RPT record). Where it does
+  not (a new DKIM key, a sender's include, a certificate URL, the move to
+  enforcement), the row says who supplies the value. A missing DMARC record
+  now gets the starter record on its row too.
+- Under the plan, DNS changes, in order: every record the plan asks for,
+  numbered, with why. Rows that edit one record become one entry carrying
+  all their edits, so working down the list never undoes a step. Same list
+  in the PDF after the plan. API: `security_roadmap.change_set` and each
+  row's `records`.
+
 ## 2026-10-25: Since your last check
 
 - Run the same domain again and the results open with what changed since

@@ -38,6 +38,7 @@ server.py                  FastAPI app, SSE, rate limiting, caching
 config.py                  Settings from the environment
 audit_engine.py            Raw checks for DMARC, SPF, DNSSEC, CAA, NS, DANE, CT, APRF; orchestration and timeouts
 result_transformer.py      Raw results to cards, summary, roadmap
+plan_records.py            The records each plan row asks for, and the change set
 pdf_report.py              PDF report
 dns_tools.py               Domain normalization, resolvers
 dns_snapshots.py           DNS record history for change detection

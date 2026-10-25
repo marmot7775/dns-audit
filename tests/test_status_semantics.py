@@ -402,7 +402,8 @@ def test_web_priorities_list_has_one_row_per_item_in_order():
     program = _js_functions("iconSvg", "ICON", "safeClass", "sentenceCase", "TIER_LABELS",
                             "isOptionalPlanItem", "renderPriorities", "_priorityRow",
                             "_planWhy", "_planWhat", "_planConfirm",
-                            "_planRecordBlock", "_dmarcPolicy") + """
+                            "_planRecordBlock", "CHANGE_OPS", "_recordHostLine",
+                            "_changeRecordBlock", "_dmarcPolicy") + """
 const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];
 function escapeHtml(t) {
     return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

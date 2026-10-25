@@ -30,6 +30,8 @@ from html import escape as _e
 
 from dkim_formatter import analyze_dkim_key_strength, dkim_record_problems, parse_dkim_tags
 from spf_recursive import spf_lookup_band
+import plan_records
+from plan_records import dkim_selector_records
 from dmarc_tree_walk import _psl_org_domain, _tld_extract
 
 # The tags RFC 9989 removed from DMARC (Appendix C.5.2). The one source for
@@ -1495,9 +1497,185 @@ _ATTENTION_ROWS = {
 }
 
 
+def _dkim_row_records(item: Dict, dkim: Dict, domain: str) -> List[Dict]:
+    """One record per selector the row names. Edits the published key where
+    the fix is a tag change; a new key comes from the provider."""
+    kind = item["_kind"]
+    sels = dkim_selector_records(dkim)
+    out = []
+    for sel in item.get("_selectors") or []:
+        if kind == "dkim_unregistered":
+            out.append(plan_records.record(
+                "delete", "CNAME", f"{sel['selector']}._domainkey.{domain}", sel.get("cname_target"),
+                note=(f"The value shown is the target being removed. If a service still signs "
+                      f"with selector {sel['selector']}, ask it for a new selector first.")))
+            continue
+        name = f"{sel}._domainkey.{domain}"
+        info = sels.get(sel) or {}
+        cur = info.get("record") or ""
+        if info.get("cname_target"):
+            out.append(plan_records.record(
+                "replace", "TXT", name, value_from=(
+                    f"The service your CNAME points at publishes this key, at "
+                    f"{info['cname_target']}. Ask it to fix the key; your zone holds only "
+                    "the CNAME, which stays as it is.")))
+            continue
+        edit = None
+        if kind == "dkim_version":
+            edit = {"set": {"v": "DKIM1"}, "first": "v"}
+        elif kind == "dkim_vorder":
+            edit = {"first": "v"}
+        elif kind == "dkim_email":
+            edit = {"remove": ["s"]}
+        elif kind == "dkim_sha1":
+            edit = {"set": {"h": "sha256"}}
+        elif kind == "dkim_test":
+            _flags = [f.strip() for f in dict(plan_records.parse_tags(cur)).get("t", "").split(":")
+                      if f.strip() and f.strip().lower() != "y"]
+            edit = {"set": {"t": ":".join(_flags)}} if _flags else {"remove": ["t"]}
+        if edit and cur:
+            edit = {"kind": "tags", "base": cur, "set": edit.get("set") or {},
+                    "remove": edit.get("remove") or [], "first": edit.get("first")}
+            value = plan_records.edit_tag_list(cur, edit["set"], edit["remove"], first=edit["first"])
+            note = ("Only the changed tag differs from the published key, and p= is unchanged. "
+                    "If your email provider manages this record, make the change there.")
+            if kind == "dkim_sha1":
+                note += " Your provider must sign with rsa-sha256, which every current provider does."
+            out.append(plan_records.record("replace", "TXT", name, value, note=note, edit=edit))
+            continue
+        if kind == "dkim_weak":
+            vf = ("Your email provider. Generate a 2048-bit key in its admin console and it "
+                  "gives you the value. Some providers rotate by giving you a new selector "
+                  "instead; publish that one, and remove this one once mail is signed with it.")
+        else:
+            vf = ("Your email provider. Republish the key from its admin console; the value "
+                  "has to be the one its signing server holds the private key for.")
+        out.append(plan_records.record("replace", "TXT", name, value_from=vf))
+    return out
+
+
+def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: str,
+                         now: Optional[datetime] = None) -> None:
+    """Give each row the records it asks for (plan_records.py). A value DNS
+    cannot tell us is None, with who supplies it."""
+    dmarc = check_map.get("DMARC", {})
+    spf = check_map.get("SPF", {})
+    dkim = check_map.get("DKIM", {})
+    mta_sts = check_map.get("MTA-STS", {})
+    tls_rpt = check_map.get("TLS-RPT", {})
+    bimi = check_map.get("BIMI", {})
+    mx_card = check_map.get("MX Records", {})
+    mx_hosts = plan_records.mx_hosts_from_card(mx_card)
+    _cur_dmarc = dmarc.get("record") if dmarc.get("status") != "unavailable" else None
+    R = plan_records.record
+    for item in items:
+        kind = item.get("_kind")
+        proto = item.get("protocol")
+        recs: List[Dict] = []
+        if proto == "DMARC" and item.get("record"):
+            host = item.get("host") or f"_dmarc.{domain}"
+            edit = item.get("_dmarc_edit")
+            recs.append(R("replace" if _cur_dmarc else "add", "TXT", host, item["record"],
+                          note=item.get("host_note"),
+                          edit=({"kind": "dmarc", "base": _cur_dmarc,
+                                 "set": dict(edit.get("set") or {}),
+                                 "remove": list(edit.get("remove") or [])}
+                                if edit and _cur_dmarc else None)))
+        elif kind == "dmarc_unauth":
+            recs.append(R("add", "TXT", item["_auth_host"], "v=DMARC1", by=item["_by"],
+                          note=(f"The administrator of {item['_by']} publishes this, in that "
+                                "domain's zone, not yours.")))
+        elif kind == "dmarc_multi":
+            recs.append(R("replace", "TXT", item.get("host") or f"_dmarc.{domain}", value_from=(
+                "Your choice of the one to keep. Delete every other TXT record at this name; "
+                "the published records are listed in the plan row.")))
+        elif kind == "dmarc_enforce":
+            recs.append(R("replace", "TXT", item.get("host") or f"_dmarc.{domain}", value_from=(
+                "Your DMARC reports. Change p=none to p=quarantine once they show every "
+                "service that sends as you passing DMARC; the rest of the record stays.")))
+        elif kind == "spf_missing" and not spf.get("fix_records"):
+            recs.append(plan_records.spf_missing_record(domain, mx_card.get("providers") or []))
+        elif kind == "spf_multiple":
+            _multi = spf.get("multiple_records") or []
+            merged = plan_records.spf_merge(_multi)
+            if merged:
+                note = (f"Delete the {len(_multi)} v=spf1 records at {domain} and publish this "
+                        "one in their place. It keeps every mechanism they list, and the "
+                        "first record's all.")
+                if plan_records.spf_lookup_terms(merged) > 10:
+                    note += (" It names more than 10 lookups, so receivers will return "
+                             "PermError until services you no longer use are removed.")
+                recs.append(R("replace", "TXT", domain, merged, note=note))
+            else:
+                recs.append(R("replace", "TXT", domain, value_from=(
+                    "You: one of the records uses redirect= or exp=, so which one wins is a "
+                    "choice. Publish one v=spf1 record listing every service that sends as you.")))
+        elif kind == "spf_plus_all" and spf.get("record"):
+            fixed = plan_records.spf_replace_all(spf["record"], "~")
+            if fixed:
+                recs.append(R("replace", "TXT", domain, fixed, note=(
+                    "Before you publish, check every service that sends as you is in the "
+                    "record: mail from a server it does not list will fail SPF.")))
+        elif kind == "spf_lookups":
+            recs.append(R("replace", "TXT", domain, value_from=(
+                "You and your senders. No single record fixes this: remove the include: of "
+                "each service you no longer use, or ask a sender for a narrower include. "
+                "The value depends on which services you keep.")))
+        elif kind == "card_fix" and proto == "SPF" and spf.get("record"):
+            if re.search(r"(^|\s)\?all\b", spf["record"], re.I):
+                recs.append(R("replace", "TXT", domain,
+                              plan_records.spf_replace_all(spf["record"], "~"), note=(
+                                  "?all tells receivers nothing. ~all marks mail from servers "
+                                  "the record does not list; check every sender is in it first.")))
+        elif kind and kind.startswith("dkim_"):
+            recs.extend(_dkim_row_records(item, dkim, domain))
+        elif kind == "mta_sts_absent":
+            recs.extend(plan_records.mta_sts_new(domain, mx_hosts, now))
+        elif (kind == "card_fix" and proto == "MTA-STS"
+              and mta_sts.get("policy_mode") == "testing"):
+            recs.extend(plan_records.mta_sts_enforce(domain, mta_sts, mx_hosts, now))
+        elif kind == "tls_rpt_absent":
+            recs.append(R("add", "TXT", f"_smtp._tls.{domain}",
+                          f"v=TLSRPTv1; rua=mailto:tls-reports@{domain}", note=(
+                              f"Replace tls-reports@{domain} with the mailbox or report service "
+                              "that should receive the reports. They arrive as JSON, one a day "
+                              "from each sender that supports TLS-RPT.")))
+        elif kind == "tls_rpt_fail":
+            _rua = re.search(r"rua\s*=\s*([^;\s]+(?:,[^;\s]+)*)", tls_rpt.get("record") or "", re.I)
+            _ok = _rua and all(u.strip().lower().startswith(("mailto:", "https:"))
+                               for u in _rua.group(1).split(","))
+            if _ok:
+                recs.append(R("replace", "TXT", f"_smtp._tls.{domain}",
+                              f"v=TLSRPTv1; rua={_rua.group(1)}",
+                              note="The reporting address is the one already published."))
+            else:
+                recs.append(R("replace", "TXT", f"_smtp._tls.{domain}", value_from=(
+                    "You: the address that should receive the reports, as "
+                    "v=TLSRPTv1; rua=mailto:<address>. It needs a mailto: or https: address.")))
+        elif kind == "bimi" and bimi.get("record"):
+            _tags = dict(plan_records.parse_tags(bimi["record"]))
+            if not _tags.get("a"):
+                _logo = _tags.get("l") or "<logo URL>"
+                recs.append(R("replace", "TXT", f"default._bimi.{domain}", value_from=(
+                    "Your certificate issuer. A VMC or CMC comes with the URL for a=, and the "
+                    f"record then reads v=BIMI1; l={_logo}; a=<certificate URL>.")))
+        # A card that offers its own records (null MX, null SPF) lends them to
+        # a row that has none.
+        if not recs:
+            _card = check_map.get(proto, {})
+            for fr in _card.get("fix_records") or []:
+                recs.append(R("add", fr.get("type", "TXT"), fr.get("host", ""),
+                              fr.get("value") or fr.get("suggested"),
+                              value_from=None if (fr.get("value") or fr.get("suggested"))
+                              else "Your DNS host.", note=fr.get("comment")))
+        if recs:
+            item["records"] = recs
+
+
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                            has_mx: bool = True, domain: str = "",
-                           scope: Optional[str] = None) -> Dict:
+                           scope: Optional[str] = None,
+                           now: Optional[datetime] = None) -> Dict:
     """Synthesize all check results into a prioritized action plan.
 
     Takes the transformed checks list and returns a roadmap with
@@ -1531,6 +1709,15 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # and the record it offers is for the owner's own domain: nothing in
         # it names the registry's host or an address there.
         _registry = dmarc.get("registry_policy") or {}
+        _first = (dmarc.get("record_builder") or {})
+        _first_rec = _first.get("recommended_record")
+        _first_host = (_first.get("deploy") or {}).get("host") or ""
+        if not _registry.get("suffix") and _first_rec and _first_host.startswith("_dmarc."):
+            _missing_row["host"] = _first_host
+            _missing_row["record"] = _first_rec
+            _missing_row["host_note"] = (
+                f"Replace dmarc-reports@{_first_host[len('_dmarc.'):]} with the mailbox or "
+                "report service that should receive the reports.")
         if _registry.get("suffix"):
             _sfx = _registry["suffix"]
             _builder = dmarc.get("record_builder") or {}
@@ -1557,7 +1744,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _dmarc_multi = dmarc.get("multiple_records") if dmarc.get("status") == "fail" else None
     if _dmarc_multi:
         _n_multi = len(_dmarc_multi)
-        items.append({"priority": "critical", "protocol": "DMARC",
+        items.append({"priority": "critical", "protocol": "DMARC", "_kind": "dmarc_multi",
                       "action": ("Remove the duplicate DMARC record" if _n_multi == 2
                                  else "Remove the duplicate DMARC records"),
                       "plain_head": ("Your spoofing policy is published more than once, so "
@@ -1571,7 +1758,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                       "policy and reporting address you want.")})
 
     if spf.get("status") == "fail" and spf.get("pill_label") == "Missing":
-        items.append({"priority": "critical", "protocol": "SPF",
+        items.append({"priority": "critical", "protocol": "SPF", "_kind": "spf_missing",
                       "action": "Publish an SPF record",
                       "plain_head": "Receivers cannot check which servers may send mail as you.",
                       "who": WHO_DNS_HOST,
@@ -1581,7 +1768,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # at the same tier as having none. It reaches the roadmap under its own pill
     # rather than "Missing", which is why it used to contribute nothing here.
     if spf.get("pill_label") == "Multiple records":
-        items.append({"priority": "critical", "protocol": "SPF",
+        items.append({"priority": "critical", "protocol": "SPF", "_kind": "spf_multiple",
                       "action": "Merge the duplicate SPF records into one",
                       "plain_head": "Your approved sender list is published twice, so receivers ignore both.",
                       "who": WHO_DNS_HOST,
@@ -1589,7 +1776,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
 
     # +all in SPF
     if spf.get("record") and "+all" in (spf.get("record") or ""):
-        items.append({"priority": "critical", "protocol": "SPF",
+        items.append({"priority": "critical", "protocol": "SPF", "_kind": "spf_plus_all",
                       "action": "Remove +all from your SPF record",
                       "plain_head": "Your approved sender list lets any server on the internet send as you.",
                       "who": WHO_DNS_HOST,
@@ -1627,6 +1814,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                if _rua_addr and dmarc.get("status") != "unavailable" else None)
                 if _rua_record:
                     _rua_row["record"] = _rua_record
+                    _rua_row["_dmarc_edit"] = {"set": {"rua": f"mailto:{_rua_addr}"}}
                     _rua_row["host_note"] = (f"Replace {_rua_addr} with the mailbox or report "
                                              f"service that should receive the reports.")
                 items.append(_rua_row)
@@ -1639,7 +1827,11 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if tb:
         for w in cw:
             if w.get("title") == "Missing p= tag":
+                _p_rec = (_edit_dmarc_record(dmarc.get("record"), {"p": "none"})
+                          if dmarc.get("status") != "unavailable" else None)
                 items.append({"priority": "high", "protocol": "DMARC",
+                              **({"record": _p_rec, "_dmarc_edit": {"set": {"p": "none"}}}
+                                 if _p_rec else {}),
                               "action": "Add a p= tag to the DMARC record",
                               "plain_head": ("Your DMARC record does not state its policy, so "
                                              "receiving mail servers treat it as p=none."),
@@ -1659,6 +1851,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         _auth_host = _dests[0]["auth_host"]
         _own = _auth_host.split("._report._dmarc.", 1)[0]
         items.append({"priority": "high", "protocol": "DMARC",
+                      "_kind": "dmarc_unauth", "_auth_host": _auth_host, "_by": _rd,
                       "action": f"Have {_rd} authorize the DMARC reports sent to it",
                       "plain_head": (f"Reports you asked for are dropped, because {_rd} has "
                                      "not agreed to receive them."),
@@ -1681,7 +1874,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     if scope not in INBOX_SCOPES and (
             health.get("status") == "monitoring"
             or (health.get("status") == "attention" and _p_none)):
-        items.append({"priority": "high", "protocol": "DMARC",
+        items.append({"priority": "high", "protocol": "DMARC", "_kind": "dmarc_enforce",
                       "action": "Progress from p=none to enforcement",
                       "plain_head": "Your settings do not ask receivers to block forged mail yet.",
                       "who": WHO_DNS_HOST,
@@ -1693,6 +1886,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                    if d.get("status") == "unregistered"]
     if _dkim_unreg:
         items.append({"priority": "critical", "protocol": "DKIM",
+                      "_kind": "dkim_unregistered", "_selectors": _dkim_unreg,
                       "action": ("Remove the DKIM record that points at an unregistered domain"
                                  if len(_dkim_unreg) == 1 else
                                  f"Remove the {len(_dkim_unreg)} DKIM records that point at unregistered domains"),
@@ -1710,6 +1904,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _dup_tags = dkim.get("dkim_duplicate_tags") or []
     if _dup_tags:
         items.append({"priority": "critical", "protocol": "DKIM",
+                      "_kind": "dkim_dup", "_selectors": _dup_tags,
                       "action": f"Remove the repeated tag from DKIM key {', '.join(_dup_tags)}",
                       "plain_head": _one_or_many(
                           _dup_tags,
@@ -1722,6 +1917,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _bad_version = dkim.get("dkim_bad_version") or []
     if _bad_version:
         items.append({"priority": "critical", "protocol": "DKIM",
+                      "_kind": "dkim_version", "_selectors": _bad_version,
                       "action": f"Set v=DKIM1 on DKIM key {', '.join(_bad_version)}",
                       "plain_head": _one_or_many(
                           _bad_version,
@@ -1734,6 +1930,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _unknown_type = dkim.get("dkim_unknown_key_type") or []
     if _unknown_type:
         items.append({"priority": "critical", "protocol": "DKIM",
+                      "_kind": "dkim_type", "_selectors": _unknown_type,
                       "action": f"Set k=rsa or k=ed25519 on DKIM key {', '.join(_unknown_type)}",
                       "plain_head": _one_or_many(
                           _unknown_type,
@@ -1746,6 +1943,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _no_email = dkim.get("dkim_excludes_email") or []
     if _no_email:
         items.append({"priority": "critical", "protocol": "DKIM",
+                      "_kind": "dkim_email", "_selectors": _no_email,
                       "action": f"Allow email on DKIM key {', '.join(_no_email)}",
                       "plain_head": _one_or_many(
                           _no_email,
@@ -1758,6 +1956,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _sha1_only = dkim.get("dkim_sha1_only") or []
     if _sha1_only:
         items.append({"priority": "critical", "protocol": "DKIM",
+                      "_kind": "dkim_sha1", "_selectors": _sha1_only,
                       "action": f"Allow SHA-256 on DKIM key {', '.join(_sha1_only)}",
                       "plain_head": ("One of your email signing keys only accepts an old hash "
                                      "that receivers refuse, so its signatures always fail."
@@ -1770,6 +1969,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _test_mode = dkim.get("dkim_test_mode") or []
     if _test_mode:
         items.append({"priority": "medium", "protocol": "DKIM",
+                      "_kind": "dkim_test", "_selectors": _test_mode,
                       "action": f"Turn off DKIM test mode on {', '.join(_test_mode)}",
                       "plain_head": ("A signing key is still marked as a test, so receivers "
                                      "may ignore its signatures."),
@@ -1778,6 +1978,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _v_order = dkim.get("dkim_version_not_first") or []
     if _v_order:
         items.append({"priority": "medium", "protocol": "DKIM",
+                      "_kind": "dkim_vorder", "_selectors": _v_order,
                       "action": f"Move v=DKIM1 to the front of DKIM key {', '.join(_v_order)}",
                       "plain_head": _one_or_many(
                           _v_order,
@@ -1794,7 +1995,9 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # for it, so the roadmap said nothing at all about a key failing every
     # signature it makes.
     if dkim_deep and dkim_deep.get("has_invalid"):
-        items.append({"priority": "critical", "protocol": "DKIM",
+        items.append({"priority": "critical", "protocol": "DKIM", "_kind": "dkim_invalid",
+                      "_selectors": [k["selector"] for k in dkim_deep.get("keys", [])
+                                     if k.get("invalid")],
                       "action": "Republish the unparseable DKIM key",
                       "plain_head": ("One of your email signing keys cannot be read, so mail "
                                      "signed with it fails the signature check."),
@@ -1806,7 +2009,10 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         _weak_n = sum(1 for k in dkim_deep.get("keys", [])
                       if k.get("rating") in ("red", "amber") and (k.get("bits") or 0) > 0
                       and not k.get("revoked")) or 1
-        items.append({"priority": "high", "protocol": "DKIM",
+        items.append({"priority": "high", "protocol": "DKIM", "_kind": "dkim_weak",
+                      "_selectors": [k["selector"] for k in dkim_deep.get("keys", [])
+                                     if k.get("rating") in ("red", "amber")
+                                     and (k.get("bits") or 0) > 0 and not k.get("revoked")],
                       "action": ("Rotate the weak DKIM key to 2048-bit" if _weak_n == 1
                                  else f"Rotate {_weak_n} weak DKIM keys to 2048-bit"),
                       "plain_head": ("One of your email signing keys is shorter than "
@@ -1828,7 +2034,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     spf_deep = spf.get("spf_deep") or {}
     _spf_band = _spf_card_band(spf)
     if _spf_band == "over":
-        items.append({"priority": "critical", "protocol": "SPF",
+        items.append({"priority": "critical", "protocol": "SPF", "_kind": "spf_lookups",
                       "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
                       "plain_head": ("Your approved sender list needs more DNS lookups than "
                                      "receiving servers allow, so some or all of your mail fails "
@@ -1836,7 +2042,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "who": WHO_DNS_HOST,
                       "impact": "Past 10 lookups, receivers return PermError. Some or all of your mail fails SPF, depending on the order of the record. For that mail, DMARC relies on DKIM alone."})
     elif _spf_band == "near":
-        items.append({"priority": "medium", "protocol": "SPF",
+        items.append({"priority": "medium", "protocol": "SPF", "_kind": "spf_lookups",
                       "action": f"Free up SPF lookups ({spf_deep['lookup_count']}/10)",
                       "plain_head": ("Your approved sender list is close to its limit. One "
                                      "more service could break it."),
@@ -1874,7 +2080,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # MX there is none, and naming MTA-STS as the biggest risk told a domain
     # that receives no mail its encryption could be stripped.
     if has_mx and _assessed(mta_sts) and mta_sts.get("pill_label") == PILL_ABSENT:
-        items.append({"priority": "medium", "protocol": "MTA-STS",
+        items.append({"priority": "medium", "protocol": "MTA-STS", "_kind": "mta_sts_absent",
                       "action": "Configure MTA-STS for TLS enforcement",
                       "plain_head": ("Optional: sending servers are not told to require "
                                      "encryption when they deliver to you."),
@@ -1882,14 +2088,14 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "impact": "Without MTA-STS, a sending server that cannot reach your mail server over TLS falls back to plaintext and nothing tells you."})
 
     if has_mx and _assessed(tls_rpt) and tls_rpt.get("pill_label") == PILL_ABSENT:
-        items.append({"priority": "medium", "protocol": "TLS-RPT",
+        items.append({"priority": "medium", "protocol": "TLS-RPT", "_kind": "tls_rpt_absent",
                       "action": "Configure TLS-RPT for failure visibility",
                       "plain_head": "Optional: you would not hear about failed encrypted deliveries to you.",
                       "who": WHO_DNS_HOST,
                       "impact": "You get no report when a sending server fails to reach your mail server over TLS."})
     elif has_mx and _assessed(tls_rpt) and tls_rpt.get("status") == "fail":
         # Published but broken: the row says what to fix, not "configure".
-        items.append({"priority": "medium", "protocol": "TLS-RPT",
+        items.append({"priority": "medium", "protocol": "TLS-RPT", "_kind": "tls_rpt_fail",
                       "action": _roadmap_fix_text(tls_rpt) or "Fix the TLS-RPT record",
                       "plain_head": ("Your encryption failure report record is broken, so "
                                      "no failure reports are sent."),
@@ -1958,7 +2164,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                               "plain_head": _head,
                               "who": WHO_DNS_HOST,
                               "impact": _impact,
-                              "record": _edit_dmarc_record(_cur, remove=_tags)})
+                              "record": _edit_dmarc_record(_cur, remove=_tags),
+                              "_dmarc_edit": {"remove": _tags}})
             elif reason in _ATTENTION_ROWS:
                 action, impact = _ATTENTION_ROWS[reason]
                 items.append({"priority": "medium", "protocol": "DMARC",
@@ -1966,7 +2173,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                               "plain_head": ("Test mode is on, so receivers apply a weaker "
                                              "policy than the one you set."),
                               "who": WHO_DNS_HOST,
-                              "record": _edit_dmarc_record(_cur, remove=["t"])})
+                              "record": _edit_dmarc_record(_cur, remove=["t"]),
+                              "_dmarc_edit": {"remove": ["t"]}})
             # The weaker sp and np reasons get their rows below, from the
             # record, with the policy values in them.
 
@@ -1981,7 +2189,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         pass
     elif bimi.get("status") != "pass":
         action = _roadmap_fix_text(bimi) or "Review your BIMI configuration"
-        items.append({"priority": "low", "protocol": "BIMI",
+        items.append({"priority": "low", "protocol": "BIMI", "_kind": "bimi",
                       "action": action,
                       # A warn card is a record that works and is weak, so
                       # only a failing one says the logo may not show.
@@ -2024,7 +2232,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                           "plain_head": "Your subdomains get a weaker policy than your main domain.",
                           "who": WHO_DNS_HOST,
                           "impact": _sp_impact,
-                          "record": _edit_dmarc_record(dmarc["record"], {"sp": _p_val})})
+                          "record": _edit_dmarc_record(dmarc["record"], {"sp": _p_val}),
+                          "_dmarc_edit": {"set": {"sp": _p_val}}})
         _np_val = _dmarc_tags.get("np", "").lower()
         if (_p_val in ("reject", "quarantine") and _np_val in _pol_rank
                 and _pol_rank[_np_val] < _pol_rank[_p_val]):
@@ -2033,6 +2242,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                           "plain_head": "Made-up subdomains get a weaker policy than your main domain.",
                           "who": WHO_DNS_HOST,
                           "record": _edit_dmarc_record(dmarc["record"], {"np": _p_val}),
+                          "_dmarc_edit": {"set": {"np": _p_val}},
                           "impact": (
                               f"np={_np_val} gives subdomains that do not exist, the kind "
                               f"invented for phishing, a weaker policy than p={_p_val}.")})
@@ -2046,6 +2256,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                           "plain_head": "Optional: subdomains already get your policy.",
                           "who": WHO_DNS_HOST,
                           "record": _edit_dmarc_record(dmarc["record"], {"np": _np_inherited}),
+                          "_dmarc_edit": {"set": {"np": _np_inherited}},
                           "impact": "Purely optional. Subdomains already inherit your enforcing policy without it."})
 
     # Items were appended in check order, which put a HIGH DMARC item above
@@ -2069,6 +2280,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         fix = _roadmap_fix_text(card)
         if fix:
             items.append({"priority": "high" if card["status"] == "fail" else "low",
+                          "_kind": "card_fix",
                           "protocol": name, "action": fix, "impact": "",
                           "plain_head": _fallback_head(name, card["status"]),
                           "who": _ROW_WHO.get(name, WHO_DNS_HOST)})
@@ -2087,6 +2299,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # The verdict states what was found ("SPF record configured"), not
         # why it matters, so it is not the impact. A second finding is.
         items.append({"priority": "high" if card["status"] == "fail" else "low",
+                      "_kind": "card_fix",
                       "protocol": name, "action": bad[0],
                       "impact": bad[1] if len(bad) > 1 else "",
                       "plain_head": _fallback_head(name, card["status"]),
@@ -2131,6 +2344,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         _note = _pct_kept_note(i.get("record")) if i["protocol"] == "DMARC" else None
         if _note:
             i["host_note"] = f"{i['host_note']} {_note}" if i.get("host_note") else _note
+
+    _attach_plan_records(items, check_map, domain, now)
 
     _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -2179,6 +2394,14 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         # and is never one of the first things to do.
         item["self_clearing"] = (item["protocol"] == "Nameservers"
                                  and _ns_serial_transient(check_map.get("Nameservers")))
+
+    # Every record the plan asks for, in plan order, with edits to one
+    # record folded together. The markers the rules above left are dropped.
+    change_set = plan_records.build_change_set(
+        items, {"dmarc": _edit_dmarc_record, "tags": plan_records.edit_tag_list})
+    for item in items:
+        for k in [k for k in item if k.startswith("_")]:
+            del item[k]
 
     # Count by tier
     tiers = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -2240,6 +2463,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         "items": items,
         "tiers": tiers,
         "summary": summary,
+        "change_set": change_set,
     }
 
 
@@ -5823,6 +6047,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             "pill_label": "Multiple records",
             "verdict": f"{_n} SPF records published (RFC 7208 requires exactly one)",
             "record": None,
+            "multiple_records": list(_multiple),
             "configured": True,
             "explanation": (
                 f"This domain publishes <strong>{_n}</strong> separate v=spf1 records. "
@@ -7135,6 +7360,12 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         "dkim_unknown_key_type": unknown_type_keys,
         "dkim_excludes_email": no_email_keys,
         "record": _live_records or None,
+        # Each live key with its name, for the plan's records. A key reached
+        # through a CNAME is published by whoever owns the target.
+        "dkim_selectors": [
+            {"selector": sel.get("selector", "unknown"), "record": sel.get("record", ""),
+             "cname_target": ((sel.get("cname_chain") or [None])[-1] or sel.get("cname_target"))}
+            for sel in live if sel.get("record")],
         "configured": True,
         "explanation": explanation,
         "details": details,
@@ -7334,6 +7565,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             "rating_label": rating_label,
             "rotation_status": rotation_status,
             "revoked": key_revoked,
+            "invalid": strength == "invalid" and not key_revoked,
             "provider": provider,
             "tags": dkim_tags,
         })
@@ -7594,6 +7826,11 @@ def transform_mx(raw: Dict) -> Dict:
         "fix_records": None,
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": _deliverability,
+        # For the plan's records: an MTA-STS policy lists these hosts, and
+        # the SPF row names the include of the provider they belong to.
+        "mx_hosts": [d.get("hostname", "") for d in sorted(
+            raw.get("mx_details", []), key=lambda d: d.get("priority", 0)) if d.get("hostname")],
+        "providers": providers,
     }
 
 
@@ -7784,6 +8021,10 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         "fix_records": None,
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": None,
+        # The published policy, so the plan can write the edited file.
+        "policy_mode": policy_mode,
+        "policy_mx": raw.get("policy_mx") or [],
+        "policy_max_age": raw.get("policy_max_age"),
     }
 
 

@@ -1234,6 +1234,106 @@ main {
     color: var(--text-secondary);
 }
 
+/* A record whose value DNS cannot tell us: who supplies it, in words. */
+.plan-record-from {
+    margin: var(--space-xs) 0;
+    color: var(--text-secondary);
+}
+
+.plan-record-from-label {
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+/* An MTA-STS policy file keeps its lines. */
+.record-block.record-block-file .record-text {
+    white-space: pre-wrap;
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+/* The change set: every record in the plan, numbered, closed by default
+   under the plan rows. */
+.change-set {
+    margin-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-sm);
+}
+
+.change-set .plan-optional-toggle .priority-summary {
+    margin-left: var(--space-sm);
+}
+
+.change-set-body {
+    padding: 0 var(--space-sm);
+    font-size: var(--font-sm);
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.cs-intro,
+.cs-foot {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin: var(--space-xs) 0 var(--space-sm);
+}
+
+.cs-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.cs-entry {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: var(--space-sm);
+    min-width: 0;
+}
+
+.cs-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-xs);
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    min-width: 4.5rem;
+}
+
+.cs-step {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.cs-body {
+    min-width: 0;
+}
+
+.cs-body .plan-record-host strong {
+    overflow-wrap: anywhere;
+}
+
+.cs-why {
+    font-size: var(--font-xs);
+    margin-top: var(--space-xs);
+}
+
+@media (max-width: 640px) {
+    .cs-entry {
+        grid-template-columns: 1fr;
+    }
+
+    .cs-meta {
+        flex-direction: row;
+        align-items: center;
+        min-width: 0;
+    }
+}
+
 .plan-card-link {
     background: none;
     border: none;
