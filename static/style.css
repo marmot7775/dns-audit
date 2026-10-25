@@ -784,7 +784,7 @@ main {
     contain: layout style;
 }
 
-/* Semantic heading resets for result sections (excludes .result-title) */
+/* Semantic heading resets for result sections (card titles are h4.result-title) */
 :where(.results-section h2) {
     margin: 0;
     font-size: inherit;
@@ -792,7 +792,7 @@ main {
     line-height: inherit;
 }
 
-:where(.results-section h3:not(.result-title)) {
+:where(.results-section h3) {
     margin: 0;
     font-size: inherit;
     font-weight: 600;
@@ -1653,10 +1653,11 @@ a.tag { text-decoration: none; }
     padding-bottom: calc(var(--space-md) + var(--space-xs));
 }
 
-/* Check name */
-h3.result-title,
+/* Check name. An h4 under its area's h3; it keeps the h1 to h3 tracking. */
+h4.result-title,
 .result-title {
     font-weight: 600;
+    letter-spacing: -0.02em;
     font-size: var(--font-md);
     color: var(--text-primary);
     margin: 0;
@@ -2133,9 +2134,10 @@ h3.result-title,
     font-style: normal;
 }
 
-/* Card sections are h4 so a screen reader can move between them; they keep
-   the look their class gives them. */
-:where(h4.sv-title, h4.mw-title, h4.rb-title, h4.rcb-title, h4.tree-walk-header, h4.se-header) {
+/* Panel titles inside a card's Details are h6 (area h3, card h4, Details 5,
+   section 6) so a screen reader can move between them; they keep the look
+   their class gives them. */
+:where(h6.sv-title, h6.mw-title, h6.rb-title, h6.rcb-title, h6.tree-walk-header, h6.se-header) {
     font: inherit;
 }
 

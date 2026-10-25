@@ -66,6 +66,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - PDF: the About page's brand title drew near-black on navy; check status
   labels wrapped; long tables lost their header row on the next page;
   "Optional extras" could end a page alone (#197).
+- Result card titles were h3, the same level as the area headings above
+  them, so moving by headings showed one flat list. Cards are now h4,
+  their Details 5, the sections and panels inside 6.
 
 ### Removed
 - The vendor fingerprinter (`advanced_fingerprinting.py`), its pattern table
