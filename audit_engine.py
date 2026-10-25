@@ -3660,16 +3660,21 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
             "ipv6": [],
             "resolves": False,
         }
-        try:
-            ns_info["ipv4"] = [str(r) for r in resolver.resolve(ns_host, "A")]
-        except dns.exception.DNSException:
-            pass
-        try:
-            ns_info["ipv6"] = [str(r) for r in resolver.resolve(ns_host, "AAAA")]
-        except dns.exception.DNSException:
-            pass
+        # NXDOMAIN or an empty answer says the host has no address. Any
+        # other failure (SERVFAIL, timeout) says nothing about the host, and
+        # a failed lookup is not a finding (docs/decisions/2026-09-02), so
+        # it must not read as a lame delegation.
+        failed = False
+        for qtype, key in (("A", "ipv4"), ("AAAA", "ipv6")):
+            try:
+                ns_info[key] = [str(r) for r in resolver.resolve(ns_host, qtype)]
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                pass
+            except dns.exception.DNSException:
+                failed = True
         ns_info["resolves"] = bool(ns_info["ipv4"] or ns_info["ipv6"])
         if not ns_info["resolves"]:
+            ns_info["lookup_failed"] = failed
             return ns_info, None
 
         # Use first IPv4 address for the query
@@ -3826,7 +3831,8 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
     # Two nameservers is standard and fine. No need to flag it.
 
     # 2. Unresolvable nameservers (lame delegation)
-    lame_ns = [ns for ns in ns_details if not ns["resolves"]]
+    lame_ns = [ns for ns in ns_details
+               if not ns["resolves"] and not ns.get("lookup_failed")]
     if lame_ns:
         lame_names = ", ".join(ns["hostname"] for ns in lame_ns)
         _add_issue(
