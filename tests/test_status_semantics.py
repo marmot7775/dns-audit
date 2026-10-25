@@ -400,7 +400,7 @@ def test_web_priorities_list_has_one_row_per_item_in_order():
     # Doc 92 split the row out of renderPriorities and grouped optional
     # extras at the end; the absent MTA-STS row is one, and is still last.
     program = _js_functions("iconSvg", "ICON", "safeClass", "sentenceCase", "TIER_LABELS",
-                            "isOptionalPlanItem", "renderPriorities", "_priorityRow",
+                            "isOptionalPlanItem", "renderPriorities", "_priorityRow", "_planWho",
                             "_planWhy", "_planWhat", "_planConfirm",
                             "_planRecordBlock", "_dmarcPolicy") + """
 const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];

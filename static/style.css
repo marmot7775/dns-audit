@@ -1208,6 +1208,57 @@ main {
     margin-bottom: var(--space-md);
 }
 
+/* Where to paste: the DNS host's steps, once, above the plan rows. */
+.dns-host {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.dns-host-title {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-sm);
+}
+
+.dns-host-steps {
+    margin: 0 0 var(--space-sm);
+    padding-left: 1.25rem;
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+}
+
+.dns-host-steps li + li {
+    margin-top: var(--space-xs);
+}
+
+.dns-host-tip {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+}
+
+/* A tip that breaks email records when missed: same text, an amber rule. */
+.dns-host-warning {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+    border-left: 3px solid var(--warn);
+    padding-left: var(--space-sm);
+}
+
+.dns-host-source {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: var(--font-sm);
+}
+
 .plan-part-label {
     font-size: var(--font-xs);
     font-weight: 600;
@@ -7498,11 +7549,13 @@ h3.services-sub,
    audit found something. Deliberately not a call-to-action: no border, no
    accent colour, muted text, sized to the
    results column it sits in rather than to its own content. */
+/* Under the plan since 2026-10-25: the reader who has just read what to
+   fix is the one who may want help with it. */
 .results-contact-note {
     font-size: var(--font-sm);
     color: var(--text-muted);
     line-height: 1.5;
-    margin: var(--space-lg) 0 0;
+    margin: 0 0 var(--space-xl);
 }
 .results-contact-note a {
     color: var(--text-muted);
@@ -8275,4 +8328,74 @@ h4.smap-detail-sub {
     font-size: var(--font-xs);
     color: var(--text-tertiary);
     margin: var(--space-sm) 0 0;
+}
+
+/* Certificate Transparency retry (2026-10-25): a line under the card's
+   header while the page asks again, then Try again if it still fails. */
+.ct-retry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0 1.25rem var(--space-sm) 3.25rem;
+}
+
+.ct-retry-text {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin: 0;
+}
+
+.ct-retry-btn {
+    min-height: 44px;
+    padding: 0 var(--space-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--font-sm);
+    cursor: pointer;
+}
+
+.ct-retry-btn:hover {
+    border-color: var(--primary);
+}
+
+@media (max-width: 640px) {
+    .ct-retry {
+        padding-left: 1rem;
+    }
+}
+
+/* Example domains under the home page box (2026-10-25). Hidden once a
+   result is on screen, like the title and the selector link. */
+.try-examples {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    margin: var(--space-md) 0 0;
+    font-size: var(--font-sm);
+    color: var(--text-tertiary);
+}
+
+.try-example {
+    min-height: 44px;
+    padding: 0 var(--space-sm);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.try-example:hover {
+    border-color: var(--primary);
+    color: var(--text-primary);
+}
+
+.audit-input-section.compact .try-examples {
+    display: none;
 }

@@ -121,6 +121,14 @@ deploy.local.md at the repo root, a local file that .gitignore keeps out of
 the repo; substitute them before running anything below.
 deploy/dns-auditor.service is a template for the same reason.
 
+Merging to main deploys (2026-10-25): .github/workflows/deploy.yml SSHes to
+the droplet with a forced-command key (repo secrets DEPLOY_SSH_KEY,
+DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS) that can only run
+~/deploy-dns-audit.sh there: fast-forward to origin/main, pip install,
+restart, wait for /api/health. The job then checks the live /api/health
+version equals the merged commit. A cloud session ships by merging a PR
+that passed CI. By hand, the same thing is:
+
 git push && ssh DEPLOY_USER@DROPLET_HOST "cd dns-security-auditor && git pull && ~/.venv/bin/pip install -r requirements.txt && sudo systemctl restart dns-auditor"
 The droplet directory keeps the old name on purpose: the repo became dns-audit in Doc 54, the checkout on the server did not move.
 
