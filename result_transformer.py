@@ -9087,10 +9087,11 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
         status = "warn"
         pill_label = "No active certs"
     else:
-        pill_label = f"{active} cert{'s' if active != 1 else ''}"
+        pill_label = f"{active}{'+' if raw.get('partial') else ''} cert{'s' if active != 1 else ''}"
 
-    # Verdict
-    verdict = f"{active} active cert{'s' if active != 1 else ''} from {len(issuers)} issuer{'s' if len(issuers) != 1 else ''}"
+    # Verdict. A partial list (the first page of a longer one) gives a floor.
+    active_txt = f"{active}+" if raw.get("partial") else str(active)
+    verdict = f"{active_txt} active cert{'s' if active != 1 else ''} from {len(issuers)} issuer{'s' if len(issuers) != 1 else ''}"
 
     # Explanation
     explanation = (
@@ -9111,8 +9112,17 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
     details = []
     details.append({
         "type": "good" if active else "warning",
-        "text": f"{active} active cert{'s' if active != 1 else ''} from {len(issuers)} issuer{'s' if len(issuers) != 1 else ''}",
+        "text": verdict,
     })
+    if raw.get("partial"):
+        details.append({
+            "type": "info",
+            "text": (
+                f"{_e(raw.get('source') or 'The log service')} returned the first {total} "
+                "certificates of a longer list, oldest first. Renewals are on the pages "
+                "not fetched, so expiry was not judged."
+            ),
+        })
 
     # Issuer breakdown
     issuer_parts = []
