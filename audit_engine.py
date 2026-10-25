@@ -17,7 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from datetime import datetime, timezone
 from html import escape as _e
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 log = logging.getLogger(__name__)
 
@@ -2530,6 +2530,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     ip4_count = 0
     ip6_count = 0
     has_redirect = False
+    # RFC 7208 section 6: redirect and exp MUST NOT appear more than once.
+    modifier_counts = {"redirect": 0, "exp": 0}
     has_all = False
     seen_mechanisms = []
 
@@ -2566,6 +2568,16 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             # Modifier (redirect=, exp=)
             mod_name, _, mod_value = raw.partition("=")
             mod_name_lower = mod_name.lower()
+            if mod_name_lower in modifier_counts:
+                modifier_counts[mod_name_lower] += 1
+                if modifier_counts[mod_name_lower] == 2:
+                    _add_syntax(
+                        f"More than one {mod_name_lower}= modifier",
+                        f"RFC 7208 section 6 allows {mod_name_lower}= at most once. "
+                        "A second one is a syntax error, so receivers return "
+                        "PermError for the whole record.",
+                        f"Keep one {mod_name_lower}= modifier and remove the others.",
+                    )
 
             if mod_name_lower == "redirect":
                 has_redirect = True
@@ -2683,6 +2695,21 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             elif mech_lower == "ptr":
                 # Reported once, by spf_recursive (merged below).
                 seen_mechanisms.append(part)
+
+            elif mech_lower in ("include", "exists", "ip4", "ip6"):
+                # RFC 7208 sections 5.2, 5.6 and 5.7: these take a required
+                # ":" argument, unlike a, mx and ptr.
+                _add_syntax(
+                    f"'{raw}' has no value",
+                    f"The {mech_lower} mechanism needs a value after a colon, "
+                    "so on its own it is a syntax error and receivers return "
+                    "PermError for the whole record.",
+                    f"Add the value, e.g. {mech_lower}:"
+                    + ("192.0.2.1" if mech_lower == "ip4"
+                       else "2001:db8::1" if mech_lower == "ip6"
+                       else "_spf.example.com")
+                    + f", or remove '{raw}'.",
+                )
 
             elif mech_lower in KNOWN_MECHANISMS or DUAL_CIDR_MECHANISM_RE.match(mech_lower):
                 seen_mechanisms.append(part)
@@ -3633,16 +3660,21 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
             "ipv6": [],
             "resolves": False,
         }
-        try:
-            ns_info["ipv4"] = [str(r) for r in resolver.resolve(ns_host, "A")]
-        except dns.exception.DNSException:
-            pass
-        try:
-            ns_info["ipv6"] = [str(r) for r in resolver.resolve(ns_host, "AAAA")]
-        except dns.exception.DNSException:
-            pass
+        # NXDOMAIN or an empty answer says the host has no address. Any
+        # other failure (SERVFAIL, timeout) says nothing about the host, and
+        # a failed lookup is not a finding (docs/decisions/2026-09-02), so
+        # it must not read as a lame delegation.
+        failed = False
+        for qtype, key in (("A", "ipv4"), ("AAAA", "ipv6")):
+            try:
+                ns_info[key] = [str(r) for r in resolver.resolve(ns_host, qtype)]
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                pass
+            except dns.exception.DNSException:
+                failed = True
         ns_info["resolves"] = bool(ns_info["ipv4"] or ns_info["ipv6"])
         if not ns_info["resolves"]:
+            ns_info["lookup_failed"] = failed
             return ns_info, None
 
         # Use first IPv4 address for the query
@@ -3799,7 +3831,8 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
     # Two nameservers is standard and fine. No need to flag it.
 
     # 2. Unresolvable nameservers (lame delegation)
-    lame_ns = [ns for ns in ns_details if not ns["resolves"]]
+    lame_ns = [ns for ns in ns_details
+               if not ns["resolves"] and not ns.get("lookup_failed")]
     if lame_ns:
         lame_names = ", ".join(ns["hostname"] for ns in lame_ns)
         _add_issue(
@@ -4142,6 +4175,48 @@ def _parse_ct_timestamp(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+# Days left at which a certificate with no successor in the logs is flagged.
+# ACME clients renew with about a third of the lifetime left, 30 days on a
+# 90-day certificate and 15 on a 45-day one, so a 30-day window caught
+# healthy automation mid-cycle on most domains.
+CT_EXPIRING_DAYS = 10
+
+
+def _ct_names(cert: Dict[str, Any]) -> Set[str]:
+    """The lowercased names a CT row covers: its SANs, or its CN if none."""
+    names = {n.strip().lower() for n in (cert.get("name_value") or "").split("\n")}
+    names.discard("")
+    if not names and cert.get("common_name"):
+        names.add(cert["common_name"].strip().lower())
+    return names
+
+
+def _ct_name_covered(name: str, names: Set[str]) -> bool:
+    """True when name is in names, directly or under a one-label wildcard."""
+    if name in names:
+        return True
+    head, _, parent = name.partition(".")
+    return bool(parent) and not head.startswith("*") and f"*.{parent}" in names
+
+
+def _ct_renewed(cert: Dict[str, Any], not_after: datetime,
+                later: List[Tuple[datetime, Set[str]]]) -> bool:
+    """True when every name on cert is covered by a certificate in later
+    that expires after it.
+
+    CT logs keep every certificate ever issued, so the one a renewal replaced
+    stays listed until it runs out. Without this, a domain whose renewals all
+    work was told its certificates were expiring.
+    """
+    names = _ct_names(cert)
+    if not names:
+        return False
+    return all(
+        any(end > not_after and _ct_name_covered(name, covered) for end, covered in later)
+        for name in names
+    )
+
+
 def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
     """Query crt.sh for Certificate Transparency logs and analyze findings.
 
@@ -4170,6 +4245,9 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         # Which log index answered: "crt.sh", or "Cert Spotter" when crt.sh
         # did not (2026-10-25). The card names it.
         "source": None,
+        # True when the source returned only the first page of a longer
+        # list: the counts are a floor and expiry is not judged.
+        "partial": False,
     }
 
     def _add_issue(severity, issue, plain_english, fix=None):
@@ -4201,6 +4279,12 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
             return None
         if not isinstance(rows, list):
             return None
+        # Cert Spotter pages its answer, oldest issuance first, and only the
+        # first page is fetched (its unauthenticated limit is a few queries a
+        # minute). A domain with a next page has its newest certificates,
+        # the renewals, on pages this check never sees.
+        if (getattr(r, "links", None) or {}).get("next"):
+            result["partial"] = True
         out = []
         for row in rows:
             names = row.get("dns_names") or []
@@ -4300,8 +4384,17 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
     expired_recent = []
     subdomains = set()
 
+    # Every certificate not yet expired can stand in for one it outlasts,
+    # a scheduled renewal that is not valid yet included.
+    unexpired = []
     for cert in unique_certs:
-        issuer_name = cert.get("issuer_name", "Unknown")
+        end = _parse_ct_timestamp(cert.get("not_after"))
+        if end and end > now:
+            unexpired.append((end, _ct_names(cert)))
+
+    for cert in unique_certs:
+        # crt.sh sends null, not an absent key, for a missing field.
+        issuer_name = cert.get("issuer_name") or "Unknown"
         # Extract the CN or O from the issuer DN
         issuer_short = issuer_name
         for part in issuer_name.split(","):
@@ -4329,7 +4422,10 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
             active_count += 1
 
         # Wildcard detection
-        common_name = cert.get("common_name", "")
+        # Let's Encrypt's newer profiles leave the CN out (crt.sh: null), so
+        # the first SAN names the certificate instead.
+        common_name = cert.get("common_name") or next(
+            (n.strip() for n in (cert.get("name_value") or "").split("\n") if n.strip()), "")
         if common_name.startswith("*."):
             wildcards.append({
                 "common_name": common_name,
@@ -4337,10 +4433,11 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
                 "not_after": not_after_str or "",
             })
 
-        # Expiring soon (within 30 days) — only active certs
-        if is_active and not_after:
+        # Expiring soon: active, inside the window, and not already renewed.
+        # A partial list cannot show the renewal, so it makes no claim.
+        if is_active and not_after and not result.get("partial"):
             days_left = (not_after - now).days
-            if days_left <= 30:
+            if days_left <= CT_EXPIRING_DAYS and not _ct_renewed(cert, not_after, unexpired):
                 expiring_soon.append({
                     "common_name": common_name,
                     "not_after": not_after_str or "",
@@ -4362,7 +4459,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
                 })
 
         # Subdomain discovery from SAN (name_value field)
-        name_value = cert.get("name_value", "")
+        name_value = cert.get("name_value") or ""
         for name in name_value.split("\n"):
             name = name.strip().lower()
             if name and name != domain and name.endswith("." + domain):
@@ -4452,8 +4549,10 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         result["status"] = "warning"
         _add_issue(
             "warning",
-            f"{len(expiring_soon)} certificate{'s' if len(expiring_soon) != 1 else ''} expiring within 30 days",
-            f"{len(expiring_soon)} active certificate{'s' if len(expiring_soon) != 1 else ''} will expire soon. Ensure auto-renewal is working.",
+            f"{len(expiring_soon)} certificate{'s' if len(expiring_soon) != 1 else ''} expiring within {CT_EXPIRING_DAYS} days",
+            f"{len(expiring_soon)} active certificate{'s' if len(expiring_soon) != 1 else ''} "
+            f"expire{'s' if len(expiring_soon) == 1 else ''} within {CT_EXPIRING_DAYS} days "
+            "and the logs show no newer certificate for the same names. Check that renewal is working.",
         )
 
     if result["status"] == "info" and active_count > 0:

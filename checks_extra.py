@@ -413,6 +413,10 @@ def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, A
             policy["mx_patterns"].append(value)
         elif key == "max_age":
             try:
+                # RFC 8461 section 3.2: max_age is 1*10DIGIT. int() also
+                # takes "-5", "+5" and "1_000_000", which the grammar does not.
+                if not re.fullmatch(r"[0-9]{1,10}", value):
+                    raise ValueError(value)
                 max_age_val = int(value)
                 policy["max_age"] = max_age_val
                 if max_age_val < 86400:

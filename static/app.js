@@ -234,6 +234,9 @@ let auditStartTime = 0;
 let auditController = null;
 let auditReader = null;
 let auditInFlight = false;
+// Counts runAudit calls, so a result's delayed reveal can tell that a newer
+// audit has started since.
+let auditSeq = 0;
 // Ids for the collapsible sections, so each toggle can name what it controls.
 let _cdSectionSeq = 0;
 let _piGuidanceSeq = 0;
@@ -271,19 +274,26 @@ function syncScopeDesc() {
 }
 syncScopeDesc();
 
+// Marks one scope pill as selected and makes it the scope the next audit runs.
+function setActiveScope(scope) {
+    currentScope = scope;
+    document.querySelectorAll('.scope-btn').forEach(b => {
+        const on = b.dataset.scope === scope;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+        b.setAttribute('tabindex', on ? '0' : '-1');
+    });
+    syncScopeDesc();
+}
+
 document.querySelectorAll('.scope-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        document.querySelectorAll('.scope-btn').forEach(b => {
-            b.classList.remove('active');
-            b.setAttribute('aria-checked', 'false');
-            b.setAttribute('tabindex', '-1');
-        });
-        btn.classList.add('active');
-        btn.setAttribute('aria-checked', 'true');
-        btn.setAttribute('tabindex', '0');
-        const changed = currentScope !== btn.dataset.scope;
-        currentScope = btn.dataset.scope;
-        syncScopeDesc();
+        // Changed against the results on screen, not against currentScope:
+        // the arrow keys and a click during an audit move currentScope
+        // without running anything, and comparing with it then swallowed
+        // the click that should have run the selected scope.
+        const changed = !lastAuditData || _resultScope(lastAuditData) !== btn.dataset.scope;
+        setActiveScope(btn.dataset.scope);
         // On a results page the pills switch the question for the same
         // domain: run it again under the new scope.
         if (changed && lastAuditData && !auditInFlight && domainInput.value.trim()) {
@@ -342,14 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rawScope = params.get('scope') || (domain ? 'complete' : null);
     const scope = (rawScope && LEGACY_SCOPES[rawScope]) || rawScope;
     if (scope && Object.prototype.hasOwnProperty.call(SCOPE_CHECKS, scope)) {
-        currentScope = scope;
-        document.querySelectorAll('.scope-btn').forEach(b => {
-            const on = b.dataset.scope === scope;
-            b.classList.toggle('active', on);
-            b.setAttribute('aria-checked', on ? 'true' : 'false');
-            b.setAttribute('tabindex', on ? '0' : '-1');
-        });
-        syncScopeDesc();
+        setActiveScope(scope);
     }
     // A shared link carries the selector its audit was run with. Same rule
     // as the server's SELECTOR_PATTERN (config.py); anything else is dropped.
@@ -523,6 +526,7 @@ async function runAudit(domain) {
     const controller = auditController;
     const signal = controller.signal;
     auditInFlight = true;
+    auditSeq += 1;
 
     // Idle watchdog. A stalled TCP connection (Cloudflare drops it, the laptop
     // sleeps, the phone moves from Wi-Fi to LTE) leaves reader.read() hanging:
@@ -558,7 +562,13 @@ async function runAudit(domain) {
         const resp = await fetch(streamUrl, { signal });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Audit failed (HTTP ${resp.status})`);
+            const httpErr = new Error(err.detail || `Audit failed (HTTP ${resp.status})`);
+            // The server answered: a 4xx (a bad selector, a rate limit) or a
+            // 503 at capacity gets the same answer from the JSON endpoint,
+            // and asking again costs a second rate limit slot. Only a 500,
+            // 502 or 504, which can be the stream itself failing, falls back.
+            httpErr.fromServer = resp.status < 500 || resp.status === 503;
+            throw httpErr;
         }
 
         const reader = resp.body.getReader();
@@ -811,7 +821,16 @@ function renderResults(data, selector = '') {
     // selected now: clicking another scope mid-audit made the tiles, the
     // share text, the URL and the PDF link describe different runs.
     const scopeAtRender = _resultScope(data);
+    // The pills show the question these results answer. A pill clicked
+    // while the audit ran used to stay lit over results for another scope.
+    if (Object.prototype.hasOwnProperty.call(SCOPE_CHECKS, scopeAtRender)) {
+        setActiveScope(scopeAtRender);
+    }
+    // An audit started inside the next 300 ms owns the page: this timer must
+    // not hide its loading state and show these older results over it.
+    const renderSeq = auditSeq;
     setTimeout(() => {
+        if (renderSeq !== auditSeq) return;
         hideLoading();
         resultsSection.style.display = 'block';
 
@@ -846,6 +865,9 @@ function renderResults(data, selector = '') {
         // This render's selector, not the one a link opened with.
         if (selector) url.searchParams.set('sel', selector);
         else url.searchParams.delete('sel');
+        // A #check-* hash is read once, above. Left in the URL it opened the
+        // same card on every later audit of another domain.
+        url.hash = '';
         window.history.replaceState({}, '', url);
     }, 300);
 
@@ -1589,7 +1611,17 @@ function recheckRemember(data) {
             before = entry.previous || null;
         } else {
             before = entry ? entry.current : null;
-            all[key] = { current: now, previous: before, touched: Date.now() };
+            // A check that was not read this time keeps its last known
+            // status in storage, so the next run compares with a reading.
+            const stored = { ...now, statuses: { ...now.statuses } };
+            if (before && before.statuses) {
+                Object.keys(stored.statuses).forEach(n => {
+                    if (stored.statuses[n] === 'unavailable' && n in before.statuses) {
+                        stored.statuses[n] = before.statuses[n];
+                    }
+                });
+            }
+            all[key] = { current: stored, previous: before, touched: Date.now() };
             const keys = Object.keys(all).sort((a, b) => (all[b].touched || 0) - (all[a].touched || 0));
             keys.slice(RECHECK_KEEP).forEach(k => delete all[k]);
             localStorage.setItem(RECHECK_KEY, JSON.stringify(all));
@@ -1601,8 +1633,11 @@ function recheckRemember(data) {
 function recheckDiff(before, now) {
     const fixed = before.actions.filter(a => !now.actions.includes(a));
     const added = now.actions.filter(a => !before.actions.includes(a));
+    // "Not checked" says the lookup did not complete, nothing about the
+    // record, so a move into or out of it is neither better nor worse.
     const moved = Object.keys(now.statuses)
         .filter(n => n in before.statuses && before.statuses[n] !== now.statuses[n])
+        .filter(n => before.statuses[n] !== 'unavailable' && now.statuses[n] !== 'unavailable')
         .map(n => ({ name: n, from: before.statuses[n], to: now.statuses[n] }));
     return { fixed, added, moved };
 }

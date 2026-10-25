@@ -43,3 +43,15 @@ def test_normalize_domain_converts_idn_to_punycode():
 def test_normalize_domain_invalid_no_exception():
     # Best-effort: invalid IDN passes through (lowercased) for downstream validation.
     assert normalize_domain("not a domain") == "not a domain"
+
+
+def test_normalize_domain_ignores_an_at_sign_in_the_url_path_or_query():
+    # Only an "@" in the authority part names the host. One in the path or
+    # the query used to win, so the wrong domain was audited silently.
+    assert normalize_domain("https://example.com/contact?to=a@example.net") == "example.com"
+    assert normalize_domain("https://medium.example/@someone") == "medium.example"
+    assert normalize_domain("example.com/@x") == "example.com"
+    assert normalize_domain("example.com#a@example.net") == "example.com"
+    # An address and userinfo still resolve to the host after the "@".
+    assert normalize_domain("mailto:someone@example.org") == "example.org"
+    assert normalize_domain("https://user@example.org/path") == "example.org"

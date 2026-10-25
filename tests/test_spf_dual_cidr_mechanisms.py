@@ -28,9 +28,13 @@ def _build_card(record):
     with patch.object(audit_engine, "_lookup_txt", return_value=[record]), \
          patch.object(audit_engine, "_lookup_ttl", return_value=None), \
          patch.object(spf_recursive, "_lookup_spf",
-                      return_value={"record": record,
-                                    "status": spf_recursive.SPF_FOUND,
-                                    "error": None}), \
+                      side_effect=lambda name: {
+                          # Only the audited name carries the record under
+                          # test; returning it for the include target too
+                          # made the include loop back on itself.
+                          "record": record if name == DOMAIN else "v=spf1 -all",
+                          "status": spf_recursive.SPF_FOUND,
+                          "error": None}), \
          patch.object(spf_recursive, "_mechanism_lookup_status",
                       return_value="ok"):
         raw = audit_engine._raw_check_spf(DOMAIN)
