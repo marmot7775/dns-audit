@@ -980,6 +980,9 @@ def _plan_item(data, item, S, optional=False):
     body = [head, Paragraph(f"{_safe(item.get('protocol', ''))}", S["body_tiny"])]
 
     who = item.get("who") or ""
+    host = data.get("dns_host") or {}
+    if who == "Your DNS host" and host.get("name"):
+        who = f"{who}, {host['name']} (steps at the top of this section)"
     if who:
         body.append(Paragraph(f"<b>Who does this:</b> {_safe(who)}", S["body_small"]))
 
@@ -1003,6 +1006,32 @@ def _plan_item(data, item, S, optional=False):
 REQUIREMENT_SCOPES = ("deliverability", "complete")
 _REQ_WORD = {"met": ("Met", PASS_CLR), "not_met": ("Not met", FAIL_CLR),
              "unknown": ("Not confirmed", NEUTRAL_CLR)}
+
+
+def _tip(text):
+    """A host tip with its `code` spans set in the mono font, after escaping."""
+    return re.sub(r"`([^`]+)`", lambda m: f'<font name="{FONTS["mono"]}">{m.group(1)}</font>',
+                  _safe(text))
+
+
+def _dns_host_block(data, S):
+    """Where to paste: the DNS host's steps for adding a record, as the web
+    page shows them above the plan rows. Nothing when no one host is known."""
+    host = data.get("dns_host") or {}
+    steps = host.get("steps") or []
+    if not host.get("name") or not steps:
+        return []
+    els = [Paragraph(f"<b>Your DNS is at {_safe(host['name'])}. To add a record there:</b>",
+                     S["body"])]
+    for n, step in enumerate(steps, 1):
+        els.append(Paragraph(f"{n}. {_safe(step)}", S["body_small"]))
+    for tip in (host.get("name_tip"), host.get("value_tip"), host.get("warning")):
+        if tip:
+            els.append(Paragraph(_tip(tip), S["body_small"]))
+    els.append(Paragraph(f'Source: <link href="{_safe(host.get("source", ""))}">'
+                         f'{_safe(host.get("source", ""))}</link>', S["body_tiny"]))
+    els.append(Spacer(1, SP_MD))
+    return els
 
 
 def _requirements_block(data, S):
@@ -1063,6 +1092,7 @@ def _roadmap_page(data, S, number=2):
     els.append(_tally_line(data.get("checks", []) or [], S))
     els.append(Spacer(1, SP_MD))
     els.extend(_requirements_block(data, S))
+    els.extend(_dns_host_block(data, S))
 
     # Tier summary bar. Counted as the web heading counts them: an optional
     # extra is optional whatever its tier.
