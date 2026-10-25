@@ -77,7 +77,7 @@ def _fake_resolve_method(self, name, rdtype="A", *args, **kwargs):
     return _fake_resolve(name, rdtype, *args, **kwargs)
 
 
-def test_unauthorized_third_party_rua_fails_the_dmarc_card():
+def test_unauthorized_third_party_rua_grades_the_dmarc_card_amber():
     with patch("dns.resolver.Resolver.resolve", _fake_resolve_method), \
          patch("dns.resolver.resolve", _fake_resolve):
         result = audit_engine.run_full_audit(DOMAIN, scope="dmarc")
@@ -93,7 +93,7 @@ def test_unauthorized_third_party_rua_fails_the_dmarc_card():
         f"Must not claim reporting is cleanly configured when the "
         f"destination is unauthorized; got: {detail_texts!r}"
     )
-    assert dmarc_card["status"] == "fail", (
-        f"An unauthorized external report destination (RFC 7489 S7.1) must "
-        f"fail the DMARC card; got status={dmarc_card['status']!r}"
+    assert dmarc_card["status"] == "warn", (
+        f"An unauthorized external report destination (RFC 7489 S7.1) grades "
+        f"the DMARC card amber (2026-10-25); got status={dmarc_card['status']!r}"
     )

@@ -794,6 +794,12 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             return verdict, "fail", "shield-x"
         if _quarantine_pct0:
             return verdict, "warn", "warning"
+        if (dmarc.get("reports_dropped") and dmarc_status == "warn"
+                and (_eff_policy != "none" or scope == DELIVERABILITY_SCOPE)):
+            # espn.com sends reports to disney.com, which has not authorized
+            # them. The policy is in force; the reports are thrown away.
+            return ("Your DMARC record is in force, but the reports it asks for "
+                    "are dropped.", "warn", "warning")
         if _eff_policy == "none":
             # Doc 104: Email Deliverability asks whether the domain meets the
             # providers' DMARC requirement, and p=none does. The card says
@@ -2920,6 +2926,9 @@ def _build_dmarcbis_card_data(readiness: Optional[Dict], record: Optional[str]) 
 # so under Email Deliverability a p=none record meets the requirement. Every
 # other scope grades it as a spoofing question, amber.
 DELIVERABILITY_SCOPE = "deliverability"
+# audit_engine._check_report_authorization's issue for an rua or ruf
+# destination that has not authorized this domain's reports.
+_UNAUTHORIZED_REPORT_ISSUE = "External report destination not authorized"
 DMARC_P_NONE_ISSUE = "DMARC policy is none (monitoring only)"
 DELIVERABILITY_P_NONE_NOTE = (
     "Mailbox providers require bulk senders to publish DMARC, and p=none meets "
@@ -3109,6 +3118,19 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     policy = raw.get("policy", "")
     record = raw.get("record")
     pill_label = None
+    # A report destination that has not authorized this domain's reports
+    # (RFC 9990 section 4). Receivers still apply the record and only the
+    # reports are dropped, so it grades warn like a record with no rua, not
+    # fail (this replaced Doc 38's red on 2026-10-25). The engine files it as
+    # an error; on this card it is a warning, on a copy of the issues.
+    reports_dropped = any((i.get("issue") or "").startswith(_UNAUTHORIZED_REPORT_ISSUE)
+                          for i in raw.get("issues", []))
+    if reports_dropped:
+        raw = {**raw, "issues": [
+            {**i, "severity": "warning"}
+            if (i.get("issue") or "").startswith(_UNAUTHORIZED_REPORT_ISSUE) else i
+            for i in raw["issues"]
+        ]}
 
     # Check if this domain inherits policy (raw_dmarc fields set by
     # _enrich_dmarc_inheritance using tree walk first, PSL fallback)
@@ -3260,7 +3282,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         )
         if has_fatal_syntax or has_engine_errors:
             status = "fail"
-        elif status == "pass" and syntax:
+        elif status == "pass" and (syntax or reports_dropped):
             status = "warn"
         # sp weaker than p is one of Doc 38's warn rules: the root enforces
         # and its subdomains get less. np weaker than p is the same gap for
@@ -3449,7 +3471,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
             unauthorized = [d for d in rua_dests if d.get("authorized") is False]
             if unauthorized:
                 details.append({
-                    "type": "error",
+                    "type": "warning",
                     "text": (
                         f"Aggregate reporting (rua): {len(rua_dests)} destination{'s' if len(rua_dests) != 1 else ''}, "
                         f"{len(unauthorized)} not authorized (reports silently dropped)"
@@ -3576,6 +3598,11 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 f"Add an <strong>rua=</strong> reporting address: either your own mailbox "
                 f"(reports arrive as compressed XML) or a DMARC reporting service that provides a dashboard."
             )
+    elif reports_dropped and status != "fail":
+        # The fix names the destination that has to authorize the reports,
+        # ahead of a pct or tag warning (knoxville.org, PR #128).
+        fix = _first_fix([i for i in raw.get("issues", [])
+                          if (i.get("issue") or "").startswith(_UNAUTHORIZED_REPORT_ISSUE)])
     elif raw.get("syntax_errors") or any(i.get("severity") == "error" for i in raw.get("issues", [])):
         # Prioritize syntax/error fixes over generic policy advice, and an
         # error over a warning: the fix names what fails the card. A pct
@@ -3762,6 +3789,9 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # deliverability scope grades p=none as meeting the providers'
         # requirement, so the page, the PDF and the tests can tell it from
         # a pass earned under the spoofing rules.
+        # Some report destination has not authorized the reports, so they
+        # are dropped while the policy still applies.
+        "reports_dropped": reports_dropped,
         "graded_for_scope": (DELIVERABILITY_SCOPE
                              if _p_none_for_delivery and status == "pass" else None),
     }

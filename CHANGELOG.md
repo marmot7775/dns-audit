@@ -133,6 +133,17 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-25: Reports that are dropped no longer read as a broken record
+
+- A DMARC record whose rua destination has not authorized the reports (RFC
+  9990 section 4) grades amber, not red. Receivers still apply its policy;
+  only the reports are dropped. The headline said "receivers ignore it",
+  which was false; it now says the record is in force and the reports are
+  dropped, and the summary no longer calls the record broken. The card fix
+  and the plan row still name the destination that has to authorize them.
+- Asset version strings point at a commit in the current history again
+  (the 2026-10-24 history rewrite left them on old SHAs and failed CI).
+
 ## 2026-10-24: Doc 104. p=none graded by the question the scope asks
 
 Review doc: [docs/history/doc-104.md](docs/history/doc-104.md).

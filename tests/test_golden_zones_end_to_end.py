@@ -272,7 +272,7 @@ def test_card_statuses_match_the_zone(golden):
         assert status["SPF"] == "fail", "+all authorizes the whole internet"
         assert status["DMARC"] != "pass", "pct=0 means the policy does nothing"
     elif name == "third_party_rua":
-        assert status["DMARC"] == "fail", "unauthorized rua destination"
+        assert status["DMARC"] == "warn", "unauthorized rua destination: amber since 2026-10-25"
 
 
 # ------------------------------------------------------------------
@@ -303,7 +303,7 @@ def test_unauthorized_third_party_rua_is_surfaced(audit):
 
     texts = " ".join(d.get("text", "") for d in dmarc.get("details", [])).lower()
     assert "not authorized" in texts
-    assert dmarc["status"] == "fail"
+    assert dmarc["status"] == "warn"  # amber since 2026-10-25: the policy still applies
 
 
 def test_misconfigured_zone_does_not_report_protection(audit):
