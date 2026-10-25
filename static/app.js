@@ -4221,44 +4221,25 @@ function renderTreeNode(node, totalLookups, isRoot) {
 }
 
 // ============================================================
-// Export JSON
-// ============================================================
-
-document.getElementById('export-btn').addEventListener('click', () => {
-    if (!lastAuditData) return;
-    const exportBtn = document.getElementById('export-btn');
-    exportBtn.classList.add('btn-busy');
-    exportBtn.disabled = true;
-    try {
-        const blob = new Blob([JSON.stringify(lastAuditData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `dns-audit-${lastAuditData.domain || 'report'}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } finally {
-        setTimeout(() => { exportBtn.classList.remove('btn-busy'); exportBtn.disabled = false; }, 600);
-    }
-});
-
-// ============================================================
 // PDF Report Download
 // ============================================================
 
-document.getElementById('pdf-btn').addEventListener('click', () => {
+// PDF Report is the report a client reads (Part 1, no appendix); Full
+// report adds the technical appendix (2026-10-25). The JSON export button
+// went at the same time: /api/audit returns the same JSON.
+function downloadPdf(btnId, appendix) {
     if (!lastAuditData || !lastAuditData.domain) return;
-    const pdfBtn = document.getElementById('pdf-btn');
-    pdfBtn.classList.add('btn-busy');
-    pdfBtn.disabled = true;
+    const btn = document.getElementById(btnId);
+    btn.classList.add('btn-busy');
+    btn.disabled = true;
     const domain = encodeURIComponent(lastAuditData.domain);
     const scope = _resultScope(lastAuditData);
     const selectorParam = lastAuditSelector ? `&selector=${encodeURIComponent(lastAuditSelector)}` : '';
-    window.open(`/api/audit/${domain}/pdf?scope=${scope}${selectorParam}`, '_blank');
-    setTimeout(() => { pdfBtn.classList.remove('btn-busy'); pdfBtn.disabled = false; }, 2000);
-});
+    window.open(`/api/audit/${domain}/pdf?scope=${scope}&appendix=${appendix ? 1 : 0}${selectorParam}`, '_blank');
+    setTimeout(() => { btn.classList.remove('btn-busy'); btn.disabled = false; }, 2000);
+}
+document.getElementById('pdf-btn').addEventListener('click', () => downloadPdf('pdf-btn', false));
+document.getElementById('pdf-full-btn').addEventListener('click', () => downloadPdf('pdf-full-btn', true));
 
 // ============================================================
 // Expand All / Collapse All

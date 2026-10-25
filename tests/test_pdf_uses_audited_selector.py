@@ -18,8 +18,9 @@ def _source():
 
 
 def _pdf_handler(src):
-    start = src.index("document.getElementById('pdf-btn').addEventListener")
-    return src[start:src.index("});", start)]
+    # Both PDF buttons call downloadPdf (2026-10-25).
+    start = src.index("function downloadPdf(")
+    return src[start:src.index("\n}\n", start)]
 
 
 def test_pdf_handler_does_not_read_the_selector_input():
