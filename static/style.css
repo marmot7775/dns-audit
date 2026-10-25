@@ -780,7 +780,7 @@ main {
 .results-section {
     display: none;
     animation: fadeIn 0.45s var(--ease-out);
-    scroll-margin-top: 4.5rem;
+    scroll-margin-top: calc(var(--header-h, 4rem) + 0.5rem);
     contain: layout style;
 }
 
@@ -1554,7 +1554,7 @@ a.tag { text-decoration: none; }
     overflow: hidden;
     /* A #check-* link or openCard lands the card below the sticky header,
        as .results-section does, not under it. */
-    scroll-margin-top: 4.5rem;
+    scroll-margin-top: calc(var(--header-h, 4rem) + 0.5rem);
     opacity: 0;
     transform: translateY(12px);
     animation: cardEntrance 400ms var(--ease-out) forwards;
@@ -7511,7 +7511,7 @@ h3.services-sub,
 .article-card-meta a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .article-card-meta a:hover { color: var(--text-secondary); }
 /* /about#neil lands below the sticky header */
-#neil { scroll-margin-top: 5rem; }
+#neil { scroll-margin-top: calc(var(--header-h, 4rem) + 1rem); }
 .articles-empty {
     display: none;
     margin: 0;

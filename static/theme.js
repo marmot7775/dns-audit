@@ -19,7 +19,19 @@
         btn.title = 'Switch to ' + next + ' theme';
     }
 
+    // The sticky header is one line on desktop and two on a phone, so
+    // anchors land below its measured height, not a fixed guess.
+    function trackHeader() {
+        var hdr = document.querySelector('.site-header');
+        if (!hdr) return;
+        function set() { root.style.setProperty('--header-h', hdr.offsetHeight + 'px'); }
+        set();
+        if (window.ResizeObserver) new ResizeObserver(set).observe(hdr);
+        else window.addEventListener('resize', set);
+    }
+
     function init() {
+        trackHeader();
         var btn = document.getElementById('theme-toggle');
         if (!btn) return;
         relabel(btn);

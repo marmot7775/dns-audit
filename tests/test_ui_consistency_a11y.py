@@ -47,8 +47,10 @@ def _rules(css):
 # Every CSS variable used is defined
 # ---------------------------------------------------------------
 
-# Set per element from app.js with style.setProperty, never in a token block.
-SET_FROM_JS = {"--line-delay"}
+# Set from JavaScript with style.setProperty, never in a token block:
+# --line-delay per element in app.js, --header-h on <html> in theme.js
+# (the measured height of the sticky header; every use has a fallback).
+SET_FROM_JS = {"--line-delay", "--header-h"}
 
 
 def _token_blocks(css):
