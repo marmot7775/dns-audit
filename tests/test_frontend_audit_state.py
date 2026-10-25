@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from test_dmarc_grades import RUA, _run  # noqa: E402
+from test_dmarc_grades import _run  # noqa: E402
 from test_ui_consistency_a11y import _page, _render, browser, fixture_result  # noqa: E402,F401
 
 
