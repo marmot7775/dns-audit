@@ -405,13 +405,16 @@ def normalize_domain(value: str) -> str:
     if not value:
         return ""
     domain = str(value).strip().lower()
-    if "@" in domain:
-        domain = domain.split("@")[-1]
     domain = (
         domain.removeprefix("http://")
         .removeprefix("https://")
     )
+    # Cut the path, query and fragment before looking for an "@": in a URL
+    # only an "@" in the authority part names the host, and one in
+    # a path or query such as /contact?to=a@example.net does not.
     domain = domain.split("/")[0].split("?")[0].split("#")[0]
+    if "@" in domain:
+        domain = domain.split("@")[-1]
     # Strip port (e.g. example.com:443)
     if ":" in domain:
         domain = domain.rsplit(":", 1)[0]
