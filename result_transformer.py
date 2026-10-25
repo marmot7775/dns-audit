@@ -118,10 +118,9 @@ WHAT_THIS_IS = {
         "reject first."
     ),
     "Certificate Transparency": (
-        "Public logs that every certificate authority writes to when it "
-        "issues a certificate. Reading them shows every certificate that "
-        "exists for your domain, including ones nobody at your company "
-        "ordered."
+        "Public logs of the certificates browsers trust. Reading them shows "
+        "the certificates issued for your domain, including ones nobody at "
+        "your company ordered."
     ),
 }
 
@@ -8961,22 +8960,23 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
             verdict = "Not checked by this audit"
             explanation = (
                 "Certificate Transparency was not assessed. This audit reads CT data from "
-                "the public crt.sh service, which did not answer within five seconds. That "
-                "is common for domains with thousands of certificates and says nothing about "
-                "your certificates either way. To review them yourself, search this domain on "
+                "crt.sh, then from Cert Spotter, and neither answered in time. That is "
+                "common for domains with thousands of certificates and says nothing about "
+                "your certificates either way. Run the audit again in a few minutes, or "
+                "search this domain on "
                 "<a href=\"https://crt.sh\" target=\"_blank\" rel=\"noopener\">crt.sh</a>."
             )
             detail_text = (
-                "crt.sh did not answer in time. This is a gap in the audit, not a finding "
-                "about your domain."
+                "crt.sh and Cert Spotter did not answer in time. This is a gap in the audit, "
+                "not a finding about your domain."
             )
         else:
             verdict = "Not checked by this audit"
             explanation = (
                 "Certificate Transparency was not assessed for this domain. This audit reads CT "
-                "data from the public crt.sh service, which is frequently unavailable, and no "
-                "result was returned in time. Nothing here reflects your domain's certificates "
-                "one way or the other. To review them yourself, search this domain on "
+                "data from crt.sh, then from Cert Spotter, and neither returned a result. "
+                "Nothing here reflects your domain's certificates one way or the other. Run "
+                "the audit again in a few minutes, or search this domain on "
                 "<a href=\"https://crt.sh\" target=\"_blank\" rel=\"noopener\">crt.sh</a>."
             )
             detail_text = (
@@ -9043,7 +9043,10 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
     explanation = (
         f"Found <strong>{total}</strong> certificate{'s' if total != 1 else ''} in Certificate Transparency logs "
         f"(<a href=\"https://datatracker.ietf.org/doc/html/rfc6962\" target=\"_blank\" rel=\"noopener\">RFC 6962</a>), of which <strong>{active}</strong> {'are' if active != 1 else 'is'} currently active. "
-        f"CT logs provide a publicly auditable record of all certificates issued for your domain."
+        "Browsers reject publicly trusted certificates that are not logged, so the logs list "
+        "every such certificate issued for your domain, except names hidden behind a "
+        "wildcard. Certificates from a private certificate authority never appear."
+        + (f" Source: {_e(raw['source'])}." if raw.get("source") else "")
     )
     if caa_mismatches:
         explanation += (

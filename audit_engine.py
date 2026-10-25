@@ -4141,6 +4141,9 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         "caa_mismatches": [],
         "issues": [],
         "status": "info",
+        # Which log index answered: "crt.sh", or "Cert Spotter" when crt.sh
+        # did not (2026-10-25). The card names it.
+        "source": None,
     }
 
     def _add_issue(severity, issue, plain_english, fix=None):
@@ -4151,7 +4154,44 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
             "fix": fix,
         })
 
-    # Query crt.sh
+    def _from_cert_spotter():
+        """The same certificates from SSLMate's Cert Spotter, in crt.sh's
+        field names, or None when it does not answer (429 included)."""
+        try:
+            r = requests.get(
+                "https://api.certspotter.com/v1/issuances",
+                params=[("domain", domain), ("include_subdomains", "true"),
+                        ("expand", "dns_names"), ("expand", "issuer")],
+                # Cert Spotter usually answers in under a second; four keeps
+                # the fallback from stretching a slow audit much past crt.sh.
+                timeout=(3, 4),
+                headers={"User-Agent": "dns-audit.com/1.0"},
+                allow_redirects=False,
+            )
+            if r.status_code != 200 or len(r.content) > 10 * 1024 * 1024:
+                return None
+            rows = r.json()
+        except (requests.exceptions.RequestException, ValueError):
+            return None
+        if not isinstance(rows, list):
+            return None
+        out = []
+        for row in rows:
+            names = row.get("dns_names") or []
+            out.append({
+                # One certificate, one row: the certificate's hash stands in
+                # for crt.sh's serial in the dedupe below.
+                "serial_number": row.get("cert_sha256") or row.get("tbs_sha256"),
+                "issuer_name": (row.get("issuer") or {}).get("name", "Unknown"),
+                "common_name": names[0] if names else "",
+                "name_value": "\n".join(names),
+                "not_before": row.get("not_before"),
+                "not_after": row.get("not_after"),
+            })
+        return out
+
+    # Query crt.sh, then Cert Spotter when crt.sh does not answer.
+    crt_failure = None
     try:
         resp = requests.get(
             "https://crt.sh/",
@@ -4186,19 +4226,21 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         else:
             certs = resp.json()
     except requests.exceptions.Timeout:
-        _add_issue("warning", "CT data temporarily unavailable",
-                   "The certificate log service (crt.sh) didn't respond, so this check is "
-                   "incomplete. The other checks are unaffected.")
-        result["status"] = "warning"
-        result["unavailable_reason"] = "timeout"
-        return result
+        crt_failure = "timeout"
     except (requests.exceptions.RequestException, ValueError):
-        _add_issue("warning", "CT data temporarily unavailable",
-                   "The certificate log service (crt.sh) didn't respond, so this check is "
-                   "incomplete. The other checks are unaffected.")
-        result["status"] = "warning"
-        result["unavailable_reason"] = "request_error"
-        return result
+        crt_failure = "request_error"
+    if crt_failure:
+        certs = _from_cert_spotter()
+        if certs is None:
+            _add_issue("warning", "CT data temporarily unavailable",
+                       "Neither certificate log service (crt.sh, Cert Spotter) answered, so "
+                       "this check is incomplete. The other checks are unaffected.")
+            result["status"] = "warning"
+            result["unavailable_reason"] = crt_failure
+            return result
+        result["source"] = "Cert Spotter"
+    else:
+        result["source"] = "crt.sh"
 
     if not certs:
         result["status"] = "info"

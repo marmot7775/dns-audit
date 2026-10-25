@@ -23,13 +23,14 @@ from test_ui_consistency_a11y import DOMAIN, _zone
 
 
 NEW_EXPLANATION = (
-    "Certificate Transparency was not assessed. This audit reads CT data from the public "
-    "crt.sh service, which did not answer within five seconds. That is common for domains "
-    "with thousands of certificates and says nothing about your certificates either way. "
-    "To review them yourself, search this domain on "
+    "Certificate Transparency was not assessed. This audit reads CT data from crt.sh, then "
+    "from Cert Spotter, and neither answered in time. That is common for domains with "
+    "thousands of certificates and says nothing about your certificates either way. Run the "
+    "audit again in a few minutes, or search this domain on "
     "<a href=\"https://crt.sh\" target=\"_blank\" rel=\"noopener\">crt.sh</a>."
 )
-NEW_DETAIL = "crt.sh did not answer in time. This is a gap in the audit, not a finding about your domain."
+NEW_DETAIL = ("crt.sh and Cert Spotter did not answer in time. This is a gap in the audit, "
+              "not a finding about your domain.")
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +72,8 @@ def test_crt_sh_query_asks_for_deduplicated_rows():
     seen = {}
 
     def _fake_get(url, params=None, **kwargs):
-        seen["params"] = params
+        if "crt.sh" in url:
+            seen["params"] = params
         raise requests.exceptions.ConnectionError("network disabled in tests")
 
     with patch("requests.get", _fake_get):
