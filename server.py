@@ -46,7 +46,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import dns.resolver
 import dns.exception
 
-from audit_engine import AUDIT_THREAD_CEILING, SCOPE_CHECKS, resolve_scope, run_full_audit
+from audit_engine import AUDIT_THREAD_CEILING, SCOPE_CHECKS, resolve_scope, retry_ct_card, run_full_audit
 from config import (
     LOG_DIR, LOG_LEVEL, CACHE_TTL, CACHE_MAX_SIZE,
     RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX_IPS,
@@ -1289,6 +1289,28 @@ async def audit_stream(
 # ============================================================
 # PDF Report Endpoint
 # ============================================================
+
+@app.get("/api/ct", tags=["Audit"])
+async def ct_retry(request: Request, domain: str = Query(..., description="Domain whose Certificate Transparency card to fetch again")):
+    """The Certificate Transparency card alone, asked again.
+
+    The results page calls this when an audit's CT card came back Not
+    checked (crt.sh and Cert Spotter both silent), first by itself after a
+    pause and then from the card's Try again button. Rate limited with
+    /api/audit.
+    """
+    client_ip = _get_client_ip(request)
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please wait a minute before trying again."},
+            headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
+        )
+    domain = _validate_domain(domain)
+    # Bounded by the lookups' own timeouts: crt.sh (3 s + 5 s), then Cert
+    # Spotter (3 s + 4 s).
+    return await anyio.to_thread.run_sync(retry_ct_card, domain)
+
 
 @app.get("/api/audit/{domain}/pdf", tags=["Audit"])
 async def audit_pdf(

@@ -168,8 +168,8 @@ def test_counters_sit_on_one_line_above_the_cards_and_no_debug_details(
                 list: top('#results-list'),
                 debug: ['#cache-status-badge', '#request-id-display', '.session-audit-count',
                         '#results-meta'].filter(s => document.querySelector(s)),
-                noteBeforeServices: document.getElementById('results-contact-note')
-                    .nextElementSibling.id,
+                noteAfterPlan: document.getElementById('results-contact-note')
+                    .previousElementSibling.id,
                 gridHeight: document.getElementById('summary-grid').getBoundingClientRect().height,
                 services: document.getElementById('services-section').compareDocumentPosition(
                     document.getElementById('results-list')) & Node.DOCUMENT_POSITION_PRECEDING,
@@ -180,8 +180,8 @@ def test_counters_sit_on_one_line_above_the_cards_and_no_debug_details(
         # The cache badge, Request ID and session count told a visitor
         # nothing. request_id stays in the API response and the logs.
         assert m["debug"] == [], m["debug"]
-        # "Some of these" reads as the findings, not the services list.
-        assert m["noteBeforeServices"] == "services-section"
+        # The offer of help sits right under the plan (2026-10-25).
+        assert m["noteAfterPlan"] == "priority-section"
         if width == 1280:
             assert m["gridHeight"] < 40, m["gridHeight"]
         assert m["services"], "the services section is not below the cards"

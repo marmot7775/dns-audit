@@ -313,6 +313,14 @@ document.getElementById('scope-selector').addEventListener('keydown', (e) => {
     syncScopeDesc();
 });
 
+// -- Example domains under the box: one click to a real result --
+document.querySelectorAll('.try-example').forEach(btn => {
+    btn.addEventListener('click', () => {
+        domainInput.value = btn.dataset.example;
+        auditForm.requestSubmit();
+    });
+});
+
 // -- DKIM selector toggle --
 document.getElementById('selector-toggle').addEventListener('click', () => {
     const field = document.getElementById('selector-field');
@@ -863,6 +871,9 @@ function renderResults(data, selector = '') {
 
     // -- What changed since this browser last audited the domain --
     renderRecheck(data);
+
+    // -- A Certificate Transparency card that came back Not checked --
+    scheduleCtRetry(data);
 
     // -- Executive Summary (Prompt 16) -- render at the very top --
     _execSummary = data.executive_summary || null;
@@ -1445,6 +1456,90 @@ function layoutSenderMap(canvas, nodes) {
     svg.setAttribute('width', W);
     svg.setAttribute('height', H);
     svg.innerHTML = lines;
+}
+
+// ============================================================
+// Certificate Transparency retry (2026-10-25)
+// ============================================================
+
+// crt.sh and Cert Spotter both silent leaves the CT card Not checked. The
+// rest of the results do not wait for it: the page asks /api/ct again by
+// itself after a pause and swaps the card in place. If that fails too, the
+// card offers Try again.
+const CT_NAME = 'Certificate Transparency';
+const CT_RETRY_DELAY_MS = 15000;
+let _ctRetryTimer = null;
+
+function scheduleCtRetry(data) {
+    clearTimeout(_ctRetryTimer);
+    const ct = (data.checks || []).find(c => c.name === CT_NAME);
+    if (!ct || ct.status !== 'unavailable') return;
+    _ctRetryTimer = setTimeout(() => retryCt(data, true), CT_RETRY_DELAY_MS);
+}
+
+function _ctCardEl() {
+    return document.getElementById('check-certificate-transparency');
+}
+
+function _ctRetryNote(el, html) {
+    if (!el) return;
+    let note = el.querySelector('.ct-retry');
+    if (!note) {
+        note = document.createElement('div');
+        note.className = 'ct-retry';
+        el.querySelector('.result-header').after(note);
+    }
+    note.innerHTML = html;
+    const btn = note.querySelector('button');
+    if (btn) btn.addEventListener('click', () => retryCt(lastAuditData, false));
+}
+
+async function retryCt(data, automatic) {
+    // A newer audit replaced this one, or the card is gone.
+    if (!data || lastAuditData !== data || !_ctCardEl()) return;
+    _ctRetryNote(_ctCardEl(), '<p class="ct-retry-text" role="status">Asking the certificate logs again...</p>');
+    let card = null;
+    try {
+        const r = await fetch(`/api/ct?domain=${encodeURIComponent(data.domain)}`);
+        if (r.ok) card = await r.json();
+    } catch { /* offline or blocked: falls through to Try again */ }
+    if (lastAuditData !== data) return;
+    if (card && card.name === CT_NAME && card.status !== 'unavailable') {
+        const i = data.checks.findIndex(c => c.name === CT_NAME);
+        if (i !== -1) data.checks[i] = card;
+        const old = _ctCardEl();
+        const fresh = createResultCard(card, [...document.querySelectorAll('.result-card')].indexOf(old));
+        old.replaceWith(fresh);
+        refreshStatusCounts(data);
+        showToast('Certificate Transparency checked');
+        return;
+    }
+    _ctRetryNote(_ctCardEl(),
+        '<p class="ct-retry-text">The certificate logs still did not answer. This says nothing about '
+        + 'your certificates.</p><button type="button" class="ct-retry-btn">Try again</button>');
+}
+
+// The counters, the tab title and each area's status line, from the checks
+// as they are now (after a card was swapped in place).
+function refreshStatusCounts(data) {
+    const counts = statusCounts(data.checks);
+    document.getElementById('summary-pass').textContent = counts.pass;
+    document.getElementById('summary-warn').textContent = counts.warn;
+    document.getElementById('summary-fail').textContent = counts.fail;
+    document.getElementById('summary-absent').textContent = counts.absent;
+    document.getElementById('summary-na').textContent = counts.not_applicable;
+    document.getElementById('summary-unavailable').textContent = counts.unavailable;
+    document.getElementById('summary-unavailable-card')
+        .classList.toggle('is-hidden', counts.unavailable === 0);
+    document.title = auditTabTitle(counts, data.domain);
+    groupChecksByArea([...data.checks]).forEach(g => {
+        const section = document.getElementById(`area-${g.key}`);
+        if (!section) return;
+        const c = statusCounts(g.checks);
+        section.dataset.counts = JSON.stringify(c);
+        const line = section.querySelector('.check-area-count');
+        if (line) line.textContent = areaStatusText(c);
+    });
 }
 
 // ============================================================
@@ -4995,10 +5090,6 @@ function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
         note.classList.add('is-hidden');
     }
 }
-
-// ============================================================
-// CSV Export (Prompt 15)
-// ============================================================
 
 // ============================================================
 // Run Another Audit helpers (Prompt 9)

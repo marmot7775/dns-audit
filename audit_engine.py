@@ -4105,6 +4105,31 @@ def _raw_check_ct(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def retry_ct_card(domain: str) -> Dict[str, Any]:
+    """The Certificate Transparency card alone, asked again (2026-10-25).
+
+    The page calls this through /api/ct when an audit's card came back Not
+    checked. It asks crt.sh and Cert Spotter again even inside the timeout
+    memory, which would only replay the failure, but serves a real cached
+    result first. CAA is read so the card can still compare certificates
+    with the CAs the domain allows.
+    """
+    raw = _get_cached_ct(domain)
+    if raw is None:
+        try:
+            caa = _raw_check_caa(domain)
+        except Exception:
+            caa = {}
+        raw = _raw_check_ct_uncached(domain, {"caa": caa})
+        if not raw.get("unavailable_reason"):
+            _set_cached_ct(domain, raw)
+            with _ct_cache_lock:
+                _ct_timeout_cache.pop(domain, None)
+    card = transform_ct(raw, domain)
+    attach_what_this_is([card])
+    return card
+
+
 def _parse_ct_timestamp(value: Optional[str]) -> Optional[datetime]:
     """Parse a crt.sh not_before/not_after string into an aware datetime."""
     if not value:
