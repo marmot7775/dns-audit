@@ -508,7 +508,7 @@ def test_results_render_without_layout_defects(browser, fixture_result, theme, w
                     '[role="button"] input').length,
                 h1: [...document.querySelectorAll('h1')].filter(h => h.offsetParent)
                     .map(h => h.textContent.trim()),
-                h4: [...document.querySelectorAll('#check-dmarc h4')].map(h => h.textContent.trim()),
+                h6: [...document.querySelectorAll('#check-dmarc h6')].map(h => h.textContent.trim()),
                 cardsExpanded: document.querySelectorAll('.result-card.expanded').length,
                 headersOpen: document.querySelectorAll(
                     '.result-header[aria-expanded="true"]').length,
@@ -525,7 +525,7 @@ def test_results_render_without_layout_defects(browser, fixture_result, theme, w
         assert m["describedBy"]
         assert m["h1"] == [DOMAIN], m["h1"]
         assert {"Strict Record Validation", "DMARC Record Breakdown",
-                "DMARC Policy Discovery (DNS tree walk)", "DMARC Evaluation"} <= set(m["h4"]), m["h4"]
+                "DMARC Policy Discovery (DNS tree walk)", "DMARC Evaluation"} <= set(m["h6"]), m["h6"]
         # Doc 63: every card renders collapsed, whatever its status.
         assert m["cardsExpanded"] == 0 and m["headersOpen"] == 0
         assert m["expandedNoControls"] == 0

@@ -1609,7 +1609,7 @@ function createResultCard(check, index) {
     // first line inside the opened card, from check.what_this_is.
     // Doc 92: the title leads with the plain name ("Spoofing policy (DMARC)")
     // when the backend sends one; the id above still comes from check.name.
-    const titleHtml = `<h3 class="result-title">${escapeHtml(checkTitle(check))}</h3>`;
+    const titleHtml = `<h4 class="result-title">${escapeHtml(checkTitle(check))}</h4>`;
 
     const bodyId = `body-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.innerHTML = `
@@ -1684,7 +1684,7 @@ function createResultCard(check, index) {
         const body = sec.querySelector(':scope > .cd-body');
         if (!title || !body) return;
         const text = title.textContent.trim();
-        body.querySelectorAll('h4, .as-title, .sua-title, .dbis-title, .spfd-title').forEach(h => {
+        body.querySelectorAll('h6, .as-title, .sua-title, .dbis-title, .spfd-title').forEach(h => {
             if (h.textContent.trim() === text) h.classList.add('panel-title-repeat');
         });
     });
@@ -2209,7 +2209,7 @@ function renderCardDetails(sections) {
     for (const s of shown) {
         const bodyId = `cd-body-${++_cdSectionSeq}`;
         inner += `<div class="cd-section cd-subsection${s.spec ? ' ' + s.spec : ''}"${s.anchor ? ` id="${s.anchor}"` : ''}>
-            <div role="heading" aria-level="5">
+            <div role="heading" aria-level="6">
             <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${bodyId}">
                 ${s.icon ? `<span class="cd-header-icon">${s.icon}</span>` : ''}
                 <span class="cd-header-title">${escapeHtml(s.title)}</span>
@@ -2225,7 +2225,7 @@ function renderCardDetails(sections) {
     const outerId = `cd-body-${++_cdSectionSeq}`;
     return `<div class="card-details-wrap">
         <div class="cd-section card-details">
-            <div role="heading" aria-level="4">
+            <div role="heading" aria-level="5">
             <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${outerId}">
                 <span class="cd-header-title">Details</span>
                 ${_detailsCountHtml(shown)}
@@ -2663,7 +2663,7 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
             <div class="sv-header">
                 <div class="sv-header-left">
                     <span class="tag">${escapeHtml(specLabel)}</span>
-                    <h4 class="sv-title">Strict Record Validation</h4>
+                    <h6 class="sv-title">Strict Record Validation</h6>
                 </div>
                 <div class="sv-header-right">
                     <span class="sv-summary ${summaryClass}">${statusIconHtml(summaryClass.slice('sv-summary-'.length))}<span>${escapeHtml(sv.summary)}</span></span>
@@ -2837,7 +2837,7 @@ function renderDmarcTagBreakdown(bd) {
         migrationHtml = `
             <div class="mw-block">
                 <div class="mw-header">
-                    <h4 class="mw-title">Path to enforcement</h4>
+                    <h6 class="mw-title">Path to enforcement</h6>
                     <span class="mw-progress">${bd.migration.total_steps} step${bd.migration.total_steps === 1 ? '' : 's'}</span>
                 </div>
                 <div class="mw-steps">${stepsHtml}</div>
@@ -2908,7 +2908,7 @@ function renderDmarcTagBreakdown(bd) {
     return `
         <div class="record-breakdown">
             <div class="rb-header">
-                <h4 class="rb-title">DMARC Record Breakdown</h4>
+                <h6 class="rb-title">DMARC Record Breakdown</h6>
             </div>
             ${verdictHtml}
             <div class="rb-kvs">${tagsHtml}</div>
@@ -2945,7 +2945,7 @@ function renderRecordBuilder(rb) {
         return `
             <div class="rcb-block rcb-ready">
                 <div class="rcb-header">
-                    <h4 class="rcb-title">Record Builder</h4>
+                    <h6 class="rcb-title">Record Builder</h6>
                     <span class="tag tag-pass">No changes needed</span>
                 </div>
                 <p class="rcb-ready-msg">Your DMARC record is RFC 9989 Ready. No modifications required.</p>
@@ -3052,7 +3052,7 @@ function renderRecordBuilder(rb) {
     return `
         <div class="rcb-block">
             <div class="rcb-header">
-                <h4 class="rcb-title">${escapeHtml(title)}</h4>
+                <h6 class="rcb-title">${escapeHtml(title)}</h6>
             </div>
             ${firstNoteHtml}
             ${diffHtml}
@@ -3127,7 +3127,7 @@ function renderTreeWalkSimple(tw) {
     return `
         <div class="tree-walk tree-walk-simple tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
+                <h6 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h6>
                 <a class="tag tag-hit" href="https://www.rfc-editor.org/rfc/rfc9989.html"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -3157,7 +3157,7 @@ function renderTreeWalkFull(tw) {
     let html = `
         <div class="tree-walk tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
+                <h6 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h6>
                 <a class="tag tag-hit" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
             </div>`;
 
@@ -4013,7 +4013,7 @@ function renderDmarcEvaluation(ev) {
     return `
         <div class="dmarc-eval de-animated">
             <div class="se-header-row">
-                <h4 class="se-header">DMARC Evaluation</h4>
+                <h6 class="se-header">DMARC Evaluation</h6>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9989"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -4065,7 +4065,7 @@ function renderReportChain(rc) {
     let html = `
         <div class="report-chain rc-animated">
             <div class="se-header-row">
-                <h4 class="se-header">DMARC Report Delivery Chain</h4>
+                <h6 class="se-header">DMARC Report Delivery Chain</h6>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9990#section-4"
                    target="_blank" rel="noopener">RFC 9990 section 4</a>
             </div>
