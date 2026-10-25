@@ -1390,10 +1390,15 @@ function renderSenderMap(data) {
     const detail = slot.querySelector('#smap-detail');
     nodes.forEach(n => {
         const btn = slot.querySelector(`#${n.id}`);
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
             slot.querySelectorAll('.smap-node').forEach(b => b.setAttribute('aria-pressed', 'false'));
             btn.setAttribute('aria-pressed', 'true');
             detail.innerHTML = _smapDetail(n, map);
+            // On a phone the panel is below the whole list: take the reader
+            // there when they tap, not when the map opens on its own.
+            if (e.isTrusted && window.matchMedia('(max-width: 640px)').matches) {
+                detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         });
     });
     layoutSenderMap(canvas, nodes);

@@ -7939,7 +7939,7 @@ h3.services-sub,
     margin: var(--space-md) 0 0;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
     .req-block {
         padding: 1rem 1.1rem;
     }
@@ -7999,14 +7999,17 @@ h3.services-sub,
     width: 0.6rem;
     height: 0.6rem;
     border-radius: 50%;
-    background: var(--smap-colour, var(--text-tertiary));
+    background: var(--text-tertiary);
 }
 
-.smap-ready { --smap-colour: var(--pass); }
-.smap-missing { --smap-colour: var(--warn); }
-.smap-unverified,
-.smap-account,
-.smap-reporting { --smap-colour: var(--text-tertiary); }
+/* One colour per node state, for the legend dot and the node's edge. */
+.smap-ready .smap-dot {
+    background: var(--pass);
+}
+
+.smap-missing .smap-dot {
+    background: var(--warn);
+}
 
 .smap-canvas {
     position: relative;
@@ -8021,30 +8024,23 @@ h3.services-sub,
 }
 
 .smap-line {
-    stroke: var(--smap-colour, var(--border));
+    stroke: var(--text-tertiary);
     stroke-width: 1.5;
     opacity: 0.55;
 }
 
 .smap-line-ready { stroke: var(--pass); }
 .smap-line-missing { stroke: var(--warn); }
-.smap-line-unverified,
-.smap-line-account,
-.smap-line-reporting { stroke: var(--text-tertiary); }
 .smap-line-likely { stroke-dasharray: 6 5; }
 .smap-line-account-only,
 .smap-line-reporting { stroke-dasharray: 2 5; }
 
-.smap-hub,
-.smap-node {
+.smap-hub {
     position: absolute;
     transform: translate(-50%, -50%);
-}
-
-.smap-hub {
     background: var(--primary-solid);
     color: #fff;
-    border-radius: 999px;
+    border-radius: var(--radius-lg);
     padding: 0.7rem 1.2rem;
     font-weight: 700;
     font-size: var(--font-base);
@@ -8056,6 +8052,8 @@ h3.services-sub,
 }
 
 .smap-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -8065,7 +8063,7 @@ h3.services-sub,
     padding: 0.55rem 0.6rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-top: 3px solid var(--smap-colour);
+    border-top: 3px solid var(--text-tertiary);
     border-radius: var(--radius);
     color: var(--text-primary);
     font: inherit;
@@ -8077,9 +8075,11 @@ h3.services-sub,
 
 .smap-node:hover,
 .smap-node[aria-pressed="true"] {
-    border-color: var(--smap-colour);
     box-shadow: 0 0 0 3px var(--primary-subtle), 0 2px 8px rgba(0, 0, 0, 0.12);
 }
+
+.smap-node.smap-ready { border-top-color: var(--pass); }
+.smap-node.smap-missing { border-top-color: var(--warn); }
 
 .smap-node-name {
     font-size: var(--font-sm);
@@ -8104,7 +8104,7 @@ h3.services-sub,
     font-size: var(--font-xs);
     line-height: 1.2;
     padding: 0.05rem 0.35rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     color: var(--text-secondary);
 }
@@ -8209,23 +8209,24 @@ h4.smap-detail-sub {
         display: none;
     }
 
-    .smap-hub,
-    .smap-node {
+    .smap-hub {
         position: static;
         transform: none;
-    }
-
-    .smap-hub {
         align-self: flex-start;
         margin-left: -1.6rem;
     }
 
     .smap-node {
+        position: static;
+        transform: none;
         width: 100%;
         align-items: flex-start;
-        border-top-width: 1px;
-        border-left: 3px solid var(--smap-colour);
+        border-top: 1px solid var(--border);
+        border-left: 3px solid var(--text-tertiary);
     }
+
+    .smap-node.smap-ready { border-left-color: var(--pass); border-top-color: var(--border); }
+    .smap-node.smap-missing { border-left-color: var(--warn); border-top-color: var(--border); }
 
     .smap-node-name {
         text-align: left;
