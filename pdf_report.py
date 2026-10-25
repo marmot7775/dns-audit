@@ -219,11 +219,12 @@ def _ordered_checks(data):
     """The checks in the results page's order: area by area, sorted inside each."""
     return [c for _h, _l, cards in _area_groups(data) for c in cards]
 
-STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR}
+STATUS_CLR = {"pass": PASS_CLR, "warn": WARN_CLR, "fail": FAIL_CLR, "absent": NEUTRAL_CLR,
+              "unavailable": NEUTRAL_CLR}
 STATUS_LBL = {"pass": "Pass", "warn": "Could be stronger", "fail": "Needs fixing",
               "absent": "Optional, not set up", "unavailable": "Not checked"}
-# Colours deliberately not mapped for "unavailable": every lookup falls
-# back to TEXT_SEC, which is the neutral grey this state should carry.
+# "unavailable" is the neutral state, NEUTRAL_CLR (--text-tertiary) as on
+# the web and in CLAUDE.md. It used to fall back to TEXT_SEC, a second grey.
 # Helvetica has no glyph for U+26A0 (warning sign), so it rendered as a
 # filled .notdef box on every warning line. A bold "!" needs no font.
 WARN_ICON = "<b>!</b>"
@@ -483,7 +484,9 @@ def _do_first_box(data, S):
         # line saying otherwise would contradict it. The web page skips it too.
         if severity != "unknown" and "Nothing to fix" in _headline(es):
             return []
-        if severity == "unknown":
+        # A tick only on an all-clear. Anything else is an action, and a
+        # green tick beside "Configure MTA-STS" read as "MTA-STS is set up".
+        if severity != "none":
             text, bg, rule = f"•  {_safe(message)}", SURFACE_BG, TEXT_TER
         else:
             tick = f'<font color="{PASS_CLR.hexval()}">{_glyphs(chr(0x2713))}</font>'
@@ -809,7 +812,8 @@ def _technical_summary(data, S):
         for v in vectors:
             status = v.get("status", "")
             s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(status, TEXT_SEC)
-            s_lbl = {"protected": "Protected", "partial": "Partial", "exposed": "Exposed"}.get(status, status)
+            # The attack surface page and the web say "Partly protected".
+            s_lbl = {"protected": "Protected", "partial": "Partly protected", "exposed": "Exposed"}.get(status, status)
             rows.append([
                 Paragraph(_safe(v.get("name", "")), S["body"]),
                 Paragraph(f'<font color="{s_clr.hexval()}"><b>{s_lbl}</b></font>', S["body"]),
@@ -1513,7 +1517,7 @@ def _attack_surface_page(data, S, number=4):
         ]
         rows = [header]
         for sub in sa["subdomains"]:
-            s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(sub.get("status", ""), TEXT_SEC)
+            s_clr = {"protected": PASS_CLR, "partial": WARN_CLR, "exposed": FAIL_CLR}.get(sub.get("status", ""), NEUTRAL_CLR)
             status_icon = _glyphs({"protected": STATUS_GLYPH["pass"], "partial": STATUS_GLYPH["warn"],
                                    "exposed": STATUS_GLYPH["fail"]}.get(sub.get("status", ""), ""))
             exists_text = "Yes" if sub.get("exists") else "No"
@@ -1629,7 +1633,7 @@ def _card_status(check):
     else the default for its state. Page 1 and the check cards both read it."""
     status = check.get("status", "pass")
     label = check.get("pill_label") or STATUS_LBL.get(status, "Info")
-    return STATUS_CLR.get(status, TEXT_SEC), label
+    return STATUS_CLR.get(status, NEUTRAL_CLR), label
 
 
 # The base64 key in a DKIM record, kept to its first 24 characters in the
@@ -1972,7 +1976,7 @@ def _vendors(data, S):
         missing = "".join(f"<br/><font size=\"8\">{_safe(m)}</font>" for m in v.get("missing") or [])
         # The record that names the service, as on the web page.
         signals = v.get("signals") or []
-        record = (f"<br/><font name=\"Courier\" size=\"7\">{_safe(signals[0].get('record', ''))}</font>"
+        record = (f"<br/><font name=\"{FONTS['mono']}\" size=\"7\">{_safe(signals[0].get('record', ''))}</font>"
                   if signals else "")
         rows.append([
             Paragraph(f"<b>{_safe(v.get('name', ''))}</b>{record}{missing}", S["body"]),
@@ -2155,7 +2159,9 @@ def _migration_page(data, S, number=6):
 
     total_steps = migration.get("total_steps", len(steps))
     els.append(Paragraph(
-        f"{total_steps} step{'s' if total_steps != 1 else ''} from the current record to an enforcing policy:",
+        # Not "to an enforcing policy": a p=reject record whose steps add
+        # sp= and np= already enforces.
+        f"{total_steps} step{'s' if total_steps != 1 else ''} from the current record:",
         S["body"]))
     els.append(Spacer(1, SP_MD))
 
