@@ -135,6 +135,14 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 
 ## 2026-10-25: Four questions instead of five scopes
 
+- Who sends as you draws the Sender Map: the domain in the middle and every
+  service Sendermap found around it, each coloured by whether its own setup
+  is complete (Set up, Needs setup, Found by name, Account only, Gets your
+  reports), with its SPF, DKIM, MX, return path and tracking records as
+  badges. A line's style says how sure the map is. Selecting a service shows
+  its setup, the risks that cite its own records, and how the map found it.
+  It opens on the service that needs attention. Below 640px it is a list.
+
 - Inbox readiness and Full audit open with the Gmail, Yahoo, and Microsoft
   sender requirements under the headline: SPF, DKIM and DMARC graded Met,
   Not met or Not confirmed from their cards, and the five requirements no
