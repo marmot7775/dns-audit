@@ -244,7 +244,10 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
                     "dropped by compliant receivers."
                 ).format("destinations" if len(unauthorized) != 1 else "a destination",
                          "have" if len(unauthorized) != 1 else "has", dest_list),
-                "severity": "critical",
+                # Medium, like the other amber findings: receivers still
+                # apply the record and only the reports are lost, and the
+                # DMARC card grades it warn since 2026-10-25.
+                "severity": "medium",
                 "recommendation": (
                     "For each third-party report address, the destination domain "
                     "must publish a TXT record at "
