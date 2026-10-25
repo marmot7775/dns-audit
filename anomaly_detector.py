@@ -123,7 +123,9 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
     if mta_sts:
         mta_sts_txt = mta_sts.get("txt_record") or mta_sts.get("record")
         tls_rpt_record = tls_rpt.get("record") or tls_rpt.get("txt_record")
-        if mta_sts_txt and not tls_rpt_record:
+        # An unread TLS-RPT lookup says nothing about whether one exists.
+        if (mta_sts_txt and not tls_rpt_record
+                and tls_rpt.get("status") != "unavailable"):
             anomalies.append({
                 "title": "MTA-STS configured without TLS-RPT",
                 "description": (
@@ -142,7 +144,11 @@ def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False
     # 5. BIMI without strong DMARC
     if bimi:
         bimi_record = bimi.get("record") or bimi.get("txt_record")
-        if bimi_record and not dmarc_enforced:
+        # Not when the DMARC policy was never read: an unavailable lookup
+        # leaves the policy empty, which is not p=none.
+        dmarc_unread = (dmarc.get("status") == "unavailable"
+                        or dmarc.get("inheritance_lookup_failed"))
+        if bimi_record and not dmarc_enforced and not dmarc_unread:
             anomalies.append({
                 "title": "BIMI record without DMARC enforcement",
                 "description": (

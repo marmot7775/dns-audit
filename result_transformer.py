@@ -1072,8 +1072,13 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # failure mode as the auth_unavailable case above: presenting it as
         # "the biggest risk" implies real risks were weighed and lost, when
         # none were found at all.
+        # An optional protocol that is not set up is never a warning
+        # (CLAUDE.md), so it is not the biggest risk either; do_first below
+        # leaves it out on the same rule. It made "Configure MTA-STS" the
+        # biggest risk of a clean domain, ticked green on PDF page 1.
         risk_candidates = [i for i in roadmap_items if i.get("priority") != "low"
-                           and not i.get("self_clearing")]
+                           and not i.get("self_clearing")
+                           and not i.get("optional")]
         if risk_candidates:
             top = risk_candidates[0]
             # The action is the headline and the impact is the line under it.
@@ -8630,6 +8635,11 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
             "ttl_info": format_ttl(raw.get("ttl")),
         }
 
+    # No TLSA found, but every TLSA query failed: nothing was learned, so
+    # this is not "no TLSA records" (docs/decisions/2026-09-02).
+    if tlsa_records and all(hr.get("error") for hr in tlsa_records):
+        return _lookup_unavailable_card("DANE", raw, "TLSA records")
+
     # No TLSA, has MX
     details = [
         {"type": "warning", "text": f"Checked {mx_checked} MX host{'s' if mx_checked != 1 else ''}, but no TLSA records found"},
@@ -8815,7 +8825,10 @@ def transform_nameservers(raw: Dict, domain: str = "") -> Dict:
     not_resolving = [ns for ns in nameservers if not ns.get("resolves")]
     if not_resolving:
         for ns in not_resolving:
-            details.append({"type": "error", "text": f"{ns['hostname']} does not resolve (lame delegation)"})
+            if ns.get("lookup_failed"):
+                details.append({"type": "info", "text": f"{ns['hostname']}: address lookup did not complete, not checked"})
+            else:
+                details.append({"type": "error", "text": f"{ns['hostname']} does not resolve (lame delegation)"})
     if resolving:
         for ns in resolving:
             ip = ns.get("ipv4", [""])[0] if ns.get("ipv4") else ""
