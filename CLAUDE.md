@@ -82,8 +82,8 @@
 - Audit log: audit.log (JSON-lines, GDPR-safe). Fields: ts, domain, scope,
   duration_s, checks, ua, bot, source, status, vid, plus error when status is
   not "ok", ref when a Referer was sent, and aprf (none, published, ignored,
-  unavailable) when the APRF check ran (complete, email_security and
-  deliverability scopes). It is
+  unavailable) when the APRF check ran (complete, email_security,
+  deliverability and senders scopes, audit_engine.APRF_SCOPES). It is
   the one per card status the log records, kept for an adoption count. Fields
   are added, never renamed or
   removed, so older entries carry fewer of them.
