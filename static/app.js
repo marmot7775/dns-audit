@@ -3445,7 +3445,6 @@ function renderExecutiveSummary(es, roadmap) {
     if (!es) return { box: '', tech: '' };
 
     const sp = es.spoofing_protection || {};
-    const dr = es.dmarcbis_readiness || {};
     const pc = es.protocol_coverage || {};
 
     // Progress ring SVG for protocol coverage
@@ -3493,10 +3492,6 @@ function renderExecutiveSummary(es, roadmap) {
                     <div class="es-metric-value es-color-${safeClass(sp.color)}">${escapeHtml(sp.label)}</div>
                     <div class="es-metric-label">Spoofing Protection</div>
                     <div class="es-metric-detail">${escapeHtml(sp.detail)}</div>
-                </div>
-                <div class="es-metric">
-                    <div class="es-metric-value es-color-${safeClass(dr.color)}">${escapeHtml(dr.label)}</div>
-                    <div class="es-metric-label">RFC 9989 Readiness</div>
                 </div>
                 <div class="es-metric">
                     <div class="es-metric-ring">${ringSvg}<span class="es-ring-text">${escapeHtml(ringText)}</span></div>

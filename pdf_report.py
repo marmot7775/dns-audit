@@ -729,14 +729,17 @@ def _tally_line(checks, S):
 
 
 def _technical_summary(data, S):
-    """The three tiles and the attack surface table, at the start of Part 2.
+    """The two tiles and the attack surface table, at the start of Part 2.
+
+    The RFC 9989 readiness tile went on 2026-10-25: a standard's number is
+    not a result a sender can act on, and the DMARC appendix still carries
+    the readiness detail.
 
     Doc 92 moved them off the first two pages: they are the evidence behind
     the verdict, not the answer.
     """
     es = data.get("executive_summary", {}) or {}
     sp = es.get("spoofing_protection", {}) or {}
-    dr = es.get("dmarcbis_readiness", {}) or {}
     pc = es.get("protocol_coverage", {}) or {}
     els = [Paragraph("Technical summary", S["subheading"]), Spacer(1, SP_XS)]
 
@@ -764,13 +767,11 @@ def _technical_summary(data, S):
     metrics = Table([
         [_metric_cell("Forged mail blocked", sp.get("label", "Unknown"),
                       sp.get("color", "red"), detail=sp.get("detail", "")),
-         _metric_cell("Ready for the 2026 DMARC standard (RFC 9989)",
-                      dr.get("label", "Unknown"), dr.get("color", "red")),
          # Coverage is a count of what is adopted, not a defect: primary
          # when assessable, neutral when not. pc["color"] is no longer read.
          _metric_cell("Records published", f"{pc_conf} of {pc_total}",
                       "blue" if pc_total else "neutral", detail=pc_detail)],
-    ], colWidths=[2.17*inch]*3)
+    ], colWidths=[3.25*inch]*2)
     metrics.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -778,7 +779,7 @@ def _technical_summary(data, S):
         ("BOTTOMPADDING", (0,0), (-1,-1), 12),
         ("BACKGROUND", (0,0), (-1,-1), colors.white),
         ("BOX", (0,0), (-1,-1), 0.5, BORDER),
-        ("LINEAFTER", (0,0), (1,0), 0.5, BORDER),
+        ("LINEAFTER", (0,0), (0,0), 0.5, BORDER),
         ("ROUNDEDCORNERS", [6,6,6,6]),
     ]))
     els.append(metrics)
