@@ -88,12 +88,13 @@ def _index():
         return f.read()
 
 
-def test_index_carries_the_sept9_title_and_sentence():
+def test_index_carries_the_senders_title_and_sentence():
+    # 2026-10-25: the home page asks the sender's question.
     html = _index()
-    assert '<h1 class="audit-title">DNS &amp; Email Security Audit</h1>' in html
-    # Doc 90 replaced the RFC 9989 link with the record to paste.
-    assert ('<p class="audit-subtitle">Most DNS tools show you your records. This one tells '
-            'you what is wrong with them and gives you the record to paste.</p>') in html
+    assert '<h1 class="audit-title">Will your email reach the inbox?</h1>' in html
+    assert ('<p class="audit-subtitle">Enter a domain. See what Gmail, Yahoo, and Microsoft '
+            'will check, which services send as you, and the exact record to paste for '
+            'each fix.</p>') in html
 
 
 def test_domain_input_is_autofocused():

@@ -22,18 +22,21 @@ from conftest import fake_dns
 from test_dmarc_grades import DOMAIN, RUA, _run, _zone
 from test_ui_consistency_a11y import _page, _render, browser  # noqa: F401
 
-NEW_KEYS = ["complete", "deliverability", "email_security", "dmarc", "dns_security"]
+# Every scope the API takes. The first four are the pills (2026-10-25);
+# dmarc and dns_security stay valid API scopes with no pill.
+NEW_KEYS = ["deliverability", "senders", "email_security", "complete", "dmarc", "dns_security"]
+PILLS = NEW_KEYS[:4]
 
 DESCRIPTIONS = {
-    "complete": "Recommended for most domains. Every check: DMARC, SPF, DKIM, MX, "
-                "MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and "
-                "Certificate Transparency.",
-    "deliverability": "Will your mail reach the inbox: DMARC, SPF, DKIM, and MX.",
-    "email_security": "Can your domain be spoofed or your mail read in transit: "
-                      "DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, DANE, and BIMI.",
-    "dmarc": "The authentication triad only: DMARC, SPF, and DKIM.",
-    "dns_security": "The DNS everything else depends on: DNSSEC, CAA, DANE, "
-                    "nameservers, and Certificate Transparency.",
+    "deliverability": "Will your mail reach the inbox: the records Gmail, Yahoo, and "
+                      "Microsoft require of senders (SPF, DKIM, DMARC) and where your "
+                      "mail is delivered (MX).",
+    "senders": "Every service that sends mail as your domain, found from its SPF, DKIM, "
+               "DMARC, and MX records, and whether each one is set up to pass.",
+    "email_security": "Can someone send mail that fakes your domain, and the path to "
+                      "p=reject: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, DANE, and BIMI.",
+    "complete": "Every check: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, "
+                "DANE, nameservers, and Certificate Transparency.",
 }
 
 
@@ -45,9 +48,10 @@ def _keys_in(detail):
 # resolve_scope
 # ---------------------------------------------------------------
 
-def test_the_scope_table_is_the_five_new_keys():
+def test_the_scope_table_is_the_four_pills_then_the_api_only_keys():
     assert list(SCOPE_CHECKS) == NEW_KEYS
     assert list(audit_engine.SCOPE_LABELS) == NEW_KEYS
+    assert audit_engine.PILL_SCOPES == PILLS
 
 
 @pytest.mark.parametrize("old,new", [
@@ -73,7 +77,7 @@ def test_every_legacy_key_maps_to_a_superset_of_its_old_checks():
         assert new is None or checks <= new, old
 
 
-@pytest.mark.parametrize("key", ["deliverability", "email_security", "dmarc", "dns_security"])
+@pytest.mark.parametrize("key", ["deliverability", "senders", "email_security", "dmarc", "dns_security"])
 def test_new_keys_pass_through(key):
     assert resolve_scope(key) == key
 
@@ -84,7 +88,7 @@ def test_complete_and_nothing_resolve_to_none(key):
 
 
 @pytest.mark.parametrize("key", ["bogus", "Transport", "email"])
-def test_anything_else_raises_naming_the_five_keys(key):
+def test_anything_else_raises_naming_the_valid_keys(key):
     with pytest.raises(ValueError) as exc:
         resolve_scope(key)
     assert sorted(_keys_in(str(exc.value))) == sorted(NEW_KEYS)
@@ -143,7 +147,7 @@ def test_security_scan_is_a_complete_run(client):
 
 
 @pytest.mark.parametrize("path", ["/api/audit", "/api/audit/stream"])
-def test_a_bogus_scope_is_400_naming_the_five_keys(client, path):
+def test_a_bogus_scope_is_400_naming_the_valid_keys(client, path):
     c, calls = client
     response = c.get(path, params={"domain": DOMAIN, "scope": "bogus"})
     assert response.status_code == 400
@@ -174,24 +178,25 @@ def test_deliverability_queries_aprf_and_dns_security_does_not(scope, queried):
 # Home page
 # ---------------------------------------------------------------
 
-def test_the_pills_are_the_five_scopes_in_order(browser):  # noqa: F811
+def test_the_pills_are_the_four_questions_in_order(browser):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
         pills = page.eval_on_selector_all(
             ".scope-btn", "els => els.map(e => [e.dataset.scope, e.textContent.trim()])")
         assert pills == [
-            ["complete", "Complete Audit"],
-            ["deliverability", "Email Deliverability"],
-            ["email_security", "Email Security"],
-            ["dmarc", "DMARC Check"],
-            ["dns_security", "DNS Security"],
+            ["deliverability", "Inbox readiness"],
+            ["senders", "Who sends as you"],
+            ["email_security", "Spoofing protection"],
+            ["complete", "Full audit"],
         ]
+        # The home page starts on Inbox readiness.
+        assert page.get_attribute(".scope-btn.active", "data-scope") == "deliverability"
         assert not errors, errors
     finally:
         ctx.close()
 
 
-@pytest.mark.parametrize("key", NEW_KEYS)
+@pytest.mark.parametrize("key", PILLS)
 def test_each_scope_shows_its_sentence_under_the_pills(browser, key):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
@@ -203,21 +208,54 @@ def test_each_scope_shows_its_sentence_under_the_pills(browser, key):  # noqa: F
         ctx.close()
 
 
-def test_a_legacy_scope_link_lights_the_new_pill_and_shares_the_new_key(browser, audit):  # noqa: F811
-    ctx, page, errors = _page(browser, "dark", 1280, path="/?scope=dns_infra")
+@pytest.mark.parametrize("path,pill", [
+    ("/?scope=dns_infra", "complete"),
+    ("/?scope=dns_security", "complete"),
+    ("/?scope=dmarc", "email_security"),
+    ("/?scope=transport", "email_security"),
+    ("/?d=example.test", "complete"),
+    ("/", "deliverability"),
+])
+def test_a_link_lights_the_pill_it_maps_to(browser, path, pill):  # noqa: F811
+    ctx, page, errors = _page(browser, "dark", 1280, path=path)
     try:
         page.wait_for_load_state("domcontentloaded")
         lit = page.eval_on_selector_all(
             ".scope-btn.active", "els => els.map(e => e.dataset.scope)")
-        assert lit == ["dns_security"]
-        assert page.get_attribute(".scope-btn[data-scope='dns_security']", "aria-checked") == "true"
-        assert page.text_content("#scope-desc") == DESCRIPTIONS["dns_security"]
-        # A result with no scope field falls back to the lit pill.
-        data = json.loads(json.dumps(
-            _run(audit, f"v=DMARC1; p=none; {RUA}", scope="dns_security"), default=str))
-        data.pop("scope")
+        assert lit == [pill]
+        assert page.text_content("#scope-desc") == DESCRIPTIONS[pill]
+    finally:
+        ctx.close()
+
+
+def test_a_shared_link_always_names_its_scope(browser, audit):  # noqa: F811
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        data = json.loads(json.dumps(_run(audit, f"v=DMARC1; p=none; {RUA}"), default=str))
         _render(page, data)
-        assert "scope=dns_security" in page.evaluate("() => _getShareUrl()")
+        assert "scope=complete" in page.evaluate("() => _getShareUrl()")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_who_sends_as_you_opens_the_services_under_the_plan(browser, audit):  # noqa: F811
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        data = json.loads(json.dumps(
+            _run(audit, f"v=DMARC1; p=none; {RUA}", scope="senders"), default=str))
+        data["vendors"] = data.get("vendors") or [
+            {"name": "Example ESP", "tier": "In use", "sources": ["SPF"], "signals": [], "missing": []}]
+        _render(page, data)
+        assert page.evaluate("""() => document.getElementById('priority-section')
+            .nextElementSibling.id""") == "services-section"
+        assert page.get_attribute("#services-toggle", "aria-expanded") == "true"
+        # Another scope puts it back at the end, closed.
+        data["scope"] = "deliverability"
+        _render(page, data)
+        assert page.get_attribute("#services-toggle", "aria-expanded") == "false"
+        assert page.evaluate("""() => document.getElementById('priority-section')
+            .nextElementSibling.id""") != "services-section"
         assert not errors, errors
     finally:
         ctx.close()

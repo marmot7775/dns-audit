@@ -293,7 +293,7 @@ def test_pdf_labels_are_sentence_case_and_name_the_scope(audit):
     reader = PdfReader(io.BytesIO(pdf_report.generate_pdf(result)))
     text = " ".join(" ".join((p.extract_text() or "").split()) for p in reader.pages)
 
-    assert "Audit type: Complete Audit" in text, text[:3000]
+    assert "Audit type: Full audit" in text, text[:3000]
     assert "Comprehensive" not in text and "PROTECTED" not in text and "EXPOSED" not in text
     assert "Re-run the audit at dns-audit.com" in text or "field above" not in text
-    assert reader.metadata.subject == f"Complete Audit report for {DOMAIN}"
+    assert reader.metadata.subject == f"Full audit report for {DOMAIN}"

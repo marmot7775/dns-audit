@@ -187,6 +187,7 @@ from result_transformer import (
     transform_ct,
     build_security_roadmap,
     build_executive_summary,
+    build_sender_requirements,
     build_subdomain_audit,
     build_change_detection,
     build_consistency_findings,
@@ -303,27 +304,35 @@ BUSINESS_RISK = {
 # Scope Configuration
 # ============================================================
 
+# The first four are the pills, one per question a sender asks, in pill
+# order (2026-10-25); deliverability is the home page default and an API
+# call with no scope still runs complete. dmarc and dns_security were Doc
+# 103 pills: they stay valid API scopes with no pill, and the page maps a
+# link that names them to the nearest pill (LEGACY_SCOPES in app.js).
 SCOPE_CHECKS = {
-    "complete":       None,  # None = run all
     "deliverability": {"dmarc", "spf", "dkim", "mx"},
+    "senders":        {"dmarc", "spf", "dkim", "mx"},
     "email_security": {"dmarc", "spf", "dkim", "mx", "mta_sts", "tls_rpt", "dane", "bimi"},
+    "complete":       None,  # None = run all
     "dmarc":          {"dmarc", "spf", "dkim"},
     "dns_security":   {"dnssec", "caa", "dane", "nameservers", "ct"},
 }
+PILL_SCOPES = ["deliverability", "senders", "email_security", "complete"]
 
 # Display name for each scope, matching the button labels in
 # static/index.html's scope selector.
 SCOPE_LABELS = {
-    "complete":       "Complete Audit",
-    "deliverability": "Email Deliverability",
-    "email_security": "Email Security",
-    "dmarc":          "DMARC Check",
-    "dns_security":   "DNS Security",
+    "deliverability": "Inbox readiness",
+    "senders":        "Who sends as you",
+    "email_security": "Spoofing protection",
+    "complete":       "Full audit",
+    "dmarc":          "DMARC check",
+    "dns_security":   "DNS security",
 }
 
-# Scope keys from before Doc 103. Each maps to the scope that runs
-# at least the checks it ran, so old links and API callers keep
-# working. Resolved by resolve_scope() before anything reads it.
+# Retired scope keys. Each maps to the scope that runs at least the
+# checks it ran, so old links and API callers keep working. Resolved by
+# resolve_scope() before anything reads it.
 LEGACY_SCOPES = {
     "email_full": "email_security",
     "transport": "email_security",
@@ -335,8 +344,8 @@ LEGACY_SCOPES = {
 def resolve_scope(scope):
     """Return the canonical scope key, None for complete.
 
-    Accepts a new key, a legacy key, or None. Raises ValueError
-    for anything else, naming the five valid keys."""
+    Accepts a current key, a legacy key, or None. Raises ValueError
+    for anything else, naming the valid keys."""
     if not scope:
         return None
     key = LEGACY_SCOPES.get(scope, scope)
@@ -4393,7 +4402,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
 # Informational only. The card goes in the response's draft_standards list,
 # never in checks, so no tally, score, plan or summary can see it.
 
-APRF_SCOPES = {"complete", "email_security", "deliverability"}
+APRF_SCOPES = {"complete", "email_security", "deliverability", "senders"}
 APRF_SELECTOR_CAP = 10
 APRF_DESTINATION_CAP = 4
 
@@ -6251,6 +6260,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "security_roadmap": _roadmap,
         "executive_summary": build_executive_summary(checks, _roadmap,
                                                      is_no_mail=is_defensive, scope=scope),
+        # Gmail, Yahoo and Microsoft sender requirements (2026-10-25); None
+        # when this run did not read SPF, DKIM and DMARC.
+        "sender_requirements": (None if is_defensive else build_sender_requirements(checks)),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
         "consistency_findings": consistency,

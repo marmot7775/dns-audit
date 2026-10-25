@@ -485,6 +485,88 @@ def _registry_policy_note(suffix: str, policy: Optional[str]) -> str:
             f"RFC 9989 apply it. Receivers on RFC 7489 find no DMARC policy here.")
 
 
+# Google, Yahoo and Microsoft (Outlook.com) sender requirements, as a
+# checklist (2026-10-25). Three rows are DNS records this audit reads and
+# grades from their cards. The rest depend on how mail is sent, which no DNS
+# lookup can show, and say so rather than guess. "bulk" rows apply to senders
+# of about 5,000 or more messages a day to that provider's users.
+REQUIREMENT_ROWS_OUTSIDE_DNS = [
+    ("alignment", "bulk", "The From domain matches the SPF or DKIM domain (alignment)",
+     "Depends on the From address and signing domain each service uses. "
+     "Who sends as you shows which services are set up for it."),
+    ("reverse_dns", "all", "Sending servers have matching forward and reverse DNS",
+     "Your email provider sets this for its own servers. It matters when you "
+     "run your own mail server."),
+    ("tls", "all", "Mail is sent over an encrypted (TLS) connection",
+     "Set by the sending server. Every major email provider does this already."),
+    ("unsubscribe", "bulk", "Marketing mail has one-click unsubscribe",
+     "A header your email platform adds to each message (RFC 8058)."),
+    ("spam_rate", "all", "Spam complaint rate stays below 0.3%",
+     "Measured by each mailbox provider. Google shows yours in Postmaster Tools."),
+]
+
+
+def build_sender_requirements(checks: List[Dict]) -> Optional[Dict]:
+    """The provider requirements checklist, or None when this run did not
+    read SPF, DKIM and DMARC."""
+    cm = {c.get("name", ""): c for c in checks}
+    if not all(n in cm for n in ("SPF", "DKIM", "DMARC")):
+        return None
+
+    def _graded(card, missing_word):
+        st = card.get("status")
+        if st == "unavailable" and card.get("unavailable_kind") != "not_enumerable":
+            return "unknown", "The lookup did not complete. Run the audit again."
+        if st == "fail":
+            return "not_met", missing_word
+        if card.get("configured") and st in ("pass", "warn"):
+            return "met", None
+        return "unknown", None
+
+    spf_st, spf_note = _graded(cm["SPF"], "Missing or broken. See the SPF card.")
+    dkim = cm["DKIM"]
+    if dkim.get("unavailable_kind") == "not_enumerable" or (
+            not dkim.get("configured") and dkim.get("status") != "fail"):
+        dkim_st, dkim_note = ("unknown", "No key found under common names. Enter your "
+                              "selector to check it.")
+    else:
+        dkim_st, dkim_note = _graded(dkim, "No usable key. See the DKIM card.")
+    dmarc_st, dmarc_note = _graded(cm["DMARC"], "Missing or broken. See the DMARC card.")
+    if dmarc_st == "met":
+        _pol = cm["DMARC"].get("effective_policy")
+        dmarc_note = (f"p={_pol} meets it." if _pol else None)
+
+    rows = [
+        {"key": "spf", "applies": "all", "label": "SPF record published",
+         "status": spf_st, "note": spf_note},
+        {"key": "dkim", "applies": "all", "label": "DKIM key published",
+         "status": dkim_st, "note": dkim_note},
+        {"key": "dmarc", "applies": "bulk", "label": "DMARC record published, p=none or stronger",
+         "status": dmarc_st, "note": dmarc_note},
+    ] + [
+        {"key": k, "applies": a, "label": label, "status": "outside_dns", "note": note}
+        for k, a, label, note in REQUIREMENT_ROWS_OUTSIDE_DNS
+    ]
+    dns_rows = [r for r in rows if r["status"] != "outside_dns"]
+    met = sum(r["status"] == "met" for r in dns_rows)
+    not_met = sum(r["status"] == "not_met" for r in dns_rows)
+    if not_met:
+        summary = (f"Your DNS misses {not_met} of the {len(dns_rows)} requirements it can show. "
+                   "Mailbox providers may reject or filter your mail until "
+                   + ("it is" if not_met == 1 else "they are") + " fixed.")
+        state = "fail"
+    elif met == len(dns_rows):
+        summary = (f"Your DNS meets all {len(dns_rows)} requirements it can show. "
+                   f"The other {len(rows) - len(dns_rows)} depend on how you send.")
+        state = "pass"
+    else:
+        summary = (f"Your DNS meets {met} of the {len(dns_rows)} requirements it can show; "
+                   "the rest could not be confirmed.")
+        state = "neutral"
+    return {"state": state, "summary": summary, "met": met, "not_met": not_met,
+            "dns_total": len(dns_rows), "rows": rows}
+
+
 def build_executive_summary(checks: List[Dict], roadmap: Dict,
                             is_no_mail: bool = False, scope: Optional[str] = None) -> Dict:
     """Build the executive summary card shown at the very top of results.
@@ -626,7 +708,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             _scoped_sentence = (
                 "This run did not check email authentication. DMARC, SPF, and DKIM "
                 "were outside its scope, so this report makes no claim about them. "
-                "Run the Complete Audit or Email Security scope for that."
+                "Run Full audit or Spoofing protection for that."
             )
         else:
             _scoped_sentence = (
@@ -795,7 +877,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         if _quarantine_pct0:
             return verdict, "warn", "warning"
         if (dmarc.get("reports_dropped") and dmarc_status == "warn"
-                and (_eff_policy != "none" or scope == DELIVERABILITY_SCOPE)):
+                and (_eff_policy != "none" or scope in INBOX_SCOPES)):
             # espn.com sends reports to disney.com, which has not authorized
             # them. The policy is in force; the reports are thrown away.
             return ("Your DMARC record is in force, but the reports it asks for "
@@ -804,7 +886,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             # Doc 104: Email Deliverability asks whether the domain meets the
             # providers' DMARC requirement, and p=none does. The card says
             # when it graded the record that way; without rua it did not.
-            if scope == DELIVERABILITY_SCOPE and dmarc.get("graded_for_scope") == scope:
+            if scope in INBOX_SCOPES and dmarc.get("graded_for_scope") == scope:
                 return ("Your domain publishes the DMARC record mailbox providers ask "
                         "bulk senders for. It does not block forged mail yet.",
                         "pass", "shield-check")
@@ -1035,7 +1117,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         deliverability_issues.append("no DMARC record")
     elif dmarc_status == "fail" and dmarc.get("multiple_records"):
         deliverability_issues.append("more than one DMARC record")
-    elif health_status == "monitoring" and scope != DELIVERABILITY_SCOPE:
+    elif health_status == "monitoring" and scope not in INBOX_SCOPES:
         # Under Email Deliverability p=none meets the requirement (Doc 104).
         deliverability_issues.append("DMARC is in monitoring mode (p=none)")
 
@@ -1597,7 +1679,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                if dmarc.get("status") != "unavailable" else False)
     # Doc 104: enforcement is the spoofing question, so Email Deliverability
     # does not ask for it.
-    if scope != DELIVERABILITY_SCOPE and (
+    if scope not in INBOX_SCOPES and (
             health.get("status") == "monitoring"
             or (health.get("status") == "attention" and _p_none)):
         items.append({"priority": "high", "protocol": "DMARC",
@@ -2926,13 +3008,16 @@ def _build_dmarcbis_card_data(readiness: Optional[Dict], record: Optional[str]) 
 # so under Email Deliverability a p=none record meets the requirement. Every
 # other scope grades it as a spoofing question, amber.
 DELIVERABILITY_SCOPE = "deliverability"
+# The scopes that ask whether mail gets delivered. Who sends as you grades
+# like Inbox readiness: its reader is the same sender (2026-10-25).
+INBOX_SCOPES = {DELIVERABILITY_SCOPE, "senders"}
 # audit_engine._check_report_authorization's issue for an rua or ruf
 # destination that has not authorized this domain's reports.
 _UNAUTHORIZED_REPORT_ISSUE = "External report destination not authorized"
 DMARC_P_NONE_ISSUE = "DMARC policy is none (monitoring only)"
 DELIVERABILITY_P_NONE_NOTE = (
     "Mailbox providers require bulk senders to publish DMARC, and p=none meets "
-    "that. Blocking forged mail is graded under Email Security."
+    "that. Blocking forged mail is graded under Spoofing protection."
 )
 
 
@@ -3144,7 +3229,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     # result other surfaces read is untouched); the rua issue keeps its
     # severity and still grades the card amber.
     _p_none_for_delivery = (
-        scope == DELIVERABILITY_SCOPE
+        scope in INBOX_SCOPES
         and ((inherited and inherited_policy == "none")
              or (record and not inherited and policy == "none"))
     )
@@ -3792,8 +3877,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # Some report destination has not authorized the reports, so they
         # are dropped while the policy still applies.
         "reports_dropped": reports_dropped,
-        "graded_for_scope": (DELIVERABILITY_SCOPE
-                             if _p_none_for_delivery and status == "pass" else None),
+        "graded_for_scope": (scope if _p_none_for_delivery and status == "pass" else None),
     }
 
 

@@ -851,7 +851,7 @@ async def audit_domain(
     request: Request,
     domain: str = Query(..., description="Domain to audit (e.g., example.com)"),
     selector: Optional[str] = Query(None, description="DKIM selector (e.g., google, s1)"),
-    scope: Optional[str] = Query(None, description="Audit scope: complete, deliverability, email_security, dmarc, dns_security"),
+    scope: Optional[str] = Query(None, description="Audit scope: deliverability, senders, email_security, complete (legacy keys still accepted)"),
 ):
     """
     Run a comprehensive DNS and email security audit.
@@ -1025,7 +1025,7 @@ async def audit_stream(
     request: Request,
     domain: str = Query(..., description="Domain to audit"),
     selector: Optional[str] = Query(None, description="DKIM selector"),
-    scope: Optional[str] = Query(None, description="Audit scope: complete, deliverability, email_security, dmarc, dns_security"),
+    scope: Optional[str] = Query(None, description="Audit scope: deliverability, senders, email_security, complete (legacy keys still accepted)"),
 ):
     """Stream audit progress via Server-Sent Events."""
     global _active_audits
@@ -1294,7 +1294,7 @@ async def audit_stream(
 async def audit_pdf(
     request: Request,
     domain: str,
-    scope: Optional[str] = Query("complete", description="Audit scope: complete, deliverability, email_security, dmarc, dns_security"),
+    scope: Optional[str] = Query("complete", description="Audit scope: deliverability, senders, email_security, complete (legacy keys still accepted)"),
     selector: Optional[str] = Query(None, description="DKIM selector"),
 ):
     """

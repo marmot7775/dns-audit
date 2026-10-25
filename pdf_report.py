@@ -986,6 +986,52 @@ def _plan_item(data, item, S, optional=False):
     return [KeepTogether(body)]
 
 
+# The page shows the checklist for these two scopes (REQUIREMENT_SCOPES in
+# app.js), and the PDF follows the page.
+REQUIREMENT_SCOPES = ("deliverability", "complete")
+_REQ_WORD = {"met": ("Met", PASS_CLR), "not_met": ("Not met", FAIL_CLR),
+             "unknown": ("Not confirmed", NEUTRAL_CLR)}
+
+
+def _requirements_block(data, S):
+    """Gmail, Yahoo and Microsoft sender requirements, as on the page."""
+    req = data.get("sender_requirements")
+    if not req or (data.get("scope") or "complete") not in REQUIREMENT_SCOPES:
+        return []
+    rows = []
+    for r in req.get("rows", []):
+        if r.get("status") == "outside_dns":
+            continue
+        word, clr = _REQ_WORD.get(r.get("status"), _REQ_WORD["unknown"])
+        who = "Bulk senders" if r.get("applies") == "bulk" else "All senders"
+        label = _safe(r.get("label", ""))
+        if r.get("note"):
+            label += f'<br/><font size="9" color="{TEXT_TER.hexval()}">{_safe(r["note"])}</font>'
+        rows.append([Paragraph(label, S["body"]),
+                     Paragraph(f'<font color="{clr.hexval()}"><b>{word}</b></font>', S["body"]),
+                     Paragraph(who, S["body_small"])])
+    els = [Paragraph("Gmail, Yahoo, and Microsoft sender requirements", S["subheading"]),
+           Paragraph(_safe(req.get("summary", "")), S["body"])]
+    if rows:
+        t = Table(rows, colWidths=[4.1 * inch, 1.1 * inch, 1.3 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.5, BORDER),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        els.append(t)
+    outside = [r.get("label", "") for r in req.get("rows", []) if r.get("status") == "outside_dns"]
+    if outside:
+        els.append(Spacer(1, SP_XS))
+        els.append(Paragraph(
+            "Not visible in DNS, so not graded here: " + _safe("; ".join(outside)) + ".",
+            S["body_small"]))
+    els.append(Spacer(1, SP_MD))
+    return [KeepTogether(els)]
+
+
 def _roadmap_page(data, S, number=2):
     """Build the plan: the one prioritized list, as on the web.
 
@@ -1004,6 +1050,7 @@ def _roadmap_page(data, S, number=2):
         els.append(Spacer(1, SP_SM))
     els.append(_tally_line(data.get("checks", []) or [], S))
     els.append(Spacer(1, SP_MD))
+    els.extend(_requirements_block(data, S))
 
     # Tier summary bar. Counted as the web heading counts them: an optional
     # extra is optional whatever its tier.
@@ -2183,7 +2230,7 @@ def _about_page(data, S, number=7):
     details = [
         ("Domain audited", domain),
         ("Date and time", now),
-        ("Audit type", SCOPE_LABELS.get(data.get("scope") or "complete", "Complete Audit")),
+        ("Audit type", SCOPE_LABELS.get(data.get("scope") or "complete", "Full audit")),
         ("Checks performed", ", ".join(_performed) if _performed else "None"),
     ]
     if _not_checked:
@@ -2378,7 +2425,7 @@ def generate_pdf(audit_result: dict) -> bytes:
         initialFontName=FONTS["sans"],
         title=f"DNS Security Audit: {_strip_html(domain)}",
         author="dns-audit.com",
-        subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Complete Audit')} "
+        subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Full audit')} "
                  f"report for {_strip_html(domain)}"),
     )
 

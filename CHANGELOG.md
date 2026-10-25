@@ -133,6 +133,36 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-25: Four questions instead of five scopes
+
+- Who sends as you draws the Sender Map: the domain in the middle and every
+  service Sendermap found around it, each coloured by whether its own setup
+  is complete (Set up, Needs setup, Found by name, Account only, Gets your
+  reports), with its SPF, DKIM, MX, return path and tracking records as
+  badges. A line's style says how sure the map is. Selecting a service shows
+  its setup, the risks that cite its own records, and how the map found it.
+  It opens on the service that needs attention. Below 640px it is a list.
+
+- Inbox readiness and Full audit open with the Gmail, Yahoo, and Microsoft
+  sender requirements under the headline: SPF, DKIM and DMARC graded Met,
+  Not met or Not confirmed from their cards, and the five requirements no
+  DNS lookup can show (alignment, reverse DNS, TLS, one-click unsubscribe,
+  spam rate) listed as such, folded. The PDF carries the same block at the
+  top of What to do. The API returns it as `sender_requirements`.
+
+- The home page asks "Will your email reach the inbox?" and offers four
+  pills, one per question a sender asks: Inbox readiness (the default),
+  Who sends as you (new), Spoofing protection and Full audit. DMARC Check
+  and DNS Security have no pill; their keys still work in the API, and a
+  link that names them lights the nearest pill.
+- The pills stay on the results page, and clicking one runs the same
+  domain under that question.
+- Who sends as you opens the services found in DNS, under the plan.
+- The headline box no longer repeats the first plan rows as "Do these
+  first"; the plan right under it is the list.
+- Shared links always name their scope. A link with a domain and no scope
+  opens as a full audit, as it did before.
+
 ## 2026-10-25: Reports that are dropped no longer read as a broken record
 
 - A DMARC record whose rua destination has not authorized the reports (RFC

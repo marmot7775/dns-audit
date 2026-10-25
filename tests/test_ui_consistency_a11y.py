@@ -634,7 +634,7 @@ def test_r_before_any_audit_keeps_the_typed_domain(browser):
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
         page.fill("#domain-input", "example.com")
-        page.focus(".scope-btn[data-scope='dmarc']")
+        page.focus(".scope-btn[data-scope='email_security']")
         page.keyboard.press("r")
         page.wait_for_timeout(600)
         assert page.input_value("#domain-input") == "example.com"

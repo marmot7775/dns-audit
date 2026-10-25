@@ -6,21 +6,24 @@
 const API_BASE = '/api';
 
 // -- Scope definitions: which checks to show per scope --
+// One scope per question a sender asks, in pill order (2026-10-25). The API
+// also takes dmarc and dns_security, which have no pill.
 const SCOPE_CHECKS = {
-    complete: null, // null = show all
     deliverability: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX'],
+    senders: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX'],
     email_security: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX',
                      'MTA-STS', 'TLS-RPT', 'DANE', 'BIMI'],
-    dmarc: ['DMARC', 'SPF', 'DKIM'],
-    dns_security: ['DNSSEC', 'CAA', 'DANE', 'Nameservers',
-                   'Certificate Transparency'],
+    complete: null, // null = show all
 };
-// Scope keys from before Doc 103, mapped to the scope that runs at least
-// the same checks, so old shared links and bookmarks keep working.
+// Scope keys with no pill, mapped to the pill that runs at least the same
+// checks, so old shared links and bookmarks keep working.
 const LEGACY_SCOPES = {
     email_full: 'email_security', transport: 'email_security',
-    dns_infra: 'dns_security', security_scan: 'complete',
+    dns_infra: 'complete', security_scan: 'complete',
+    dmarc: 'email_security', dns_security: 'complete',
 };
+// The scope the home page starts on.
+const DEFAULT_SCOPE = 'deliverability';
 
 // The vendor panel when the sender map did not finish inside the audit. The
 // PDF prints the same words (pdf_report.VENDORS_UNCHECKED).
@@ -221,7 +224,7 @@ function statusIconHtml(st) {
 }
 
 const DEFAULT_TITLE = document.title;
-let currentScope = 'complete';
+let currentScope = DEFAULT_SCOPE;
 let lastAuditData = null;
 // The DKIM selector the shown results were run with, set by renderResults
 // beside lastAuditData. The PDF reads this, not the input, which may have
@@ -278,8 +281,14 @@ document.querySelectorAll('.scope-btn').forEach(btn => {
         btn.classList.add('active');
         btn.setAttribute('aria-checked', 'true');
         btn.setAttribute('tabindex', '0');
+        const changed = currentScope !== btn.dataset.scope;
         currentScope = btn.dataset.scope;
         syncScopeDesc();
+        // On a results page the pills switch the question for the same
+        // domain: run it again under the new scope.
+        if (changed && lastAuditData && !auditInFlight && domainInput.value.trim()) {
+            auditForm.requestSubmit();
+        }
     });
 });
 
@@ -320,9 +329,11 @@ document.getElementById('selector-toggle').addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const domain = params.get('d');
-    const rawScope = params.get('scope');
+    // A shared link from before 2026-10-25 names no scope when it was a
+    // complete run, so a domain with no scope opens as a full audit.
+    const rawScope = params.get('scope') || (domain ? 'complete' : null);
     const scope = (rawScope && LEGACY_SCOPES[rawScope]) || rawScope;
-    if (scope && SCOPE_CHECKS[scope]) {
+    if (scope && Object.prototype.hasOwnProperty.call(SCOPE_CHECKS, scope)) {
         currentScope = scope;
         document.querySelectorAll('.scope-btn').forEach(b => {
             const on = b.dataset.scope === scope;
@@ -847,6 +858,9 @@ function renderResults(data, selector = '') {
     // Prompt 2: Record to recent audits in localStorage
     _recordRecentAudit(data.domain);
 
+    // -- Gmail, Yahoo and Microsoft sender requirements, under the headline --
+    renderRequirements(data);
+
     // -- Executive Summary (Prompt 16) -- render at the very top --
     _execSummary = data.executive_summary || null;
     const esSlot = document.getElementById('executive-summary-slot');
@@ -1184,7 +1198,19 @@ function renderResults(data, selector = '') {
     const servicesBody = document.getElementById('services-body');
     if (servicesSection && servicesBody && servicesToggle) {
         servicesSection.classList.toggle('is-hidden', !(hasVendors || hasPlatform));
-        setDisclosure(servicesToggle, servicesBody, false);
+        // Who sends as you asks this question, so the list is the answer:
+        // open, and placed right under the plan. Other scopes keep it
+        // closed at the end of the page.
+        const sendersView = _resultScope(data) === 'senders';
+        // With the map drawn, the vendor cards would repeat it: the map is
+        // the answer and the section keeps only the platform guidance,
+        // closed at the end as on the other scopes.
+        const mapDrawn = renderSenderMap(data);
+        const vendorsBlock = document.getElementById('vendors-section');
+        if (vendorsBlock && mapDrawn) vendorsBlock.style.display = 'none';
+        if (mapDrawn) servicesSection.classList.toggle('is-hidden', !hasPlatform);
+        placeServicesSection(servicesSection, sendersView && !mapDrawn);
+        setDisclosure(servicesToggle, servicesBody, sendersView && !mapDrawn);
     }
 
     // Share button with dropdown
@@ -1227,6 +1253,271 @@ function renderResults(data, selector = '') {
         csvBtn.parentNode.replaceChild(newCsvBtn, csvBtn);
         newCsvBtn.addEventListener('click', () => _exportToCSV(data));
     }
+}
+
+// ============================================================
+// Sender Map (2026-10-25): Who sends as you, drawn
+// ============================================================
+
+// The domain sits in the middle and every service Sendermap found sits
+// around it. A line's style says how sure the map is, a node's colour says
+// whether the service's own setup is complete, and selecting a node shows
+// the records behind it. Below 640px the same nodes stack as a list.
+const SMAP_RECORDS = { spf: 'SPF', dkim: 'DKIM', mx: 'MX', return_path: 'Return path', tracking: 'Tracking' };
+const SMAP_TIER_ORDER = ['In use', 'Configured', 'Likely', 'Account only'];
+
+function senderMapNodes(map) {
+    const services = (map && map.services) || [];
+    const nodes = services.map((svc, i) => {
+        const items = (svc.setups || []).flatMap(st => st.items || [])
+            .filter(it => it.need !== 'none');
+        const missing = items.filter(it => it.need === 'required' && it.state === 'missing');
+        let state;
+        if (svc.role === 'reporting') state = 'reporting';
+        else if (svc.tier === 'Account only') state = 'account';
+        else if (missing.length) state = 'missing';
+        else if (items.some(it => it.need === 'required' && it.state === 'present')) state = 'ready';
+        else state = 'unverified';
+        return { id: `smap-node-${i}`, svc, items, missing, state };
+    });
+    const rank = n => n.state === 'reporting' ? 99
+        : (SMAP_TIER_ORDER.indexOf(n.svc.tier) + 1 || 50);
+    return nodes.sort((a, b) => rank(a) - rank(b));
+}
+
+const SMAP_STATE_WORD = {
+    ready: 'Set up', missing: 'Needs setup', unverified: 'Found by name',
+    account: 'Account only', reporting: 'Gets your reports',
+};
+
+function _smapBadges(node) {
+    // An account-only or reporting service is not set up to send, so its
+    // records are not a checklist it is failing.
+    if (!['ready', 'missing', 'unverified'].includes(node.state)) return '';
+    const seen = new Set();
+    return node.items.filter(it => {
+        if (seen.has(it.record)) return false;
+        seen.add(it.record);
+        return true;
+    }).map(it => {
+        const st = it.state === 'present' ? 'ok' : it.state === 'missing' ? 'missing' : 'unknown';
+        const label = SMAP_RECORDS[it.record] || it.record;
+        const word = st === 'ok' ? 'in place' : st === 'missing' ? 'missing' : 'not checked';
+        return `<span class="smap-badge smap-badge-${st}" title="${escapeHtml(label)} ${word}">${escapeHtml(label)}</span>`;
+    }).join('');
+}
+
+function _smapDetail(node, map) {
+    const svc = node.svc;
+    // A finding belongs to this service when it cites one of this service's
+    // own records: name, type and value, since the apex name is shared.
+    const evKey = e => `${e.name}|${e.rtype}|${e.value}`;
+    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(evKey));
+    const findings = ((map && map.findings) || []).filter(f =>
+        (f.evidence || []).some(e => own.has(evKey(e))));
+    // One line per kind of evidence: the first record, and how many more.
+    const byKind = new Map();
+    (svc.claims || []).forEach(c => {
+        if (!byKind.has(c.kind)) byKind.set(c.kind, []);
+        byKind.get(c.kind).push(c.evidence || {});
+    });
+    const claims = [...byKind.entries()].map(([kind, evs]) => {
+        const ev = evs[0];
+        const more = evs.length > 1 ? ` and ${evs.length - 1} more` : '';
+        return `<li><span class="smap-claim-kind">${escapeHtml(kind)}${more}</span>
+            <code class="smap-claim-rec">${escapeHtml(`${ev.name || ''} ${ev.rtype || ''} ${ev.value || ''}`.trim())}</code></li>`;
+    }).join('');
+    // Only a service set up to send is missing anything. For an account, the
+    // same list says what sending through it would take.
+    const sending = ['ready', 'missing', 'unverified'].includes(node.state);
+    const setup = node.items.map(it => {
+        const label = SMAP_RECORDS[it.record] || it.record;
+        const need = it.need === 'required' ? 'required' : 'optional';
+        const word = it.state === 'present' ? 'In place' : it.state === 'missing' ? 'Missing' : 'Not checked';
+        return `<li class="smap-setup-${safeClass(it.state.replace(' ', '_'))}"><strong>${escapeHtml(label)}</strong> (${need}): ${word}${it.state === 'missing' && it.asked ? `. ${sending ? 'Add it at' : 'It would go at'} ${escapeHtml(it.asked.replace(/\b[A-Z]+ at /g, ''))}` : ''}</li>`;
+    }).join('');
+    const finds = findings.map(f => `<li class="smap-finding-${safeClass(f.severity)}"><strong>${escapeHtml(f.title)}.</strong> ${escapeHtml(f.detail || '')}</li>`).join('');
+    return `<div class="smap-detail-head">
+            <span class="smap-detail-name">${escapeHtml(svc.name)}</span>
+            <span class="smap-detail-cat">${escapeHtml(svc.category || '')}${svc.tier ? ` · ${escapeHtml(svc.tier)}` : ''}</span>
+        </div>
+        <p class="smap-detail-state">${escapeHtml(SMAP_STATE_WORD[node.state])}${sending && node.missing.length ? `: ${escapeHtml(node.missing.map(m => SMAP_RECORDS[m.record] || m.record).join(', '))} missing` : ''}.</p>
+        ${setup ? `<h4 class="smap-detail-sub">${sending ? 'Its setup' : 'If you start sending through it'}</h4><ul class="smap-setup">${setup}</ul>` : ''}
+        ${finds ? `<h4 class="smap-detail-sub">Risks</h4><ul class="smap-findings">${finds}</ul>` : ''}
+        ${claims ? `<h4 class="smap-detail-sub">How the map found it</h4><ul class="smap-claims">${claims}</ul>` : ''}`;
+}
+
+// Sendermap's story ends by naming the lookups this audit leaves off (the
+// website, sending subdomains) as "turned off", the words of its command
+// line. On this page they read as a setting the visitor can change, so that
+// sentence goes.
+function smapStory(story) {
+    return String(story || '').replace(/\s*Not checked:[^.]*turned off[^.]*\./, '').trim();
+}
+
+function renderSenderMap(data) {
+    const slot = document.getElementById('sender-map-slot');
+    if (!slot) return false;
+    const map = data && data.sendermap;
+    if (_resultScope(data) !== 'senders' || !map || !(map.services || []).length) {
+        slot.innerHTML = '';
+        return false;
+    }
+    const nodes = senderMapNodes(map);
+    const counts = nodes.reduce((n, x) => (n[x.state] = (n[x.state] || 0) + 1, n), {});
+    const legend = ['ready', 'missing', 'unverified', 'account', 'reporting']
+        .filter(k => counts[k])
+        .map(k => `<span class="smap-legend-item smap-${k}"><span class="smap-dot"></span>${SMAP_STATE_WORD[k]} (${counts[k]})</span>`)
+        .join('');
+    slot.innerHTML = `<section class="smap" aria-labelledby="smap-heading">
+        <h2 class="smap-heading" id="smap-heading">Who sends as ${escapeHtml(data.domain)}</h2>
+        ${map.story ? `<p class="smap-story">${escapeHtml(smapStory(map.story))}</p>` : ''}
+        <div class="smap-legend">${legend}</div>
+        <div class="smap-canvas">
+            <svg class="smap-lines" aria-hidden="true" focusable="false"></svg>
+            <div class="smap-hub"><span class="smap-hub-name">${escapeHtml(data.domain)}</span></div>
+            ${nodes.map(n => `<button type="button" class="smap-node smap-${n.state} smap-tier-${safeClass((n.svc.tier || 'reporting').toLowerCase().replace(/\s+/g, '-'))}" id="${n.id}" aria-pressed="false" aria-controls="smap-detail">
+                <span class="smap-node-name">${escapeHtml(n.svc.name)}</span>
+                <span class="smap-node-state">${escapeHtml(SMAP_STATE_WORD[n.state])}</span>
+                <span class="smap-badges">${_smapBadges(n)}</span>
+            </button>`).join('')}
+        </div>
+        <div class="smap-detail" id="smap-detail" aria-live="polite">
+            <p class="smap-detail-hint">Select a service to see its records and what it still needs.</p>
+        </div>
+    </section>`;
+    const canvas = slot.querySelector('.smap-canvas');
+    const detail = slot.querySelector('#smap-detail');
+    nodes.forEach(n => {
+        const btn = slot.querySelector(`#${n.id}`);
+        btn.addEventListener('click', (e) => {
+            slot.querySelectorAll('.smap-node').forEach(b => b.setAttribute('aria-pressed', 'false'));
+            btn.setAttribute('aria-pressed', 'true');
+            detail.innerHTML = _smapDetail(n, map);
+            // On a phone the panel is below the whole list: take the reader
+            // there when they tap, not when the map opens on its own.
+            if (e.isTrusted && window.matchMedia('(max-width: 640px)').matches) {
+                detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+    layoutSenderMap(canvas, nodes);
+    if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => layoutSenderMap(canvas, nodes));
+        ro.observe(canvas);
+    }
+    // Open on the service that most needs attention, else the first.
+    const first = nodes.find(n => n.state === 'missing') || nodes[0];
+    if (first) slot.querySelector(`#${first.id}`).click();
+    return true;
+}
+
+// Positions the nodes on an ellipse around the hub and draws a line to
+// each. Done through CSSOM (the CSP refuses style attributes). Below the
+// list breakpoint the CSS stacks the nodes and the lines are not drawn.
+function layoutSenderMap(canvas, nodes) {
+    if (!canvas) return;
+    const svg = canvas.querySelector('.smap-lines');
+    const hub = canvas.querySelector('.smap-hub');
+    const stacked = window.matchMedia('(max-width: 640px)').matches;
+    const btns = nodes.map(n => canvas.querySelector(`#${n.id}`));
+    if (stacked) {
+        canvas.style.height = '';
+        [hub, ...btns].forEach(el => { if (el) { el.style.left = ''; el.style.top = ''; } });
+        svg.innerHTML = '';
+        return;
+    }
+    const W = canvas.clientWidth;
+    const n = nodes.length;
+    const rx = Math.max(160, W / 2 - 100);
+    const ry = Math.max(140, Math.min(260, 70 + n * 16));
+    const H = ry * 2 + 120;
+    canvas.style.height = `${H}px`;
+    const cx = W / 2, cy = H / 2;
+    hub.style.left = `${cx}px`;
+    hub.style.top = `${cy}px`;
+    let lines = '';
+    btns.forEach((el, i) => {
+        const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
+        const x = cx + rx * Math.cos(a), y = cy + ry * Math.sin(a);
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        const node = nodes[i];
+        lines += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="smap-line smap-line-${node.state} smap-line-${safeClass((node.svc.tier || 'reporting').toLowerCase().replace(/\s+/g, '-'))}"/>`;
+    });
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.innerHTML = lines;
+}
+
+// The checklist answers Inbox readiness's question directly, so it shows
+// there and on a full audit; the other questions have their own answer.
+const REQUIREMENT_SCOPES = ['deliverability', 'complete'];
+const REQUIREMENT_STATUS = {
+    met: { icon: 'pass', word: 'Met' },
+    not_met: { icon: 'fail', word: 'Not met' },
+    unknown: { icon: 'unavailable', word: 'Not confirmed' },
+    outside_dns: { icon: 'absent', word: 'Not visible in DNS' },
+};
+
+function renderRequirements(data) {
+    const slot = document.getElementById('requirements-slot');
+    if (!slot) return;
+    const req = data && data.sender_requirements;
+    if (!req || !REQUIREMENT_SCOPES.includes(_resultScope(data))) {
+        slot.innerHTML = '';
+        return;
+    }
+    const row = r => {
+        const st = REQUIREMENT_STATUS[r.status] || REQUIREMENT_STATUS.unknown;
+        const who = r.applies === 'bulk' ? 'Bulk senders' : 'All senders';
+        let extra = '';
+        if (r.key === 'alignment') {
+            extra = ` <button type="button" class="req-link" data-req-scope="senders">See who sends as you</button>`;
+        } else if (r.key === 'spam_rate') {
+            extra = ` <a class="req-link" href="/articles/postmaster-tools">How to read Postmaster Tools</a>`;
+        }
+        return `<li class="req-row req-${safeClass(r.status)}">
+            ${statusIconHtml(st.icon)}
+            <div class="req-text">
+                <div class="req-label">${escapeHtml(r.label)}</div>
+                ${r.note || extra ? `<div class="req-note">${escapeHtml(r.note || '')}${extra}</div>` : ''}
+            </div>
+            <div class="req-meta"><span class="req-word">${escapeHtml(st.word)}</span><span class="req-who">${who}</span></div>
+        </li>`;
+    };
+    const inDns = req.rows.filter(r => r.status !== 'outside_dns');
+    const outside = req.rows.filter(r => r.status === 'outside_dns');
+    slot.innerHTML = `<section class="req-block req-state-${safeClass(req.state)}" aria-labelledby="req-heading">
+        <h2 class="req-heading" id="req-heading">Gmail, Yahoo, and Microsoft sender requirements</h2>
+        <p class="req-summary">${escapeHtml(req.summary)}</p>
+        <h3 class="req-sub">What your DNS shows</h3>
+        <ul class="req-list">${inDns.map(row).join('')}</ul>
+        <details class="req-more">
+            <summary class="req-sub"><span>What depends on how you send (${outside.length})</span>${ICON.chevron}</summary>
+            <ul class="req-list">${outside.map(row).join('')}</ul>
+        </details>
+        <p class="req-foot">Bulk senders send about 5,000 or more messages a day to one provider's users.</p>
+    </section>`;
+    slot.querySelectorAll('[data-req-scope]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pill = document.querySelector(`.scope-btn[data-scope="${btn.dataset.reqScope}"]`);
+            if (pill) pill.click();
+        });
+    });
+}
+
+// The services section lives at the end of the results; for Who sends as
+// you it moves under the plan. Its home is remembered on first call so a
+// later run under another scope puts it back.
+let _servicesHome = null;
+function placeServicesSection(section, top) {
+    if (!_servicesHome) _servicesHome = { parent: section.parentNode, next: section.nextSibling };
+    const plan = document.getElementById('priority-section');
+    if (top && plan) plan.after(section);
+    else _servicesHome.parent.insertBefore(section, _servicesHome.next);
+    section.classList.toggle('services-first', !!top);
 }
 
 // ============================================================
@@ -3183,7 +3474,7 @@ function renderExecutiveSummary(es, roadmap) {
     const box = `<div class="es-block es-state-${safeClass(es.headline_state || 'neutral')}" id="executive-summary">
         ${_headlineHtml(es, roadmap)}
         ${_defensiveHtml(lastAuditData)}
-        ${_doFirstHtml(es, roadmap)}
+        ${_unreadNoteHtml(es)}
     </div>`;
 
     const tech = `<div class="es-tech-wrap">
@@ -3273,38 +3564,13 @@ function _headlineHtml(es, roadmap) {
     </div>`;
 }
 
-// Doc 92: up to three numbered actions, the top plan rows that are not
-// optional extras. The backend sends them as do_first; until it does, they
-// come from the roadmap. A low-tier row is never one of them.
-function doFirstItems(es, roadmap) {
-    if (es && Array.isArray(es.do_first)) return es.do_first.slice(0, 3);
-    return ((roadmap && roadmap.items) || [])
-        .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low' && !i.self_clearing)
-        .slice(0, 3)
-        .map(i => ({ plain_head: i.plain_head || '', title: i.action || '',
-                     priority: i.priority, protocol: i.protocol }));
-}
-
-// "Do these first" replaces the old "biggest risk" box. Each action leads
-// with the plain consequence and keeps the technical instruction under it.
-function _doFirstHtml(es, roadmap) {
+// The headline box used to repeat the first three plan rows as "Do these
+// first", right above the plan that lists them (removed 2026-10-25). It
+// keeps only the could-not-read message, which has no plan row.
+function _unreadNoteHtml(es) {
     const risk = es.biggest_risk || '';
     const unread = es.biggest_risk_severity === 'unknown' || risk.startsWith('This audit could not read');
-    // The audit could not rank risks, so the page shows the message alone,
-    // as the PDF does.
-    const items = unread ? [] : doFirstItems(es, roadmap);
-    let html = '';
-    if (unread) html += `<p class="es-first-note">${escapeHtml(risk)}</p>`;
-    if (items.length > 0) {
-        html += `<h2 class="es-first-label">Do these first</h2><ol class="es-first-list">`
-            + items.map(it => {
-                const head = it.plain_head || it.title || '';
-                const sub = (it.plain_head && it.title && it.title !== it.plain_head) ? it.title : '';
-                return `<li class="es-first-item"><span class="es-first-head">${escapeHtml(head)}</span>`
-                    + (sub ? `<span class="es-first-title">${escapeHtml(sub)}</span>` : '') + '</li>';
-            }).join('') + '</ol>';
-    }
-    return `<div class="es-first">${html}</div>`;
+    return `<div class="es-first">${unread ? `<p class="es-first-note">${escapeHtml(risk)}</p>` : ''}</div>`;
 }
 
 // The Defensive DNS signals, which used to be a box of their own above the
@@ -4180,7 +4446,9 @@ function _getShareUrl() {
     const url = new URL(window.location.origin);
     url.searchParams.set('d', d.domain);
     const scope = _resultScope(d);
-    if (scope !== 'complete') url.searchParams.set('scope', scope);
+    // Always named: a link with no scope opens as a full audit (links from
+    // before 2026-10-25), while the home page itself starts on Inbox readiness.
+    url.searchParams.set('scope', scope);
     // Without it the link reruns the audit without the DKIM lookup the
     // sharer saw.
     if (lastAuditSelector) url.searchParams.set('sel', lastAuditSelector);

@@ -450,9 +450,16 @@ main {
 
 .audit-input-section.compact .audit-title,
 .audit-input-section.compact .audit-subtitle,
-.audit-input-section.compact .scope-selector,
+.audit-input-section.compact .scope-label,
+.audit-input-section.compact .scope-desc,
 .audit-input-section.compact .selector-toggle-row {
     display: none;
+}
+
+/* On a results page the pills stay, above the domain box, so the reader
+   can see which question was asked and ask another for the same domain. */
+.audit-input-section.compact .scope-selector {
+    margin-bottom: var(--space-sm);
 }
 
 .audit-input-section.compact .audit-input-card {
@@ -4343,47 +4350,12 @@ input[type="search"],
 }
 
 /* Doc 92: the short answer. The headline and its subline, any defensive
-   signals, then up to three numbered actions. The closed Technical summary
+   signals, and the could-not-read note when there is one (the numbered
+   "Do these first" list went 2026-10-25: the plan below lists the same rows).
+   The closed Technical summary
    (tiles, deliverability line, panel buttons) sits above the check cards. */
 .es-first {
     margin-bottom: 1.25rem;
-}
-
-h2.es-first-label,
-.es-first-label {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin: 0 0 var(--space-sm);
-}
-
-.es-first-list {
-    margin: 0;
-    padding-left: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-}
-
-.es-first-item {
-    color: var(--text-primary);
-    line-height: 1.5;
-}
-
-.es-first-item::marker {
-    font-weight: 700;
-    color: var(--text-secondary);
-}
-
-.es-first-head {
-    display: block;
-    font-size: var(--font-base);
-}
-
-.es-first-title {
-    display: block;
-    font-size: var(--font-xs);
-    color: var(--text-tertiary);
 }
 
 .es-first-note {
@@ -7826,4 +7798,441 @@ h3.services-sub,
     padding: 0.1em 0.4em;
     border-radius: var(--radius-sm);
     color: var(--primary-light);
+}
+
+/* Who sends as you: the services list is the answer, so it sits under the
+   plan, open, with the same spacing as the plan above it. */
+.services-section.services-first {
+    margin: var(--space-xl) 0;
+}
+
+/* Gmail, Yahoo and Microsoft sender requirements (2026-10-25): under the
+   headline on Inbox readiness and Full audit. Rows DNS can show are graded;
+   the rest say they are not visible in DNS, in the neutral colour. */
+.req-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.75rem;
+    margin-bottom: var(--space-xl);
+}
+
+.req-heading {
+    font-size: var(--font-md);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs);
+}
+
+.req-summary {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-md);
+    line-height: 1.5;
+}
+
+.req-more > summary {
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    list-style: none;
+}
+
+.req-more > summary::-webkit-details-marker {
+    display: none;
+}
+
+.req-more > summary .icon {
+    transition: transform 0.2s ease;
+}
+
+.req-more[open] > summary .icon {
+    transform: rotate(180deg);
+}
+
+.req-sub {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    margin: var(--space-md) 0 var(--space-xs);
+}
+
+.req-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.req-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+    column-gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+    border-top: 1px solid var(--border);
+}
+
+.req-row:first-child {
+    border-top: none;
+}
+
+.req-row .status-icon {
+    margin-top: 0.15rem;
+}
+
+.req-text {
+    min-width: 0;
+}
+
+.req-label {
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    line-height: 1.45;
+}
+
+.req-note {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin-top: 0.15rem;
+}
+
+.req-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--primary);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.req-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    text-align: right;
+}
+
+.req-word {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.req-met .req-word { color: var(--pass); }
+.req-not_met .req-word { color: var(--fail-text); }
+
+.req-who {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+.req-foot {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin: var(--space-md) 0 0;
+}
+
+@media (max-width: 640px) {
+    .req-block {
+        padding: 1rem 1.1rem;
+    }
+
+    .req-row {
+        grid-template-columns: auto 1fr;
+    }
+
+    .req-meta {
+        grid-column: 2;
+        flex-direction: row;
+        gap: var(--space-sm);
+        align-items: baseline;
+        margin-top: 0.2rem;
+    }
+}
+
+/* Sender Map (2026-10-25): Who sends as you, drawn. The hub and nodes are
+   positioned from app.js through CSSOM; below 640px they stack as a list. */
+.smap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.75rem 1.5rem;
+    margin-bottom: var(--space-xl);
+}
+
+.smap-heading {
+    font-size: var(--font-md);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs);
+}
+
+.smap-story {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin: 0 0 var(--space-md);
+}
+
+.smap-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-md);
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+}
+
+.smap-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.smap-dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+}
+
+/* One colour per node state, for the legend dot and the node's edge. */
+.smap-ready .smap-dot {
+    background: var(--pass);
+}
+
+.smap-missing .smap-dot {
+    background: var(--warn);
+}
+
+.smap-canvas {
+    position: relative;
+    margin: var(--space-md) 0;
+    min-height: 200px;
+}
+
+.smap-lines {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+}
+
+.smap-line {
+    stroke: var(--text-tertiary);
+    stroke-width: 1.5;
+    opacity: 0.55;
+}
+
+.smap-line-ready { stroke: var(--pass); }
+.smap-line-missing { stroke: var(--warn); }
+.smap-line-likely { stroke-dasharray: 6 5; }
+.smap-line-account-only,
+.smap-line-reporting { stroke-dasharray: 2 5; }
+
+.smap-hub {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    background: var(--primary-solid);
+    color: #fff;
+    border-radius: var(--radius-lg);
+    padding: 0.7rem 1.2rem;
+    font-weight: 700;
+    font-size: var(--font-base);
+    box-shadow: 0 0 0 6px var(--primary-subtle);
+    max-width: 14rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+    z-index: 1;
+}
+
+.smap-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    width: 9.5rem;
+    min-height: 44px;
+    padding: 0.55rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--text-tertiary);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    z-index: 2;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.smap-node:hover,
+.smap-node[aria-pressed="true"] {
+    box-shadow: 0 0 0 3px var(--primary-subtle), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.smap-node.smap-ready { border-top-color: var(--pass); }
+.smap-node.smap-missing { border-top-color: var(--warn); }
+
+.smap-node-name {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: center;
+}
+
+.smap-node-state {
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+}
+
+.smap-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+.smap-badge {
+    font-size: var(--font-xs);
+    line-height: 1.2;
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.smap-badge-ok {
+    color: var(--pass);
+    background: var(--pass-bg);
+    border-color: var(--pass-border);
+}
+
+.smap-badge-missing {
+    color: var(--warn);
+    background: var(--warn-bg);
+}
+
+.smap-detail {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-md);
+}
+
+.smap-detail-hint {
+    font-size: var(--font-sm);
+    color: var(--text-tertiary);
+    margin: 0;
+}
+
+.smap-detail-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-sm);
+}
+
+.smap-detail-name {
+    font-size: var(--font-md);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.smap-detail-cat {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+.smap-detail-state {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: var(--space-xs) 0 0;
+}
+
+h4.smap-detail-sub {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    margin: var(--space-md) 0 var(--space-xs);
+}
+
+.smap-setup,
+.smap-findings,
+.smap-claims {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+
+.smap-setup-missing,
+.smap-finding-risk {
+    color: var(--text-primary);
+}
+
+.smap-claim-kind {
+    display: block;
+    color: var(--text-primary);
+}
+
+.smap-claim-rec {
+    display: block;
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .smap {
+        padding: 1rem 1.1rem;
+    }
+
+    .smap-canvas {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
+        min-height: 0;
+        padding-left: 1rem;
+        border-left: 2px solid var(--border);
+    }
+
+    .smap-lines {
+        display: none;
+    }
+
+    .smap-hub {
+        position: static;
+        transform: none;
+        align-self: flex-start;
+        margin-left: -1.6rem;
+    }
+
+    .smap-node {
+        position: static;
+        transform: none;
+        width: 100%;
+        align-items: flex-start;
+        border-top: 1px solid var(--border);
+        border-left: 3px solid var(--text-tertiary);
+    }
+
+    .smap-node.smap-ready { border-left-color: var(--pass); border-top-color: var(--border); }
+    .smap-node.smap-missing { border-left-color: var(--warn); border-top-color: var(--border); }
+
+    .smap-node-name {
+        text-align: left;
+    }
+
+    .smap-badges {
+        justify-content: flex-start;
+    }
 }

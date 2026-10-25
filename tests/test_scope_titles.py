@@ -16,7 +16,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from audit_engine import SCOPE_CHECKS
+from audit_engine import PILL_SCOPES, SCOPE_CHECKS
 
 INDEX_HTML = os.path.join(os.path.dirname(__file__), "..", "static", "index.html")
 
@@ -64,9 +64,10 @@ class TestScopeButtonTitlesMatchScopeChecks(unittest.TestCase):
 
     def test_every_scope_button_names_every_check_it_runs(self):
         titles = self._button_titles()
-        self.assertEqual(set(titles), set(SCOPE_CHECKS), "Scope buttons in index.html do not match SCOPE_CHECKS keys")
+        self.assertEqual(list(titles), PILL_SCOPES, "Scope buttons in index.html do not match PILL_SCOPES")
 
-        for scope, check_set in SCOPE_CHECKS.items():
+        for scope in PILL_SCOPES:
+            check_set = SCOPE_CHECKS[scope]
             expected_checks = ALL_CHECK_KEYS if check_set is None else check_set
             title = titles[scope]
             for check_key in expected_checks:
