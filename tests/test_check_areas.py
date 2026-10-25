@@ -270,7 +270,13 @@ def test_areas_render_and_links_land_on_their_card(browser, audit, theme, width)
                 window.scrollTo(0, 0);
                 openCard(id);
             }""", target)
-            page.wait_for_timeout(900)
+            # openCard scrolls smoothly; on a tall page (the requirements
+            # block, 2026-10-25) and a slow CI runner that outlasts a fixed
+            # pause, so wait for the card to arrive, up to five seconds.
+            page.wait_for_function("""id => {
+                const r = document.getElementById(id).getBoundingClientRect();
+                return r.top >= 0 && r.top < window.innerHeight;
+            }""", arg=target, timeout=5000)
             again = page.evaluate("""id => {
                 const c = document.getElementById(id);
                 const r = c.getBoundingClientRect();
