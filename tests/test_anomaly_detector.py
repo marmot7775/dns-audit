@@ -378,7 +378,7 @@ class TestParkedDomainWithMx:
 # ---------------------------------------------------------------------------
 
 class TestUnauthorizedReportDestinations:
-    def test_unauthorized_report_address_is_a_critical_anomaly(self):
+    def test_unauthorized_report_address_is_a_medium_anomaly(self):
         raw = {
             "dmarc": {
                 "policy": "reject",
@@ -391,7 +391,8 @@ class TestUnauthorizedReportDestinations:
         result = detect_anomalies(raw, has_mx=False)
         a = find(result, "unauthorized")
         assert a is not None
-        assert a["severity"] == "critical"
+        # Amber on the card since 2026-10-25, so not critical here.
+        assert a["severity"] == "medium"
 
     def test_all_authorized_no_fire(self):
         raw = {
