@@ -228,11 +228,37 @@ def test_new_mta_sts_is_file_then_host_then_txt_after_tls_rpt():
 def test_testing_mode_moves_to_enforce_with_a_new_id():
     rm = _plan(_mx("mx1.example.com"),
                {"name": "MTA-STS", "status": "warn", "record": "v=STSv1; id=2026102501",
-                "policy_mode": "testing", "policy_mx": ["*.example.com"], "policy_max_age": 86400,
+                "policy_mode": "testing", "enforce_ready": True,
+                "policy_mx": ["*.example.com"], "policy_max_age": 86400,
                 "fix": "Move to mode=enforce once TLS-RPT reports confirm reliable TLS delivery."})
     policy, txt = _entries(rm, "MTA-STS")
     assert policy["value"] == "version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 86400"
     assert txt["value"] == "v=STSv1; id=2026102502"
+
+
+def test_testing_mode_with_another_finding_gets_no_enforce_policy():
+    # The policy misses an MX host: enforcing it as published would refuse
+    # delivery to that host, so the row carries no records.
+    rm = _plan(_mx("mx1.example.com"),
+               {"name": "MTA-STS", "status": "warn", "record": "v=STSv1; id=2026102501",
+                "policy_mode": "testing", "enforce_ready": False,
+                "policy_mx": ["mx9.example.com"], "fix": "Add mx1.example.com to the policy."})
+    assert _entries(rm, "MTA-STS") == []
+
+
+def test_enforce_ready_is_false_when_another_issue_has_a_fix():
+    from result_transformer import transform_mta_sts
+    testing = {"severity": "info", "fix": "Move to mode=enforce once TLS works reliably."}
+    other = {"severity": "warning", "fix": "Add mx1.example.com to the policy."}
+    base = {"status": "warning", "txt_record": "v=STSv1; id=1", "policy_mode": "testing"}
+    assert transform_mta_sts({**base, "issues": [testing]}, D)["enforce_ready"] is True
+    assert transform_mta_sts({**base, "issues": [other, testing]}, D)["enforce_ready"] is False
+
+
+def test_no_domain_attaches_no_records():
+    rm = build_security_roadmap([{"name": "SPF", "status": "fail", "record": "v=spf1 +all"}])
+    assert rm["change_set"]["entries"] == []
+    assert not any(i.get("records") for i in rm["items"])
 
 
 def test_malformed_tls_rpt_keeps_its_address():

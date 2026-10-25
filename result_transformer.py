@@ -1562,7 +1562,10 @@ def _dkim_row_records(item: Dict, dkim: Dict, domain: str) -> List[Dict]:
 def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: str,
                          now: Optional[datetime] = None) -> None:
     """Give each row the records it asks for (plan_records.py). A value DNS
-    cannot tell us is None, with who supplies it."""
+    cannot tell us is None, with who supplies it. Every record is named
+    under the domain, so without one no row gets records."""
+    if not domain:
+        return
     dmarc = check_map.get("DMARC", {})
     spf = check_map.get("SPF", {})
     dkim = check_map.get("DKIM", {})
@@ -1636,8 +1639,7 @@ def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
             recs.extend(_dkim_row_records(item, dkim, domain))
         elif kind == "mta_sts_absent":
             recs.extend(plan_records.mta_sts_new(domain, mx_hosts, now))
-        elif (kind == "card_fix" and proto == "MTA-STS"
-              and mta_sts.get("policy_mode") == "testing"):
+        elif kind == "card_fix" and proto == "MTA-STS" and mta_sts.get("enforce_ready"):
             recs.extend(plan_records.mta_sts_enforce(domain, mta_sts, mx_hosts, now))
         elif kind == "tls_rpt_absent":
             recs.append(R("add", "TXT", f"_smtp._tls.{domain}",
@@ -8068,6 +8070,12 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
         "deliverability": None,
         # The published policy, so the plan can write the edited file.
         "policy_mode": policy_mode,
+        # Testing mode is the only finding, so the next step is enforce. Any
+        # other fix (an MX host the policy misses) has to come first, or the
+        # enforce policy would refuse delivery to that host.
+        "enforce_ready": policy_mode == "testing" and not [
+            i for i in raw.get("issues", [])
+            if i.get("fix") and not i["fix"].startswith("Move to mode=enforce")],
         "policy_mx": raw.get("policy_mx") or [],
         "policy_max_age": raw.get("policy_max_age"),
     }
