@@ -72,7 +72,7 @@ def senders_data(audit):
 def _map_state(page):
     return page.evaluate("""() => [...document.querySelectorAll('.smap-node')].map(n => ({
         name: n.querySelector('.smap-node-name').textContent,
-        state: [...n.classList].find(c => ['smap-ready','smap-missing','smap-unverified','smap-account','smap-reporting'].includes(c)),
+        state: [...n.classList].find(c => ['smap-ready','smap-missing','smap-risk','smap-unverified','smap-account','smap-reporting'].includes(c)),
         badges: [...n.querySelectorAll('.smap-badge')].map(b => b.textContent + ':' + b.className.split('smap-badge-')[1]),
     }))""")
 
@@ -153,5 +153,26 @@ def test_other_scopes_draw_no_map(browser, senders_data):  # noqa: F811
     try:
         _render(page, senders_data)
         assert page.locator(".smap").count() == 0
+    finally:
+        ctx.close()
+
+
+def test_a_complete_service_with_a_risk_on_its_own_record_is_amber(browser, senders_data):  # noqa: F811
+    # A DKIM alias of Google Workspace's that points at a name with no key.
+    alias = _ev("google._domainkey.doc44.test", "CNAME", "gone.example")
+    senders_data["sendermap"] = json.loads(json.dumps(MAP))
+    senders_data["sendermap"]["services"][0]["claims"].append(
+        {"kind": "DKIM CNAME to a missing key", "evidence": alias})
+    senders_data["sendermap"]["findings"].append(
+        {"severity": "risk", "title": "The google DKIM record points at a name that does not exist",
+         "detail": "Remove it.", "evidence": [alias]})
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        _render(page, senders_data)
+        nodes = {n["name"]: n["state"] for n in _map_state(page)}
+        assert nodes["Google Workspace"] == "smap-risk"
+        assert page.get_attribute(".smap-node:has-text('Google Workspace')", "aria-pressed") == "true"
+        assert "Has a risk." in page.inner_text("#smap-detail")
+        assert not errors, errors
     finally:
         ctx.close()

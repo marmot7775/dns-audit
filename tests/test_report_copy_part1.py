@@ -252,7 +252,7 @@ def test_d16_a_missing_ct_result_is_an_incomplete_check(audit):
     with open(audit_engine.__file__, encoding="utf-8") as f:
         src = f.read()
     assert "This does not affect the audit results." not in src
-    assert src.count("The certificate log service (crt.sh) didn't respond, so this check is ") == 2
+    assert src.count("Neither certificate log service (crt.sh, Cert Spotter) answered, so ") == 1
 
 
 def test_d17_and_d18_pdf_names(audit):

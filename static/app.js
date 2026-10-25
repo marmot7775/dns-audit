@@ -1232,26 +1232,10 @@ function renderResults(data, selector = '') {
                     </svg>
                     <span>Run Another Audit</span>
                 </button>
-                <button class="audit-btn export-csv-btn" type="button" title="Export audit results as CSV">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    <span>Export CSV</span>
-                </button>
             </div>
         `;
         resultsSection.appendChild(runAnother);
         runAnother.querySelector('.run-another-btn').addEventListener('click', _resetAndFocusInput);
-        runAnother.querySelector('.export-csv-btn').addEventListener('click', () => _exportToCSV(data));
-    } else {
-        // Re-bind CSV export to latest data
-        const csvBtn = runAnother.querySelector('.export-csv-btn');
-        const newCsvBtn = csvBtn.cloneNode(true);
-        csvBtn.parentNode.replaceChild(newCsvBtn, csvBtn);
-        newCsvBtn.addEventListener('click', () => _exportToCSV(data));
     }
 }
 
@@ -1266,16 +1250,29 @@ function renderResults(data, selector = '') {
 const SMAP_RECORDS = { spf: 'SPF', dkim: 'DKIM', mx: 'MX', return_path: 'Return path', tracking: 'Tracking' };
 const SMAP_TIER_ORDER = ['In use', 'Configured', 'Likely', 'Account only'];
 
+// The risk findings that cite one of this service's own records (name, type
+// and value: the apex name is shared by every service there).
+const _smapEvKey = e => `${e.name}|${e.rtype}|${e.value}`;
+function serviceFindings(svc, map) {
+    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(_smapEvKey));
+    return ((map && map.findings) || []).filter(f =>
+        (f.evidence || []).some(e => own.has(_smapEvKey(e))));
+}
+
 function senderMapNodes(map) {
     const services = (map && map.services) || [];
     const nodes = services.map((svc, i) => {
         const items = (svc.setups || []).flatMap(st => st.items || [])
             .filter(it => it.need !== 'none');
         const missing = items.filter(it => it.need === 'required' && it.state === 'missing');
+        // A record of its own that anyone could take over (a DKIM alias to
+        // a name with no key) is not "Set up", however complete the rest is.
+        const risky = serviceFindings(svc, map).some(f => f.severity === 'risk');
         let state;
         if (svc.role === 'reporting') state = 'reporting';
         else if (svc.tier === 'Account only') state = 'account';
         else if (missing.length) state = 'missing';
+        else if (risky) state = 'risk';
         else if (items.some(it => it.need === 'required' && it.state === 'present')) state = 'ready';
         else state = 'unverified';
         return { id: `smap-node-${i}`, svc, items, missing, state };
@@ -1286,14 +1283,14 @@ function senderMapNodes(map) {
 }
 
 const SMAP_STATE_WORD = {
-    ready: 'Set up', missing: 'Needs setup', unverified: 'Found by name',
+    ready: 'Set up', missing: 'Needs setup', risk: 'Has a risk', unverified: 'Found by name',
     account: 'Account only', reporting: 'Gets your reports',
 };
 
 function _smapBadges(node) {
     // An account-only or reporting service is not set up to send, so its
     // records are not a checklist it is failing.
-    if (!['ready', 'missing', 'unverified'].includes(node.state)) return '';
+    if (!['ready', 'missing', 'risk', 'unverified'].includes(node.state)) return '';
     const seen = new Set();
     return node.items.filter(it => {
         if (seen.has(it.record)) return false;
@@ -1309,12 +1306,7 @@ function _smapBadges(node) {
 
 function _smapDetail(node, map) {
     const svc = node.svc;
-    // A finding belongs to this service when it cites one of this service's
-    // own records: name, type and value, since the apex name is shared.
-    const evKey = e => `${e.name}|${e.rtype}|${e.value}`;
-    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(evKey));
-    const findings = ((map && map.findings) || []).filter(f =>
-        (f.evidence || []).some(e => own.has(evKey(e))));
+    const findings = serviceFindings(svc, map);
     // One line per kind of evidence: the first record, and how many more.
     const byKind = new Map();
     (svc.claims || []).forEach(c => {
@@ -1329,7 +1321,7 @@ function _smapDetail(node, map) {
     }).join('');
     // Only a service set up to send is missing anything. For an account, the
     // same list says what sending through it would take.
-    const sending = ['ready', 'missing', 'unverified'].includes(node.state);
+    const sending = ['ready', 'missing', 'risk', 'unverified'].includes(node.state);
     const setup = node.items.map(it => {
         const label = SMAP_RECORDS[it.record] || it.record;
         const need = it.need === 'required' ? 'required' : 'optional';
@@ -1365,7 +1357,7 @@ function renderSenderMap(data) {
     }
     const nodes = senderMapNodes(map);
     const counts = nodes.reduce((n, x) => (n[x.state] = (n[x.state] || 0) + 1, n), {});
-    const legend = ['ready', 'missing', 'unverified', 'account', 'reporting']
+    const legend = ['ready', 'missing', 'risk', 'unverified', 'account', 'reporting']
         .filter(k => counts[k])
         .map(k => `<span class="smap-legend-item smap-${k}"><span class="smap-dot"></span>${SMAP_STATE_WORD[k]} (${counts[k]})</span>`)
         .join('');
@@ -1407,7 +1399,7 @@ function renderSenderMap(data) {
         ro.observe(canvas);
     }
     // Open on the service that most needs attention, else the first.
-    const first = nodes.find(n => n.state === 'missing') || nodes[0];
+    const first = nodes.find(n => n.state === 'risk') || nodes.find(n => n.state === 'missing') || nodes[0];
     if (first) slot.querySelector(`#${first.id}`).click();
     return true;
 }
@@ -3437,7 +3429,6 @@ function renderExecutiveSummary(es, roadmap) {
     if (!es) return { box: '', tech: '' };
 
     const sp = es.spoofing_protection || {};
-    const dr = es.dmarcbis_readiness || {};
     const pc = es.protocol_coverage || {};
 
     // Progress ring SVG for protocol coverage
@@ -3485,10 +3476,6 @@ function renderExecutiveSummary(es, roadmap) {
                     <div class="es-metric-value es-color-${safeClass(sp.color)}">${escapeHtml(sp.label)}</div>
                     <div class="es-metric-label">Spoofing Protection</div>
                     <div class="es-metric-detail">${escapeHtml(sp.detail)}</div>
-                </div>
-                <div class="es-metric">
-                    <div class="es-metric-value es-color-${safeClass(dr.color)}">${escapeHtml(dr.label)}</div>
-                    <div class="es-metric-label">RFC 9989 Readiness</div>
                 </div>
                 <div class="es-metric">
                     <div class="es-metric-ring">${ringSvg}<span class="es-ring-text">${escapeHtml(ringText)}</span></div>
@@ -4234,44 +4221,25 @@ function renderTreeNode(node, totalLookups, isRoot) {
 }
 
 // ============================================================
-// Export JSON
-// ============================================================
-
-document.getElementById('export-btn').addEventListener('click', () => {
-    if (!lastAuditData) return;
-    const exportBtn = document.getElementById('export-btn');
-    exportBtn.classList.add('btn-busy');
-    exportBtn.disabled = true;
-    try {
-        const blob = new Blob([JSON.stringify(lastAuditData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `dns-audit-${lastAuditData.domain || 'report'}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } finally {
-        setTimeout(() => { exportBtn.classList.remove('btn-busy'); exportBtn.disabled = false; }, 600);
-    }
-});
-
-// ============================================================
 // PDF Report Download
 // ============================================================
 
-document.getElementById('pdf-btn').addEventListener('click', () => {
+// PDF Report is the report a client reads (Part 1, no appendix); Full
+// report adds the technical appendix (2026-10-25). The JSON export button
+// went at the same time: /api/audit returns the same JSON.
+function downloadPdf(btnId, appendix) {
     if (!lastAuditData || !lastAuditData.domain) return;
-    const pdfBtn = document.getElementById('pdf-btn');
-    pdfBtn.classList.add('btn-busy');
-    pdfBtn.disabled = true;
+    const btn = document.getElementById(btnId);
+    btn.classList.add('btn-busy');
+    btn.disabled = true;
     const domain = encodeURIComponent(lastAuditData.domain);
     const scope = _resultScope(lastAuditData);
     const selectorParam = lastAuditSelector ? `&selector=${encodeURIComponent(lastAuditSelector)}` : '';
-    window.open(`/api/audit/${domain}/pdf?scope=${scope}${selectorParam}`, '_blank');
-    setTimeout(() => { pdfBtn.classList.remove('btn-busy'); pdfBtn.disabled = false; }, 2000);
-});
+    window.open(`/api/audit/${domain}/pdf?scope=${scope}&appendix=${appendix ? 1 : 0}${selectorParam}`, '_blank');
+    setTimeout(() => { btn.classList.remove('btn-busy'); btn.disabled = false; }, 2000);
+}
+document.getElementById('pdf-btn').addEventListener('click', () => downloadPdf('pdf-btn', false));
+document.getElementById('pdf-full-btn').addEventListener('click', () => downloadPdf('pdf-full-btn', true));
 
 // ============================================================
 // Expand All / Collapse All
@@ -4904,43 +4872,6 @@ function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
 // ============================================================
 // CSV Export (Prompt 15)
 // ============================================================
-
-function _exportToCSV(data) {
-    if (!data) return;
-    const rows = [['Domain', 'Check', 'Status', 'Verdict', 'Priorities', 'Timestamp']];
-    const ts = new Date().toISOString();
-    const priorities = ((data.security_roadmap && data.security_roadmap.items) || [])
-        .map(i => i.action).join('; ');
-
-    if (data.checks && data.checks.length > 0) {
-        data.checks.forEach(check => {
-            rows.push([
-                data.domain,
-                check.name || '',
-                check.status || '',
-                (check.verdict || '').replace(/,/g, ';'),
-                priorities,
-                ts,
-            ]);
-        });
-    } else {
-        rows.push([data.domain, '', '', '', priorities, ts]);
-    }
-
-    const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safeDomain = data.domain.replace(/[^a-zA-Z0-9.-]/g, '');
-    const dateStr = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `dns-audit-${safeDomain}-${dateStr}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('CSV downloaded');
-}
 
 // ============================================================
 // Run Another Audit helpers (Prompt 9)

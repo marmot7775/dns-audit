@@ -190,11 +190,13 @@ def test_part_two_opens_with_the_tiles_the_attack_surface_and_the_contents(monit
     page = pages[divider]
 
     for part in ("Part 2: Appendix", "Technical summary", "Forged mail blocked",
-                 "Ready for the 2026 DMARC standard (RFC 9989)", "Records published",
+                 "Records published",
                  "Attack surface overview", "Contents", "1. The short answer",
                  "2. What to do", "3. Checks"):
         assert part in page, part
     assert page.index("Technical summary") < page.index("Attack surface overview") < page.index("Contents")
+    # The RFC 9989 readiness tile went on 2026-10-25.
+    assert "Ready for the 2026 DMARC standard" not in page
 
 
 def test_the_pdf_carries_no_email_address_of_ours(monitoring):

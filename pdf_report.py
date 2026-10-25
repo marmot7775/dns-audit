@@ -412,6 +412,13 @@ class _PageTpl:
 # are, so a reader who stops after page 1 knows what the rest is for.
 SHORT_ANSWER_POINTER = ("Page 2, What to do, is for whoever manages your DNS. "
                         "Part 2 holds the evidence.")
+# The report without its appendix (2026-10-25, the page's default PDF).
+SHORT_ANSWER_POINTER_NO_APPENDIX = "Page 2, What to do, is for whoever manages your DNS."
+
+
+def _has_appendix(data):
+    """False when generate_pdf was asked for the report without Part 2."""
+    return data.get("_pdf_appendix", True)
 
 
 def _headline(es: dict) -> str:
@@ -679,7 +686,8 @@ def _cover_page(data, S):
         els.extend(box)
         els.append(Spacer(1, SP_MD))
 
-    els.append(Paragraph(SHORT_ANSWER_POINTER, S["body"]))
+    els.append(Paragraph(SHORT_ANSWER_POINTER if _has_appendix(data)
+                         else SHORT_ANSWER_POINTER_NO_APPENDIX, S["body"]))
     els.append(Spacer(1, SP_SM))
     # Scope line. A scoped report that does not say it is scoped implies
     # coverage the reader has no way to know is missing: dns_security runs five
@@ -729,14 +737,17 @@ def _tally_line(checks, S):
 
 
 def _technical_summary(data, S):
-    """The three tiles and the attack surface table, at the start of Part 2.
+    """The two tiles and the attack surface table, at the start of Part 2.
+
+    The RFC 9989 readiness tile went on 2026-10-25: a standard's number is
+    not a result a sender can act on, and the DMARC appendix still carries
+    the readiness detail.
 
     Doc 92 moved them off the first two pages: they are the evidence behind
     the verdict, not the answer.
     """
     es = data.get("executive_summary", {}) or {}
     sp = es.get("spoofing_protection", {}) or {}
-    dr = es.get("dmarcbis_readiness", {}) or {}
     pc = es.get("protocol_coverage", {}) or {}
     els = [Paragraph("Technical summary", S["subheading"]), Spacer(1, SP_XS)]
 
@@ -764,13 +775,11 @@ def _technical_summary(data, S):
     metrics = Table([
         [_metric_cell("Forged mail blocked", sp.get("label", "Unknown"),
                       sp.get("color", "red"), detail=sp.get("detail", "")),
-         _metric_cell("Ready for the 2026 DMARC standard (RFC 9989)",
-                      dr.get("label", "Unknown"), dr.get("color", "red")),
          # Coverage is a count of what is adopted, not a defect: primary
          # when assessable, neutral when not. pc["color"] is no longer read.
          _metric_cell("Records published", f"{pc_conf} of {pc_total}",
                       "blue" if pc_total else "neutral", detail=pc_detail)],
-    ], colWidths=[2.17*inch]*3)
+    ], colWidths=[3.25*inch]*2)
     metrics.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
@@ -778,7 +787,7 @@ def _technical_summary(data, S):
         ("BOTTOMPADDING", (0,0), (-1,-1), 12),
         ("BACKGROUND", (0,0), (-1,-1), colors.white),
         ("BOX", (0,0), (-1,-1), 0.5, BORDER),
-        ("LINEAFTER", (0,0), (1,0), 0.5, BORDER),
+        ("LINEAFTER", (0,0), (0,0), 0.5, BORDER),
         ("ROUNDEDCORNERS", [6,6,6,6]),
     ]))
     els.append(metrics)
@@ -894,7 +903,10 @@ def _plan_what_to_change(data, item, card, S):
         # sections rendered, and a fixed "Appendix A" pointed at the wrong one.
         els.append(Paragraph(
             "This is the next edit at your current policy. Path to enforcement "
-            "in the appendix carries the steps and the enforcement end state.",
+            "in the appendix carries the steps and the enforcement end state."
+            if _has_appendix(data) else
+            "This is the next edit at your current policy. The report with its "
+            "technical appendix carries the steps to enforcement.",
             S["body_tiny"]))
         return els
 
@@ -1559,9 +1571,13 @@ def _protocol_details(data, S, number=3, appendix=None):
     lead_style = ParagraphStyle("AreaLead", parent=S["body_small"], spaceAfter=SP_SM)
     for heading, lead, cards in _area_groups(data):
         rendered = [_protocol_card(c, S, pointer=pointers.get(c.get("name"))) for c in cards]
+        # The area heading travels with its first card's head only; the
+        # rest of that card flows like every other card.
+        first = rendered[0]
         els.append(KeepTogether([Paragraph(_safe(heading), S["heading2"]),
                                  Paragraph(_safe(lead), lead_style),
-                                 *_unwrap_keep(rendered[0])]))
+                                 *_unwrap_keep(first[:1])]))
+        els.extend(first[1:])
         for card in rendered[1:]:
             els.extend(card)
 
@@ -1616,6 +1632,11 @@ def _card_status(check):
     return STATUS_CLR.get(status, TEXT_SEC), label
 
 
+# The base64 key in a DKIM record, kept to its first 24 characters in the
+# Checks section.
+DKIM_KEY_RE = re.compile(r"(\bp=)([A-Za-z0-9+/]{24})[A-Za-z0-9+/=]{8,}")
+
+
 def _protocol_card(check, S, pointer=None):
     """Render a single protocol check as a card.
 
@@ -1647,8 +1668,18 @@ def _protocol_card(check, S, pointer=None):
         els.append(Paragraph("What this is", S["part_label"]))
         els.append(Paragraph(_safe(what_this_is), S["body_small"]))
 
-    # Record block
+    # The head stays together so a check never starts on the last lines of
+    # a page; the rest flows. Kept whole, a card taller than what was left
+    # of a page jumped to the next one and left the bottom half of the page
+    # blank, a page per check (2026-10-25).
+    head_len = len(els)
+
+    # Record block. A DKIM key's p= runs to hundreds of characters per
+    # selector and filled a page and a half for github.com; the check shows
+    # where each key starts, and the appendix's key table carries the rest.
     if record:
+        if name == "DKIM":
+            record = DKIM_KEY_RE.sub(lambda m: m.group(1) + m.group(2) + "...", str(record))
         els.extend(_record_block(record, S))
 
     # Details
@@ -1698,7 +1729,7 @@ def _protocol_card(check, S, pointer=None):
         els.append(Paragraph(_safe(pointer), S["body_tiny"]))
 
     els.extend([Spacer(1, SP_SM), HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=SP_MD)])
-    return [KeepTogether(els)]
+    return [KeepTogether(els[:head_len])] + els[head_len:]
 
 
 def _draft_standards(data, S):
@@ -2250,7 +2281,7 @@ def _about_page(data, S, number=7):
     # denominator is read from the metric itself so the two cannot drift.
     es = data.get("executive_summary", {}) or {}
     pc_total = (es.get("protocol_coverage") or {}).get("total")
-    if _performed and pc_total:
+    if _performed and pc_total and _has_appendix(data):
         els.append(Spacer(1, SP_SM))
         els.append(Paragraph(
             f"The Records published figure at the start of Part 2 scores {pc_total} of the "
@@ -2320,7 +2351,7 @@ def _about_page(data, S, number=7):
 # Main entry point
 # ================================================================
 
-def _build_sections(audit_result: dict, S):
+def _build_sections(audit_result: dict, S, appendix: bool = True):
     """Build the report in two parts and number them.
 
     Returns (toc_items, flowables). Part 1 is the report: the short answer,
@@ -2366,7 +2397,7 @@ def _build_sections(audit_result: dict, S):
             pointers.setdefault(name, []).append(letter)
 
     pointer_lines = {}
-    for name, letters_for_check in pointers.items():
+    for name, letters_for_check in (pointers.items() if appendix else ()):
         joined = " and Appendix ".join(letters_for_check)
         pointer_lines[name] = f"Detail in Appendix {joined}."
 
@@ -2390,6 +2421,12 @@ def _build_sections(audit_result: dict, S):
         sections.extend(els)
     sections.extend(_draft_standards(audit_result, S))
 
+    if not appendix:
+        # The report a client reads: Part 1, then who made it and how to
+        # ask about it. The technical appendix is the other download.
+        sections.extend(_about_page(audit_result, S, number + 1))
+        return toc_items, sections
+
     if appendix_els:
         toc_items.append("<b>Part 2: Appendix</b>")
         toc_items.extend(appendix_toc)
@@ -2401,11 +2438,15 @@ def _build_sections(audit_result: dict, S):
     return toc_items, sections
 
 
-def generate_pdf(audit_result: dict) -> bytes:
+def generate_pdf(audit_result: dict, appendix: bool = True) -> bytes:
     """Generate a comprehensive multi-page PDF report.
 
+    appendix=False leaves out Part 2, the technical appendix: the report a
+    client reads, which the page's PDF button downloads (2026-10-25).
     Returns PDF bytes suitable for streaming to the client.
     """
+    if not appendix:
+        audit_result = {**audit_result, "_pdf_appendix": False}
     domain = re.sub(r'<[^>]+>', '', audit_result.get("domain", "unknown"))
     now = _audit_time(audit_result)
 
@@ -2429,7 +2470,7 @@ def generate_pdf(audit_result: dict) -> bytes:
                  f"report for {_strip_html(domain)}"),
     )
 
-    _, sections = _build_sections(audit_result, S)
+    _, sections = _build_sections(audit_result, S, appendix=appendix)
 
     story = []
     story.extend(_cover_page(audit_result, S))

@@ -133,6 +133,27 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-25: Shorter reports, Cert Spotter, fewer buttons
+
+- PDF Report downloads the report a client reads: the short answer, the
+  plan, the checks and About this report, without the technical appendix.
+  Full report adds the appendix. Inbox readiness PDFs went from 17 to 20
+  pages to 6 or 7. The endpoint takes `appendix=0`; without it the PDF is
+  the full report, as before.
+- In the PDF's Checks section a check no longer jumps whole to the next page
+  when it does not fit, which left half pages blank, and DKIM keys show
+  their first 24 characters (the appendix key table has the rest).
+- Certificate Transparency asks Cert Spotter when crt.sh does not answer,
+  and the card names which one did. Only when both fail is it Not checked.
+  The card no longer claims the logs list every certificate: names behind
+  a wildcard and certificates from private certificate authorities do not
+  appear.
+- The Sender Map marks a service amber when one of its own records carries
+  a risk (a DKIM alias to a name with no key), and opens on it.
+- Removed: the RFC 9989 readiness tile in Technical summary (page and PDF;
+  the DMARC card keeps the readiness detail), CSV export, and the JSON
+  Export button (/api/audit returns the same JSON).
+
 ## 2026-10-25: Four questions instead of five scopes
 
 - Who sends as you draws the Sender Map: the domain in the middle and every

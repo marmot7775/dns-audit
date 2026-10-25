@@ -1296,6 +1296,7 @@ async def audit_pdf(
     domain: str,
     scope: Optional[str] = Query("complete", description="Audit scope: deliverability, senders, email_security, complete (legacy keys still accepted)"),
     selector: Optional[str] = Query(None, description="DKIM selector"),
+    appendix: bool = Query(True, description="Include Part 2, the technical appendix. The page's PDF button asks for 0, the report a client reads."),
 ):
     """
     Download a professional PDF audit report.
@@ -1427,7 +1428,11 @@ async def audit_pdf(
 
         # Generate PDF (offloaded -- rendering is CPU-bound synchronous work)
         try:
-            pdf_bytes = await anyio.to_thread.run_sync(generate_pdf, data)
+            # The default call stays one argument; only the short report
+            # names the flag.
+            pdf_bytes = await anyio.to_thread.run_sync(
+                functools.partial(generate_pdf, data) if appendix
+                else functools.partial(generate_pdf, data, appendix=False))
         except Exception as e:
             log.error("PDF generation failed for %s: %s", domain, str(e)[:200], exc_info=True)
             raise HTTPException(status_code=500, detail="PDF generation failed")
@@ -1438,7 +1443,7 @@ async def audit_pdf(
             _active_audits -= 1
 
     safe_domain = re.sub(r'[^a-zA-Z0-9._-]', '', domain)
-    filename = f"dns-audit-{safe_domain}.pdf"
+    filename = f"dns-audit-{safe_domain}{'-full' if appendix else ''}.pdf"
     return Response(
         content=bytes(pdf_bytes),
         media_type="application/pdf",
