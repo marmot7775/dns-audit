@@ -146,8 +146,8 @@ def _ct_certs():
         "issuer_name": "C=US, O=Let's Encrypt, CN=R11",
         "common_name": f"www.{DOMAIN}",
         "name_value": f"www.{DOMAIN}",
-        "not_before": (now - timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%S"),
-        "not_after": (now + timedelta(days=20)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "not_before": (now - timedelta(days=80)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "not_after": (now + timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S"),
         "id": 1,
     }]
 
@@ -161,8 +161,9 @@ def test_the_ct_row_says_where_certificates_are_renewed(audit):
         "Certificates are renewed with the certificate authority or the host "
         "that issued them, not in DNS."
     )
-    assert item["action"] == ("1 active certificate will expire soon. "
-                              "Ensure auto-renewal is working.")
+    assert item["action"] == ("1 active certificate expires within 10 days and the "
+                              "logs show no newer certificate for the same names. "
+                              "Check that renewal is working.")
     # The verdict is not a reason; the second finding is.
     assert item["impact"].startswith("Expiring in ")
 
@@ -172,7 +173,7 @@ def test_the_ct_card_puts_its_own_findings_above_the_individual_certificates(aud
     card = next(c for c in result["checks"] if c["name"] == "Certificate Transparency")
     warnings = [d["text"] for d in card["details"] if d["type"] == "warning"]
 
-    assert warnings[0].startswith("1 active certificate will expire soon.")
+    assert warnings[0].startswith("1 active certificate expires within 10 days")
     assert any(w.startswith("Expiring in ") for w in warnings)
 
 
