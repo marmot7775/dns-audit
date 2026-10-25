@@ -6,21 +6,24 @@
 const API_BASE = '/api';
 
 // -- Scope definitions: which checks to show per scope --
+// One scope per question a sender asks, in pill order (2026-10-25). The API
+// also takes dmarc and dns_security, which have no pill.
 const SCOPE_CHECKS = {
-    complete: null, // null = show all
     deliverability: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX'],
+    senders: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX'],
     email_security: ['DMARC', 'SPF', 'DKIM', 'MX Records', 'MX',
                      'MTA-STS', 'TLS-RPT', 'DANE', 'BIMI'],
-    dmarc: ['DMARC', 'SPF', 'DKIM'],
-    dns_security: ['DNSSEC', 'CAA', 'DANE', 'Nameservers',
-                   'Certificate Transparency'],
+    complete: null, // null = show all
 };
-// Scope keys from before Doc 103, mapped to the scope that runs at least
-// the same checks, so old shared links and bookmarks keep working.
+// Scope keys with no pill, mapped to the pill that runs at least the same
+// checks, so old shared links and bookmarks keep working.
 const LEGACY_SCOPES = {
     email_full: 'email_security', transport: 'email_security',
-    dns_infra: 'dns_security', security_scan: 'complete',
+    dns_infra: 'complete', security_scan: 'complete',
+    dmarc: 'email_security', dns_security: 'complete',
 };
+// The scope the home page starts on.
+const DEFAULT_SCOPE = 'deliverability';
 
 // The vendor panel when the sender map did not finish inside the audit. The
 // PDF prints the same words (pdf_report.VENDORS_UNCHECKED).
@@ -221,7 +224,7 @@ function statusIconHtml(st) {
 }
 
 const DEFAULT_TITLE = document.title;
-let currentScope = 'complete';
+let currentScope = DEFAULT_SCOPE;
 let lastAuditData = null;
 // The DKIM selector the shown results were run with, set by renderResults
 // beside lastAuditData. The PDF reads this, not the input, which may have
@@ -278,8 +281,14 @@ document.querySelectorAll('.scope-btn').forEach(btn => {
         btn.classList.add('active');
         btn.setAttribute('aria-checked', 'true');
         btn.setAttribute('tabindex', '0');
+        const changed = currentScope !== btn.dataset.scope;
         currentScope = btn.dataset.scope;
         syncScopeDesc();
+        // On a results page the pills switch the question for the same
+        // domain: run it again under the new scope.
+        if (changed && lastAuditData && !auditInFlight && domainInput.value.trim()) {
+            auditForm.requestSubmit();
+        }
     });
 });
 
@@ -320,9 +329,11 @@ document.getElementById('selector-toggle').addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const domain = params.get('d');
-    const rawScope = params.get('scope');
+    // A shared link from before 2026-10-25 names no scope when it was a
+    // complete run, so a domain with no scope opens as a full audit.
+    const rawScope = params.get('scope') || (domain ? 'complete' : null);
     const scope = (rawScope && LEGACY_SCOPES[rawScope]) || rawScope;
-    if (scope && SCOPE_CHECKS[scope]) {
+    if (scope && Object.prototype.hasOwnProperty.call(SCOPE_CHECKS, scope)) {
         currentScope = scope;
         document.querySelectorAll('.scope-btn').forEach(b => {
             const on = b.dataset.scope === scope;
@@ -1184,7 +1195,12 @@ function renderResults(data, selector = '') {
     const servicesBody = document.getElementById('services-body');
     if (servicesSection && servicesBody && servicesToggle) {
         servicesSection.classList.toggle('is-hidden', !(hasVendors || hasPlatform));
-        setDisclosure(servicesToggle, servicesBody, false);
+        // Who sends as you asks this question, so the list is the answer:
+        // open, and placed right under the plan. Other scopes keep it
+        // closed at the end of the page.
+        const sendersView = _resultScope(data) === 'senders';
+        placeServicesSection(servicesSection, sendersView);
+        setDisclosure(servicesToggle, servicesBody, sendersView);
     }
 
     // Share button with dropdown
@@ -1227,6 +1243,18 @@ function renderResults(data, selector = '') {
         csvBtn.parentNode.replaceChild(newCsvBtn, csvBtn);
         newCsvBtn.addEventListener('click', () => _exportToCSV(data));
     }
+}
+
+// The services section lives at the end of the results; for Who sends as
+// you it moves under the plan. Its home is remembered on first call so a
+// later run under another scope puts it back.
+let _servicesHome = null;
+function placeServicesSection(section, top) {
+    if (!_servicesHome) _servicesHome = { parent: section.parentNode, next: section.nextSibling };
+    const plan = document.getElementById('priority-section');
+    if (top && plan) plan.after(section);
+    else _servicesHome.parent.insertBefore(section, _servicesHome.next);
+    section.classList.toggle('services-first', !!top);
 }
 
 // ============================================================
@@ -3183,7 +3211,7 @@ function renderExecutiveSummary(es, roadmap) {
     const box = `<div class="es-block es-state-${safeClass(es.headline_state || 'neutral')}" id="executive-summary">
         ${_headlineHtml(es, roadmap)}
         ${_defensiveHtml(lastAuditData)}
-        ${_doFirstHtml(es, roadmap)}
+        ${_unreadNoteHtml(es)}
     </div>`;
 
     const tech = `<div class="es-tech-wrap">
@@ -3273,38 +3301,13 @@ function _headlineHtml(es, roadmap) {
     </div>`;
 }
 
-// Doc 92: up to three numbered actions, the top plan rows that are not
-// optional extras. The backend sends them as do_first; until it does, they
-// come from the roadmap. A low-tier row is never one of them.
-function doFirstItems(es, roadmap) {
-    if (es && Array.isArray(es.do_first)) return es.do_first.slice(0, 3);
-    return ((roadmap && roadmap.items) || [])
-        .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low' && !i.self_clearing)
-        .slice(0, 3)
-        .map(i => ({ plain_head: i.plain_head || '', title: i.action || '',
-                     priority: i.priority, protocol: i.protocol }));
-}
-
-// "Do these first" replaces the old "biggest risk" box. Each action leads
-// with the plain consequence and keeps the technical instruction under it.
-function _doFirstHtml(es, roadmap) {
+// The headline box used to repeat the first three plan rows as "Do these
+// first", right above the plan that lists them (removed 2026-10-25). It
+// keeps only the could-not-read message, which has no plan row.
+function _unreadNoteHtml(es) {
     const risk = es.biggest_risk || '';
     const unread = es.biggest_risk_severity === 'unknown' || risk.startsWith('This audit could not read');
-    // The audit could not rank risks, so the page shows the message alone,
-    // as the PDF does.
-    const items = unread ? [] : doFirstItems(es, roadmap);
-    let html = '';
-    if (unread) html += `<p class="es-first-note">${escapeHtml(risk)}</p>`;
-    if (items.length > 0) {
-        html += `<h2 class="es-first-label">Do these first</h2><ol class="es-first-list">`
-            + items.map(it => {
-                const head = it.plain_head || it.title || '';
-                const sub = (it.plain_head && it.title && it.title !== it.plain_head) ? it.title : '';
-                return `<li class="es-first-item"><span class="es-first-head">${escapeHtml(head)}</span>`
-                    + (sub ? `<span class="es-first-title">${escapeHtml(sub)}</span>` : '') + '</li>';
-            }).join('') + '</ol>';
-    }
-    return `<div class="es-first">${html}</div>`;
+    return `<div class="es-first">${unread ? `<p class="es-first-note">${escapeHtml(risk)}</p>` : ''}</div>`;
 }
 
 // The Defensive DNS signals, which used to be a box of their own above the
@@ -4180,7 +4183,9 @@ function _getShareUrl() {
     const url = new URL(window.location.origin);
     url.searchParams.set('d', d.domain);
     const scope = _resultScope(d);
-    if (scope !== 'complete') url.searchParams.set('scope', scope);
+    // Always named: a link with no scope opens as a full audit (links from
+    // before 2026-10-25), while the home page itself starts on Inbox readiness.
+    url.searchParams.set('scope', scope);
     // Without it the link reruns the audit without the DKIM lookup the
     // sharer saw.
     if (lastAuditSelector) url.searchParams.set('sel', lastAuditSelector);

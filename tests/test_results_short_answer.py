@@ -1,7 +1,8 @@
 """Doc 92: results people can read, the page layout.
 
-The first screen is the short answer: the headline, its subline and up to
-three numbered actions ("Do these first"). The closed Technical summary
+The first screen is the short answer: the headline and its subline. The
+numbered "Do these first" list repeated the first plan rows right above
+the plan and went on 2026-10-25. The closed Technical summary
 holding the tiles sits above the check cards. The plan leads each row with the plain consequence and
 gathers optional extras at the end, closed. The counters are one line just
 above the cards, the cache badge and Request ID sit at the bottom, and the
@@ -74,8 +75,7 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
         m = page.evaluate("""() => {
             const es = document.getElementById('executive-summary');
             return {
-                label: es.querySelector('.es-first-label').textContent,
-                items: [...es.querySelectorAll('.es-first-item')].map(li => li.textContent.trim()),
+                list: !!es.querySelector('.es-first-label, .es-first-item, ol'),
                 buttons: [...es.querySelectorAll('button')].map(b => b.textContent.trim()),
                 riskBox: !!document.querySelector('.es-risk'),
                 tilesInTech: !!document.querySelector('#tech-summary-slot #es-tech .es-metrics'),
@@ -83,11 +83,8 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
                 defensiveBox: !!document.getElementById('defensive-dns-card'),
             };
         }""")
-        assert m["label"] == "Do these first"
-        do_first = fixture_result["executive_summary"].get("do_first") or []
-        assert do_first, "the backend sends do_first for this fixture"
-        # Each item is the plain head, then the action title under it.
-        assert m["items"] == [d["plain_head"] + d["title"] for d in do_first], m["items"]
+        # The plan right under the box is the list; the box does not repeat it.
+        assert not m["list"]
         # The headline box has no buttons: the plan sits directly below it,
         # and Technical summary moved to the top of the technical layer.
         assert m["buttons"] == []
@@ -112,8 +109,6 @@ def test_backend_fields_lead_the_actions_rows_and_titles(browser, fixture_result
     try:
         _render(page, data)
         m = page.evaluate("""() => ({
-            heads: [...document.querySelectorAll('.es-first-head')].map(e => e.textContent),
-            titles: [...document.querySelectorAll('.es-first-title')].map(e => e.textContent),
             plain: [...document.querySelectorAll('#priority-list > .priority-row .priority-plain')]
                 .map(e => e.textContent),
             dmarcTitle: document.querySelector('#check-dmarc .result-title').textContent,
@@ -123,9 +118,8 @@ def test_backend_fields_lead_the_actions_rows_and_titles(browser, fixture_result
             mainPills: [...document.querySelectorAll('#priority-list > .priority-row .tag')].map(t => t.textContent),
         })""")
         first = data["executive_summary"]["do_first"]
-        assert m["heads"] == [f["plain_head"] for f in first]
-        assert m["titles"] == [f["title"] for f in first]
-        assert m["plain"] == [f["plain_head"] for f in first]
+        # The plan leads with the same rows do_first names, in order.
+        assert m["plain"][:len(first)] == [f["plain_head"] for f in first]
         assert m["dmarcTitle"] == "Spoofing policy (DMARC)"
         assert m["dmarcCheck"] == "DMARC"
         assert m["optionalLabel"] == "Optional extras (3)"

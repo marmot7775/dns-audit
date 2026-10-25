@@ -450,9 +450,16 @@ main {
 
 .audit-input-section.compact .audit-title,
 .audit-input-section.compact .audit-subtitle,
-.audit-input-section.compact .scope-selector,
+.audit-input-section.compact .scope-label,
+.audit-input-section.compact .scope-desc,
 .audit-input-section.compact .selector-toggle-row {
     display: none;
+}
+
+/* On a results page the pills stay, above the domain box, so the reader
+   can see which question was asked and ask another for the same domain. */
+.audit-input-section.compact .scope-selector {
+    margin-bottom: var(--space-sm);
 }
 
 .audit-input-section.compact .audit-input-card {
@@ -4343,47 +4350,12 @@ input[type="search"],
 }
 
 /* Doc 92: the short answer. The headline and its subline, any defensive
-   signals, then up to three numbered actions. The closed Technical summary
+   signals, and the could-not-read note when there is one (the numbered
+   "Do these first" list went 2026-10-25: the plan below lists the same rows).
+   The closed Technical summary
    (tiles, deliverability line, panel buttons) sits above the check cards. */
 .es-first {
     margin-bottom: 1.25rem;
-}
-
-h2.es-first-label,
-.es-first-label {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin: 0 0 var(--space-sm);
-}
-
-.es-first-list {
-    margin: 0;
-    padding-left: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-}
-
-.es-first-item {
-    color: var(--text-primary);
-    line-height: 1.5;
-}
-
-.es-first-item::marker {
-    font-weight: 700;
-    color: var(--text-secondary);
-}
-
-.es-first-head {
-    display: block;
-    font-size: var(--font-base);
-}
-
-.es-first-title {
-    display: block;
-    font-size: var(--font-xs);
-    color: var(--text-tertiary);
 }
 
 .es-first-note {
@@ -7826,4 +7798,10 @@ h3.services-sub,
     padding: 0.1em 0.4em;
     border-radius: var(--radius-sm);
     color: var(--primary-light);
+}
+
+/* Who sends as you: the services list is the answer, so it sits under the
+   plan, open, with the same spacing as the plan above it. */
+.services-section.services-first {
+    margin: var(--space-xl) 0;
 }

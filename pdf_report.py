@@ -2183,7 +2183,7 @@ def _about_page(data, S, number=7):
     details = [
         ("Domain audited", domain),
         ("Date and time", now),
-        ("Audit type", SCOPE_LABELS.get(data.get("scope") or "complete", "Complete Audit")),
+        ("Audit type", SCOPE_LABELS.get(data.get("scope") or "complete", "Full audit")),
         ("Checks performed", ", ".join(_performed) if _performed else "None"),
     ]
     if _not_checked:
@@ -2378,7 +2378,7 @@ def generate_pdf(audit_result: dict) -> bytes:
         initialFontName=FONTS["sans"],
         title=f"DNS Security Audit: {_strip_html(domain)}",
         author="dns-audit.com",
-        subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Complete Audit')} "
+        subject=(f"{SCOPE_LABELS.get(audit_result.get('scope') or 'complete', 'Full audit')} "
                  f"report for {_strip_html(domain)}"),
     )
 

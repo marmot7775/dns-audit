@@ -200,3 +200,12 @@ def test_the_results_page_shows_the_scope_s_grade(browser, audit, scope, status,
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_who_sends_as_you_grades_p_none_like_inbox_readiness(audit):
+    result = _run(audit, P_NONE, scope="senders")
+    card = _card(result)
+    assert card["status"] == "pass"
+    assert card["graded_for_scope"] == "senders"
+    assert result["executive_summary"]["headline"] == HEADLINE
+    assert ENFORCEMENT_ROW not in _actions(result)

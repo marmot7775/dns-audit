@@ -89,7 +89,7 @@ DNS cannot list DKIM selectors, so name yours for the best result; an undetected
 - **Resilience**: whether mail still passes DMARC when SPF or DKIM fails alone.
 - **Anomalies**: cross-check findings, such as MTA-STS without TLS-RPT.
 - **PDF report**: executive summary, priorities, detected vendors, and every check card.
-- **Scoped audits**: five scopes, each running only the checks it needs.
+- **Scoped audits**: four questions (Inbox readiness, Who sends as you, Spoofing protection, Full audit), each running only the checks it needs.
 - **Vendor detection**: built by [Sendermap](https://github.com/marmot7775/sendermap) from DNS (MX, the SPF tree, DKIM keys, bounce and tracking CNAMEs, verification tokens, report addresses), each sender shown with the record that names it and the records its setup still needs.
 - **Roadmap**: one prioritized fix list across all protocols, in four tiers.
 

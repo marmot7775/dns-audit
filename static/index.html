@@ -154,30 +154,26 @@
     <main class="container" id="main-content">
         <section class="audit-input-section">
             <div class="audit-input-card">
-                <h1 class="audit-title">DNS &amp; Email Security Audit</h1>
-                <p class="audit-subtitle">Most DNS tools show you your records. This one tells you what is wrong with them and gives you the record to paste.</p>
+                <h1 class="audit-title">Will your email reach the inbox?</h1>
+                <p class="audit-subtitle">Enter a domain. See what Gmail, Yahoo, and Microsoft will check, which services send as you, and the exact record to paste for each fix.</p>
                 <div class="scope-selector" id="scope-selector" role="radiogroup" aria-label="Audit scope selection">
-                    <div class="scope-label">Audit scope</div>
+                    <div class="scope-label">What do you want to know?</div>
                     <div class="scope-options">
-                        <button type="button" class="scope-btn active" data-scope="complete" role="radio" aria-checked="true" tabindex="0" title="Recommended for most domains. Every check: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency.">
+                        <button type="button" class="scope-btn active" data-scope="deliverability" role="radio" aria-checked="true" tabindex="0" title="Will your mail reach the inbox: the records Gmail, Yahoo, and Microsoft require of senders (SPF, DKIM, DMARC) and where your mail is delivered (MX).">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                            <span>Inbox readiness</span>
+                        </button>
+                        <button type="button" class="scope-btn" data-scope="senders" role="radio" aria-checked="false" tabindex="-1" title="Every service that sends mail as your domain, found from its SPF, DKIM, DMARC, and MX records, and whether each one is set up to pass.">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            <span>Who sends as you</span>
+                        </button>
+                        <button type="button" class="scope-btn" data-scope="email_security" role="radio" aria-checked="false" tabindex="-1" title="Can someone send mail that fakes your domain, and the path to p=reject: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, DANE, and BIMI.">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+                            <span>Spoofing protection</span>
+                        </button>
+                        <button type="button" class="scope-btn" data-scope="complete" role="radio" aria-checked="false" tabindex="-1" title="Every check: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, BIMI, DNSSEC, CAA, DANE, nameservers, and Certificate Transparency.">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
-                            <span>Complete Audit</span>
-                        </button>
-                        <button type="button" class="scope-btn" data-scope="deliverability" role="radio" aria-checked="false" tabindex="-1" title="Will your mail reach the inbox: DMARC, SPF, DKIM, and MX.">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                            <span>Email Deliverability</span>
-                        </button>
-                        <button type="button" class="scope-btn" data-scope="email_security" role="radio" aria-checked="false" tabindex="-1" title="Can your domain be spoofed or your mail read in transit: DMARC, SPF, DKIM, MX, MTA-STS, TLS-RPT, DANE, and BIMI.">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            <span>Email Security</span>
-                        </button>
-                        <button type="button" class="scope-btn" data-scope="dmarc" role="radio" aria-checked="false" tabindex="-1" title="The authentication triad only: DMARC, SPF, and DKIM.">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                            <span>DMARC Check</span>
-                        </button>
-                        <button type="button" class="scope-btn" data-scope="dns_security" role="radio" aria-checked="false" tabindex="-1" title="The DNS everything else depends on: DNSSEC, CAA, DANE, nameservers, and Certificate Transparency.">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
-                            <span>DNS Security</span>
+                            <span>Full audit</span>
                         </button>
                     </div>
                     <p class="scope-desc" id="scope-desc" aria-live="polite"></p>

@@ -68,11 +68,15 @@
 
 ## Architecture
 - API: /api/audit (JSON), /api/audit/stream (SSE), /api/audit/{domain}/pdf
-- 5 audit scopes: complete, deliverability, email_security, dmarc, dns_security
-  (Doc 103). The old keys email_full, transport, dns_infra and security_scan
-  still work: audit_engine.resolve_scope maps them through LEGACY_SCOPES
-  before anything reads the scope, so results, cache keys and the log carry
-  the new key.
+- Audit scopes (2026-10-25): four pills, one per question a sender asks, in
+  audit_engine.PILL_SCOPES order: deliverability (Inbox readiness, the home
+  page default), senders (Who sends as you), email_security (Spoofing
+  protection), complete (Full audit). An API call with no scope runs
+  complete. dmarc and dns_security stay valid API scopes with no pill. The
+  old keys email_full, transport, dns_infra and security_scan still work:
+  audit_engine.resolve_scope maps them through LEGACY_SCOPES before anything
+  reads the scope, so results, cache keys and the log carry the new key.
+  deliverability and senders grade p=none pass (INBOX_SCOPES, Doc 104).
 - Server-side scope filtering skips unneeded checks
 - Cache key format: "domain:selector:scope" (5 min TTL)
 - Audit log: audit.log (JSON-lines, GDPR-safe). Fields: ts, domain, scope,
