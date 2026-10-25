@@ -8327,3 +8327,41 @@ h4.smap-detail-sub {
     color: var(--text-tertiary);
     margin: var(--space-sm) 0 0;
 }
+
+/* Certificate Transparency retry (2026-10-25): a line under the card's
+   header while the page asks again, then Try again if it still fails. */
+.ct-retry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0 1.25rem var(--space-sm) 3.25rem;
+}
+
+.ct-retry-text {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin: 0;
+}
+
+.ct-retry-btn {
+    min-height: 44px;
+    padding: 0 var(--space-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--font-sm);
+    cursor: pointer;
+}
+
+.ct-retry-btn:hover {
+    border-color: var(--primary);
+}
+
+@media (max-width: 640px) {
+    .ct-retry {
+        padding-left: 1rem;
+    }
+}
