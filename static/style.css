@@ -8007,7 +8007,8 @@ h3.services-sub,
     background: var(--pass);
 }
 
-.smap-missing .smap-dot {
+.smap-missing .smap-dot,
+.smap-risk .smap-dot {
     background: var(--warn);
 }
 
@@ -8030,7 +8031,8 @@ h3.services-sub,
 }
 
 .smap-line-ready { stroke: var(--pass); }
-.smap-line-missing { stroke: var(--warn); }
+.smap-line-missing,
+.smap-line-risk { stroke: var(--warn); }
 .smap-line-likely { stroke-dasharray: 6 5; }
 .smap-line-account-only,
 .smap-line-reporting { stroke-dasharray: 2 5; }
@@ -8079,7 +8081,8 @@ h3.services-sub,
 }
 
 .smap-node.smap-ready { border-top-color: var(--pass); }
-.smap-node.smap-missing { border-top-color: var(--warn); }
+.smap-node.smap-missing,
+.smap-node.smap-risk { border-top-color: var(--warn); }
 
 .smap-node-name {
     font-size: var(--font-sm);
@@ -8226,7 +8229,8 @@ h4.smap-detail-sub {
     }
 
     .smap-node.smap-ready { border-left-color: var(--pass); border-top-color: var(--border); }
-    .smap-node.smap-missing { border-left-color: var(--warn); border-top-color: var(--border); }
+    .smap-node.smap-missing,
+    .smap-node.smap-risk { border-left-color: var(--warn); border-top-color: var(--border); }
 
     .smap-node-name {
         text-align: left;

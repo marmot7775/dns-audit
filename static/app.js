@@ -1266,16 +1266,29 @@ function renderResults(data, selector = '') {
 const SMAP_RECORDS = { spf: 'SPF', dkim: 'DKIM', mx: 'MX', return_path: 'Return path', tracking: 'Tracking' };
 const SMAP_TIER_ORDER = ['In use', 'Configured', 'Likely', 'Account only'];
 
+// The risk findings that cite one of this service's own records (name, type
+// and value: the apex name is shared by every service there).
+const _smapEvKey = e => `${e.name}|${e.rtype}|${e.value}`;
+function serviceFindings(svc, map) {
+    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(_smapEvKey));
+    return ((map && map.findings) || []).filter(f =>
+        (f.evidence || []).some(e => own.has(_smapEvKey(e))));
+}
+
 function senderMapNodes(map) {
     const services = (map && map.services) || [];
     const nodes = services.map((svc, i) => {
         const items = (svc.setups || []).flatMap(st => st.items || [])
             .filter(it => it.need !== 'none');
         const missing = items.filter(it => it.need === 'required' && it.state === 'missing');
+        // A record of its own that anyone could take over (a DKIM alias to
+        // a name with no key) is not "Set up", however complete the rest is.
+        const risky = serviceFindings(svc, map).some(f => f.severity === 'risk');
         let state;
         if (svc.role === 'reporting') state = 'reporting';
         else if (svc.tier === 'Account only') state = 'account';
         else if (missing.length) state = 'missing';
+        else if (risky) state = 'risk';
         else if (items.some(it => it.need === 'required' && it.state === 'present')) state = 'ready';
         else state = 'unverified';
         return { id: `smap-node-${i}`, svc, items, missing, state };
@@ -1286,14 +1299,14 @@ function senderMapNodes(map) {
 }
 
 const SMAP_STATE_WORD = {
-    ready: 'Set up', missing: 'Needs setup', unverified: 'Found by name',
+    ready: 'Set up', missing: 'Needs setup', risk: 'Has a risk', unverified: 'Found by name',
     account: 'Account only', reporting: 'Gets your reports',
 };
 
 function _smapBadges(node) {
     // An account-only or reporting service is not set up to send, so its
     // records are not a checklist it is failing.
-    if (!['ready', 'missing', 'unverified'].includes(node.state)) return '';
+    if (!['ready', 'missing', 'risk', 'unverified'].includes(node.state)) return '';
     const seen = new Set();
     return node.items.filter(it => {
         if (seen.has(it.record)) return false;
@@ -1309,12 +1322,7 @@ function _smapBadges(node) {
 
 function _smapDetail(node, map) {
     const svc = node.svc;
-    // A finding belongs to this service when it cites one of this service's
-    // own records: name, type and value, since the apex name is shared.
-    const evKey = e => `${e.name}|${e.rtype}|${e.value}`;
-    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(evKey));
-    const findings = ((map && map.findings) || []).filter(f =>
-        (f.evidence || []).some(e => own.has(evKey(e))));
+    const findings = serviceFindings(svc, map);
     // One line per kind of evidence: the first record, and how many more.
     const byKind = new Map();
     (svc.claims || []).forEach(c => {
@@ -1329,7 +1337,7 @@ function _smapDetail(node, map) {
     }).join('');
     // Only a service set up to send is missing anything. For an account, the
     // same list says what sending through it would take.
-    const sending = ['ready', 'missing', 'unverified'].includes(node.state);
+    const sending = ['ready', 'missing', 'risk', 'unverified'].includes(node.state);
     const setup = node.items.map(it => {
         const label = SMAP_RECORDS[it.record] || it.record;
         const need = it.need === 'required' ? 'required' : 'optional';
@@ -1365,7 +1373,7 @@ function renderSenderMap(data) {
     }
     const nodes = senderMapNodes(map);
     const counts = nodes.reduce((n, x) => (n[x.state] = (n[x.state] || 0) + 1, n), {});
-    const legend = ['ready', 'missing', 'unverified', 'account', 'reporting']
+    const legend = ['ready', 'missing', 'risk', 'unverified', 'account', 'reporting']
         .filter(k => counts[k])
         .map(k => `<span class="smap-legend-item smap-${k}"><span class="smap-dot"></span>${SMAP_STATE_WORD[k]} (${counts[k]})</span>`)
         .join('');
@@ -1407,7 +1415,7 @@ function renderSenderMap(data) {
         ro.observe(canvas);
     }
     // Open on the service that most needs attention, else the first.
-    const first = nodes.find(n => n.state === 'missing') || nodes[0];
+    const first = nodes.find(n => n.state === 'risk') || nodes.find(n => n.state === 'missing') || nodes[0];
     if (first) slot.querySelector(`#${first.id}`).click();
     return true;
 }
