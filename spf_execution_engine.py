@@ -232,6 +232,24 @@ def build_spf_execution_trace(spf_recursive_result: Dict, spf_record: Optional[s
 # DMARC Evaluation Summary
 # ============================================================
 
+def _spf_permerror(raw_spf: Optional[Dict]) -> bool:
+    """True when receivers return PermError for this SPF record for a reason
+    other than the lookup count: a syntax error (RFC 7208 section 4.6), an
+    include target with no SPF record (5.2), more than one SPF record
+    anywhere in the chain (4.5), an include loop, or more than two void
+    lookups (4.6.4). The SPF card fails on every one of these, so the DMARC
+    evaluation cannot call SPF a path to DMARC pass."""
+    if not raw_spf:
+        return False
+    if raw_spf.get("syntax_errors"):
+        return True
+    if (raw_spf.get("void_lookup_count") or 0) > 2:
+        return True
+    rec = raw_spf.get("spf_recursive") or {}
+    return bool(rec.get("permerror_domains") or rec.get("multiple_spf_domains")
+                or rec.get("loop_domains"))
+
+
 def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
                            raw_dkim: Dict, tree_walk: Optional[Dict],
                            dkim_confirmed: bool = True,
@@ -283,11 +301,11 @@ def build_dmarc_evaluation(raw_dmarc: Dict, raw_spf: Dict,
         spf_result = "none"
     elif null_spf:
         spf_result = "authorizes no servers"
-    elif spf_lookup_count > 10:
-        # Only treat as permerror when lookups genuinely exceed the RFC 7208
-        # limit.  Syntax warnings (e.g. malformed but recovered records) should
-        # NOT produce a permerror here -- the lenient parser result is the
-        # single source of truth for the entire UI.
+    elif spf_lookup_count > 10 or _spf_permerror(raw_spf):
+        # Only treat as permerror when receivers must return one: lookups
+        # past the RFC 7208 limit, or one of the PermErrors in _spf_permerror.
+        # A record the lenient parser only repaired (missing spaces) is a
+        # warning and stays "configured" here.
         spf_result = "permerror"
     else:
         spf_result = "configured"

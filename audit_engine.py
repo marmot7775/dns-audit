@@ -2530,6 +2530,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     ip4_count = 0
     ip6_count = 0
     has_redirect = False
+    # RFC 7208 section 6: redirect and exp MUST NOT appear more than once.
+    modifier_counts = {"redirect": 0, "exp": 0}
     has_all = False
     seen_mechanisms = []
 
@@ -2566,6 +2568,16 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             # Modifier (redirect=, exp=)
             mod_name, _, mod_value = raw.partition("=")
             mod_name_lower = mod_name.lower()
+            if mod_name_lower in modifier_counts:
+                modifier_counts[mod_name_lower] += 1
+                if modifier_counts[mod_name_lower] == 2:
+                    _add_syntax(
+                        f"More than one {mod_name_lower}= modifier",
+                        f"RFC 7208 section 6 allows {mod_name_lower}= at most once. "
+                        "A second one is a syntax error, so receivers return "
+                        "PermError for the whole record.",
+                        f"Keep one {mod_name_lower}= modifier and remove the others.",
+                    )
 
             if mod_name_lower == "redirect":
                 has_redirect = True
@@ -2683,6 +2695,21 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             elif mech_lower == "ptr":
                 # Reported once, by spf_recursive (merged below).
                 seen_mechanisms.append(part)
+
+            elif mech_lower in ("include", "exists", "ip4", "ip6"):
+                # RFC 7208 sections 5.2, 5.6 and 5.7: these take a required
+                # ":" argument, unlike a, mx and ptr.
+                _add_syntax(
+                    f"'{raw}' has no value",
+                    f"The {mech_lower} mechanism needs a value after a colon, "
+                    "so on its own it is a syntax error and receivers return "
+                    "PermError for the whole record.",
+                    f"Add the value, e.g. {mech_lower}:"
+                    + ("192.0.2.1" if mech_lower == "ip4"
+                       else "2001:db8::1" if mech_lower == "ip6"
+                       else "_spf.example.com")
+                    + f", or remove '{raw}'.",
+                )
 
             elif mech_lower in KNOWN_MECHANISMS or DUAL_CIDR_MECHANISM_RE.match(mech_lower):
                 seen_mechanisms.append(part)
