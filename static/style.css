@@ -7805,3 +7805,154 @@ h3.services-sub,
 .services-section.services-first {
     margin: var(--space-xl) 0;
 }
+
+/* Gmail, Yahoo and Microsoft sender requirements (2026-10-25): under the
+   headline on Inbox readiness and Full audit. Rows DNS can show are graded;
+   the rest say they are not visible in DNS, in the neutral colour. */
+.req-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.75rem;
+    margin-bottom: var(--space-xl);
+}
+
+.req-heading {
+    font-size: var(--font-md);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs);
+}
+
+.req-summary {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-md);
+    line-height: 1.5;
+}
+
+.req-more > summary {
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    list-style: none;
+}
+
+.req-more > summary::-webkit-details-marker {
+    display: none;
+}
+
+.req-more > summary .icon {
+    transition: transform 0.2s ease;
+}
+
+.req-more[open] > summary .icon {
+    transform: rotate(180deg);
+}
+
+.req-sub {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    margin: var(--space-md) 0 var(--space-xs);
+}
+
+.req-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.req-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+    column-gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+    border-top: 1px solid var(--border);
+}
+
+.req-row:first-child {
+    border-top: none;
+}
+
+.req-row .status-icon {
+    margin-top: 0.15rem;
+}
+
+.req-text {
+    min-width: 0;
+}
+
+.req-label {
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    line-height: 1.45;
+}
+
+.req-note {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin-top: 0.15rem;
+}
+
+.req-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--primary);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.req-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    text-align: right;
+}
+
+.req-word {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.req-met .req-word { color: var(--pass); }
+.req-not_met .req-word { color: var(--fail-text); }
+
+.req-who {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+.req-foot {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+    margin: var(--space-md) 0 0;
+}
+
+@media (max-width: 600px) {
+    .req-block {
+        padding: 1rem 1.1rem;
+    }
+
+    .req-row {
+        grid-template-columns: auto 1fr;
+    }
+
+    .req-meta {
+        grid-column: 2;
+        flex-direction: row;
+        gap: var(--space-sm);
+        align-items: baseline;
+        margin-top: 0.2rem;
+    }
+}

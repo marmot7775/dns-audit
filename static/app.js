@@ -858,6 +858,9 @@ function renderResults(data, selector = '') {
     // Prompt 2: Record to recent audits in localStorage
     _recordRecentAudit(data.domain);
 
+    // -- Gmail, Yahoo and Microsoft sender requirements, under the headline --
+    renderRequirements(data);
+
     // -- Executive Summary (Prompt 16) -- render at the very top --
     _execSummary = data.executive_summary || null;
     const esSlot = document.getElementById('executive-summary-slot');
@@ -1243,6 +1246,63 @@ function renderResults(data, selector = '') {
         csvBtn.parentNode.replaceChild(newCsvBtn, csvBtn);
         newCsvBtn.addEventListener('click', () => _exportToCSV(data));
     }
+}
+
+// The checklist answers Inbox readiness's question directly, so it shows
+// there and on a full audit; the other questions have their own answer.
+const REQUIREMENT_SCOPES = ['deliverability', 'complete'];
+const REQUIREMENT_STATUS = {
+    met: { icon: 'pass', word: 'Met' },
+    not_met: { icon: 'fail', word: 'Not met' },
+    unknown: { icon: 'unavailable', word: 'Not confirmed' },
+    outside_dns: { icon: 'absent', word: 'Not visible in DNS' },
+};
+
+function renderRequirements(data) {
+    const slot = document.getElementById('requirements-slot');
+    if (!slot) return;
+    const req = data && data.sender_requirements;
+    if (!req || !REQUIREMENT_SCOPES.includes(_resultScope(data))) {
+        slot.innerHTML = '';
+        return;
+    }
+    const row = r => {
+        const st = REQUIREMENT_STATUS[r.status] || REQUIREMENT_STATUS.unknown;
+        const who = r.applies === 'bulk' ? 'Bulk senders' : 'All senders';
+        let extra = '';
+        if (r.key === 'alignment') {
+            extra = ` <button type="button" class="req-link" data-req-scope="senders">See who sends as you</button>`;
+        } else if (r.key === 'spam_rate') {
+            extra = ` <a class="req-link" href="/articles/postmaster-tools">How to read Postmaster Tools</a>`;
+        }
+        return `<li class="req-row req-${safeClass(r.status)}">
+            ${statusIconHtml(st.icon)}
+            <div class="req-text">
+                <div class="req-label">${escapeHtml(r.label)}</div>
+                ${r.note || extra ? `<div class="req-note">${escapeHtml(r.note || '')}${extra}</div>` : ''}
+            </div>
+            <div class="req-meta"><span class="req-word">${escapeHtml(st.word)}</span><span class="req-who">${who}</span></div>
+        </li>`;
+    };
+    const inDns = req.rows.filter(r => r.status !== 'outside_dns');
+    const outside = req.rows.filter(r => r.status === 'outside_dns');
+    slot.innerHTML = `<section class="req-block req-state-${safeClass(req.state)}" aria-labelledby="req-heading">
+        <h2 class="req-heading" id="req-heading">Gmail, Yahoo, and Microsoft sender requirements</h2>
+        <p class="req-summary">${escapeHtml(req.summary)}</p>
+        <h3 class="req-sub">What your DNS shows</h3>
+        <ul class="req-list">${inDns.map(row).join('')}</ul>
+        <details class="req-more">
+            <summary class="req-sub"><span>What depends on how you send (${outside.length})</span>${ICON.chevron}</summary>
+            <ul class="req-list">${outside.map(row).join('')}</ul>
+        </details>
+        <p class="req-foot">Bulk senders send about 5,000 or more messages a day to one provider's users.</p>
+    </section>`;
+    slot.querySelectorAll('[data-req-scope]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pill = document.querySelector(`.scope-btn[data-scope="${btn.dataset.reqScope}"]`);
+            if (pill) pill.click();
+        });
+    });
 }
 
 // The services section lives at the end of the results; for Who sends as

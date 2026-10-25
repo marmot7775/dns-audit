@@ -187,6 +187,7 @@ from result_transformer import (
     transform_ct,
     build_security_roadmap,
     build_executive_summary,
+    build_sender_requirements,
     build_subdomain_audit,
     build_change_detection,
     build_consistency_findings,
@@ -6259,6 +6260,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         "security_roadmap": _roadmap,
         "executive_summary": build_executive_summary(checks, _roadmap,
                                                      is_no_mail=is_defensive, scope=scope),
+        # Gmail, Yahoo and Microsoft sender requirements (2026-10-25); None
+        # when this run did not read SPF, DKIM and DMARC.
+        "sender_requirements": (None if is_defensive else build_sender_requirements(checks)),
         "subdomain_audit": subdomain_audit,
         "change_detection": change_detection,
         "consistency_findings": consistency,

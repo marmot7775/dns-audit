@@ -485,6 +485,88 @@ def _registry_policy_note(suffix: str, policy: Optional[str]) -> str:
             f"RFC 9989 apply it. Receivers on RFC 7489 find no DMARC policy here.")
 
 
+# Google, Yahoo and Microsoft (Outlook.com) sender requirements, as a
+# checklist (2026-10-25). Three rows are DNS records this audit reads and
+# grades from their cards. The rest depend on how mail is sent, which no DNS
+# lookup can show, and say so rather than guess. "bulk" rows apply to senders
+# of about 5,000 or more messages a day to that provider's users.
+REQUIREMENT_ROWS_OUTSIDE_DNS = [
+    ("alignment", "bulk", "The From domain matches the SPF or DKIM domain (alignment)",
+     "Depends on the From address and signing domain each service uses. "
+     "Who sends as you shows which services are set up for it."),
+    ("reverse_dns", "all", "Sending servers have matching forward and reverse DNS",
+     "Your email provider sets this for its own servers. It matters when you "
+     "run your own mail server."),
+    ("tls", "all", "Mail is sent over an encrypted (TLS) connection",
+     "Set by the sending server. Every major email provider does this already."),
+    ("unsubscribe", "bulk", "Marketing mail has one-click unsubscribe",
+     "A header your email platform adds to each message (RFC 8058)."),
+    ("spam_rate", "all", "Spam complaint rate stays below 0.3%",
+     "Measured by each mailbox provider. Google shows yours in Postmaster Tools."),
+]
+
+
+def build_sender_requirements(checks: List[Dict]) -> Optional[Dict]:
+    """The provider requirements checklist, or None when this run did not
+    read SPF, DKIM and DMARC."""
+    cm = {c.get("name", ""): c for c in checks}
+    if not all(n in cm for n in ("SPF", "DKIM", "DMARC")):
+        return None
+
+    def _graded(card, missing_word):
+        st = card.get("status")
+        if st == "unavailable" and card.get("unavailable_kind") != "not_enumerable":
+            return "unknown", "The lookup did not complete. Run the audit again."
+        if st == "fail":
+            return "not_met", missing_word
+        if card.get("configured") and st in ("pass", "warn"):
+            return "met", None
+        return "unknown", None
+
+    spf_st, spf_note = _graded(cm["SPF"], "Missing or broken. See the SPF card.")
+    dkim = cm["DKIM"]
+    if dkim.get("unavailable_kind") == "not_enumerable" or (
+            not dkim.get("configured") and dkim.get("status") != "fail"):
+        dkim_st, dkim_note = ("unknown", "No key found under common names. Enter your "
+                              "selector to check it.")
+    else:
+        dkim_st, dkim_note = _graded(dkim, "No usable key. See the DKIM card.")
+    dmarc_st, dmarc_note = _graded(cm["DMARC"], "Missing or broken. See the DMARC card.")
+    if dmarc_st == "met":
+        _pol = cm["DMARC"].get("effective_policy")
+        dmarc_note = (f"p={_pol} meets it." if _pol else None)
+
+    rows = [
+        {"key": "spf", "applies": "all", "label": "SPF record published",
+         "status": spf_st, "note": spf_note},
+        {"key": "dkim", "applies": "all", "label": "DKIM key published",
+         "status": dkim_st, "note": dkim_note},
+        {"key": "dmarc", "applies": "bulk", "label": "DMARC record published, p=none or stronger",
+         "status": dmarc_st, "note": dmarc_note},
+    ] + [
+        {"key": k, "applies": a, "label": label, "status": "outside_dns", "note": note}
+        for k, a, label, note in REQUIREMENT_ROWS_OUTSIDE_DNS
+    ]
+    dns_rows = [r for r in rows if r["status"] != "outside_dns"]
+    met = sum(r["status"] == "met" for r in dns_rows)
+    not_met = sum(r["status"] == "not_met" for r in dns_rows)
+    if not_met:
+        summary = (f"Your DNS misses {not_met} of the {len(dns_rows)} requirements it can show. "
+                   "Mailbox providers may reject or filter your mail until "
+                   + ("it is" if not_met == 1 else "they are") + " fixed.")
+        state = "fail"
+    elif met == len(dns_rows):
+        summary = (f"Your DNS meets all {len(dns_rows)} requirements it can show. "
+                   f"The other {len(rows) - len(dns_rows)} depend on how you send.")
+        state = "pass"
+    else:
+        summary = (f"Your DNS meets {met} of the {len(dns_rows)} requirements it can show; "
+                   "the rest could not be confirmed.")
+        state = "neutral"
+    return {"state": state, "summary": summary, "met": met, "not_met": not_met,
+            "dns_total": len(dns_rows), "rows": rows}
+
+
 def build_executive_summary(checks: List[Dict], roadmap: Dict,
                             is_no_mail: bool = False, scope: Optional[str] = None) -> Dict:
     """Build the executive summary card shown at the very top of results.

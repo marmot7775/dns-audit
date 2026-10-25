@@ -135,6 +135,13 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 
 ## 2026-10-25: Four questions instead of five scopes
 
+- Inbox readiness and Full audit open with the Gmail, Yahoo, and Microsoft
+  sender requirements under the headline: SPF, DKIM and DMARC graded Met,
+  Not met or Not confirmed from their cards, and the five requirements no
+  DNS lookup can show (alignment, reverse DNS, TLS, one-click unsubscribe,
+  spam rate) listed as such, folded. The PDF carries the same block at the
+  top of What to do. The API returns it as `sender_requirements`.
+
 - The home page asks "Will your email reach the inbox?" and offers four
   pills, one per question a sender asks: Inbox readiness (the default),
   Who sends as you (new), Spoofing protection and Full audit. DMARC Check
