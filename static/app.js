@@ -1465,7 +1465,9 @@ function _recheckSnapshot(data) {
     (data.checks || []).forEach(c => { if (c.name) statuses[c.plain_name || c.name] = c.status; });
     const actions = ((data.security_roadmap && data.security_roadmap.items) || [])
         .filter(i => !isOptionalPlanItem(i) && i.priority !== 'low')
-        .map(i => i.plain_head || i.action || '').filter(Boolean);
+        // The action ("Publish a DMARC record") reads right under Fixed and
+        // New; the plain head describes the problem.
+        .map(i => i.action || i.plain_head || '').filter(Boolean);
     return { at: data.audited_at || data.timestamp || '', statuses, actions };
 }
 
