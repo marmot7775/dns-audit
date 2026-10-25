@@ -259,3 +259,16 @@ def test_who_sends_as_you_opens_the_services_under_the_plan(browser, audit):  # 
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_an_example_domain_runs_with_one_click(browser):  # noqa: F811
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        assert page.eval_on_selector_all(".try-example", "els => els.map(e => e.dataset.example)") == [
+            "github.com", "shopify.com", "disney.com"]
+        page.evaluate("() => { auditForm.requestSubmit = () => { window.__submitted = domainInput.value; }; }")
+        page.click(".try-example[data-example='github.com']")
+        assert page.evaluate("() => window.__submitted") == "github.com"
+        assert not errors, errors
+    finally:
+        ctx.close()

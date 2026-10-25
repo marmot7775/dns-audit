@@ -136,6 +136,21 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-25: The certificate card asks again
+
+- The home page offers three example domains under the box (github.com,
+  shopify.com, disney.com); one click runs the audit.
+- The offer of help ("If you'd like help with these changes") sits right
+  under the plan instead of at the end of the page.
+
+- When crt.sh and Cert Spotter both stay silent, the results no longer
+  wait: the Certificate Transparency card shows Not checked, the page asks
+  again by itself 15 seconds later through the new `/api/ct` endpoint, and
+  swaps the card and the counters in place. If that fails too, the card
+  says so and offers Try again. The endpoint skips the 15-minute timeout
+  memory, which would only replay the failure, and is rate limited with
+  `/api/audit`.
+
 ## 2026-10-25: Since your last check
 
 - Run the same domain again and the results open with what changed since
