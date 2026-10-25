@@ -7549,11 +7549,13 @@ h3.services-sub,
    audit found something. Deliberately not a call-to-action: no border, no
    accent colour, muted text, sized to the
    results column it sits in rather than to its own content. */
+/* Under the plan since 2026-10-25: the reader who has just read what to
+   fix is the one who may want help with it. */
 .results-contact-note {
     font-size: var(--font-sm);
     color: var(--text-muted);
     line-height: 1.5;
-    margin: var(--space-lg) 0 0;
+    margin: 0 0 var(--space-xl);
 }
 .results-contact-note a {
     color: var(--text-muted);
@@ -8364,4 +8366,36 @@ h4.smap-detail-sub {
     .ct-retry {
         padding-left: 1rem;
     }
+}
+
+/* Example domains under the home page box (2026-10-25). Hidden once a
+   result is on screen, like the title and the selector link. */
+.try-examples {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    margin: var(--space-md) 0 0;
+    font-size: var(--font-sm);
+    color: var(--text-tertiary);
+}
+
+.try-example {
+    min-height: 44px;
+    padding: 0 var(--space-sm);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.try-example:hover {
+    border-color: var(--primary);
+    color: var(--text-primary);
+}
+
+.audit-input-section.compact .try-examples {
+    display: none;
 }

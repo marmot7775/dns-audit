@@ -313,6 +313,14 @@ document.getElementById('scope-selector').addEventListener('keydown', (e) => {
     syncScopeDesc();
 });
 
+// -- Example domains under the box: one click to a real result --
+document.querySelectorAll('.try-example').forEach(btn => {
+    btn.addEventListener('click', () => {
+        domainInput.value = btn.dataset.example;
+        auditForm.requestSubmit();
+    });
+});
+
 // -- DKIM selector toggle --
 document.getElementById('selector-toggle').addEventListener('click', () => {
     const field = document.getElementById('selector-field');
@@ -5082,10 +5090,6 @@ function _renderContactNote(failCount, warnCount, unavailableCount, sendsMail) {
         note.classList.add('is-hidden');
     }
 }
-
-// ============================================================
-// CSV Export (Prompt 15)
-// ============================================================
 
 // ============================================================
 // Run Another Audit helpers (Prompt 9)
