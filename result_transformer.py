@@ -3273,6 +3273,10 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     # Build verdict and override status based on policy
     if inherited:
         verdict = f"Inherited: {inherited_policy} (from {inherited_source})"
+        if raw.get("inherited_policy_invalid"):
+            verdict = (f"Inherited: none (from {inherited_source}, where "
+                       f"{raw.get('applied_tag') or 'sp'}={raw['inherited_policy_invalid']} "
+                       f"is not a valid policy)")
         if inherited_policy == "reject":
             status = "pass"
         elif inherited_policy == "quarantine":
@@ -7817,9 +7821,19 @@ def transform_mta_sts(raw: Dict, domain: str, has_mx: bool = True, non_mail: boo
     if policy_mode == "enforce" and raw_status != "error" and not fix:
         status = "pass"
 
+    # mode: none withdraws the policy (RFC 8461 section 5), so senders apply
+    # nothing. It graded green while the explanation said it has no
+    # protective effect. Grey like an optional protocol not set up, never a
+    # warning; a broken policy file still fails.
+    pill_label = None
+    if policy_mode == "none" and status != "fail":
+        status = "absent"
+        pill_label = "Turned off"
+
     return {
         "name": "MTA-STS",
         "status": status,
+        "pill_label": pill_label,
         "verdict": verdict,
         "record": txt_record,
         "configured": bool(txt_record),
