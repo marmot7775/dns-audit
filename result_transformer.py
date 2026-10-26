@@ -524,8 +524,11 @@ def build_sender_requirements(checks: List[Dict]) -> Optional[Dict]:
 
     spf_st, spf_note = _graded(cm["SPF"], "Missing or broken. See the SPF card.")
     dkim = cm["DKIM"]
+    # A DKIM lookup that did not complete goes to _graded, which says so; only
+    # a key not found under the common names gets the enter-your-selector note.
     if dkim.get("unavailable_kind") == "not_enumerable" or (
-            not dkim.get("configured") and dkim.get("status") != "fail"):
+            not dkim.get("configured")
+            and dkim.get("status") not in ("fail", "unavailable")):
         dkim_st, dkim_note = ("unknown", "No key found under common names. Enter your "
                               "selector to check it.")
     else:
