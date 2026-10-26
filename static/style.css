@@ -1561,6 +1561,13 @@ a.tag { text-decoration: none; }
     transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
+/* openCard also scrolls to panels inside a card (the attack surface and the
+   record builder, from the Technical summary and plan rows). Only the card
+   carried the offset, so those panels landed under the sticky header. */
+.result-card [id] {
+    scroll-margin-top: 4.5rem;
+}
+
 .result-card:hover {
     border-color: var(--border);
     box-shadow: var(--shadow-md);
