@@ -98,6 +98,8 @@ def test_sample_runs_are_marked(logged):
 def test_hourly_limit_drops_notes_without_touching_audits(logged, monkeypatch):
     monkeypatch.setattr(server_module, "_USAGE_PER_HOUR", 3)
     client = TestClient(server_module.app)
+    # Other tests leave entries in the audit limiter; the notes must add none
+    before = list(server_module._rate_limits.get("testclient", []))
     codes = [_post(client, APRF).status_code for _ in range(5)]
     assert codes == [204, 204, 204, 429, 429] and len(logged) == 3
-    assert server_module._rate_limits.get("testclient") is None  # the audit limiter never saw them
+    assert list(server_module._rate_limits.get("testclient", [])) == before
