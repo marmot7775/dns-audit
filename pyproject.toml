@@ -41,7 +41,7 @@ dependencies = [
     # sendermap_adapter.py imports SystemResolver's rendering helpers, which
     # are private to the package, so a release has to be checked before it
     # is taken. Requires Python 3.12.
-    "sendermap==0.1.2",
+    "sendermap==0.1.9",
 ]
 
 [project.optional-dependencies]

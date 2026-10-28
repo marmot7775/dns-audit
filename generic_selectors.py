@@ -15,10 +15,6 @@ publishes it. Nothing vendor named belongs here except LOCAL_SELECTORS.
 # domains, read 2026-10-27.
 LOCAL_SELECTORS = (
     'gor2',         # 3 domains
-    '20161025',     # 2
-    '20210112',     # 2
-    '20221208',     # 2
-    '20230601',     # 2
     'proofpoint1',  # 2
     'autotask',     # 2
     'proofpoint',   # 1

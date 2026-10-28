@@ -136,6 +136,16 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-28: Google's dated DKIM keys are Sendermap's
+
+- sendermap 0.1.9 (was 0.1.2). Its catalog credits 20161025, 20210112,
+  20221208 and 20230601 to Google Workspace as backed only names, so
+  google.com's keys show their provider again. Doc 105 had dropped it.
+- The DKIM probe asks and credits the names a matched vendor backs
+  (Catalog.backs), as Sendermap's engine does, not only that rule's own
+  names. The four Google names left LOCAL_SELECTORS.
+- The build SHA is read in a git worktree too (#237).
+
 ## 2026-10-27: Doc 105. The DKIM sweep is Sendermap's dictionary
 
 - The audit's DKIM probe sends Sendermap's selector sweep (106 names) plus
