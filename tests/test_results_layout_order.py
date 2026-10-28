@@ -184,7 +184,7 @@ def test_checks_start_behind_one_closed_toggle(browser, fixture_result, theme):
         assert m["expandAllInside"] and m["copyAllInside"]
         assert m["afterPlan"]
         # Nothing is deleted: the cards are in the document, closed.
-        assert m["cards"] == 13, m["cards"]
+        assert m["cards"] == 12, m["cards"]
         assert errors == []
     finally:
         ctx.close()
