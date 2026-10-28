@@ -1742,9 +1742,7 @@ def _finish_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
                 # the address just removed.
                 _kept = re.sub(r"Replace (?:dmarc|tls)-reports@\S+ with the mailbox or report "
                                r"service[^.]*\.\s*", "", rec.get("note") or "").strip()
-                rec["note"] = (_kept + (" " if _kept else "")
-                               + "The report address is a placeholder. Replace it with a "
-                               "mailbox or report service you read before you publish.")
+                rec["note"] = _kept or None
 
 
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,

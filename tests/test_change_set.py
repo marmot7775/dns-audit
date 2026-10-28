@@ -77,7 +77,7 @@ def test_missing_dmarc_offers_the_first_record():
     [entry] = _entries(rm, "DMARC")
     assert entry["op"] == "add"
     assert entry["value"] == f"v=DMARC1; p=none; rua=mailto:REPLACE-WITH-YOUR-ADDRESS@{D}"
-    assert any("placeholder" in n for n in entry["notes"])
+    assert entry["placeholder"] is True
 
 
 def test_unauthorized_report_destination_is_published_by_the_receiver():
