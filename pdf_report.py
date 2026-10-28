@@ -912,6 +912,9 @@ def _plan_what_to_change(data, item, card, S):
             els.append(Paragraph(_safe(item["host_note"]), S["body_small"]))
         # No appendix letter: the migration path's letter depends on which
         # sections rendered, and a fixed "Appendix A" pointed at the wrong one.
+        # A first record has no current policy for "the next edit" to be at.
+        if not (card or {}).get("record"):
+            return els
         els.append(Paragraph(
             "This is the next edit at your current policy. Path to enforcement "
             "in the appendix carries the steps and the enforcement end state."
@@ -919,6 +922,13 @@ def _plan_what_to_change(data, item, card, S):
             "This is the next edit at your current policy. The report with its "
             "technical appendix carries the steps to enforcement.",
             S["body_tiny"]))
+        return els
+
+    # Every other row carries its records too, as on the web.
+    if item.get("records"):
+        els = []
+        for rec in item["records"]:
+            els.extend(_change_record_els(rec, [rec["note"]] if rec.get("note") else [], S))
         return els
 
     fix_records = (card or {}).get("fix_records") or []
@@ -945,6 +955,59 @@ def _plan_what_to_change(data, item, card, S):
 TIER_LABELS = {"critical": "Fix now", "high": "Important", "medium": "Recommended",
                "low": "Optional"}
 _OPTIONAL_PROTOCOLS = ("MTA-STS", "TLS-RPT", "BIMI", "DNSSEC", "CAA", "DANE")
+
+
+_CHANGE_OPS = {"add": "Add", "replace": "Replace", "delete": "Delete", "file": "Publish"}
+
+
+def _change_record_els(rec, notes, S):
+    """One record from the plan: the line saying what to do and where, the
+    exact value, or who supplies it when DNS cannot tell us. app.js's
+    _changeRecordBlock draws the same thing."""
+    op = _CHANGE_OPS.get(rec.get("op"), "Add")
+    host = _safe(rec.get("host", ""))
+    if rec.get("op") == "file":
+        line = f"{op} the policy file at <b>{host}</b>"
+    else:
+        line = f"{op} the {_safe(rec.get('type', 'TXT'))} record at <b>{host}</b>"
+    els = [Paragraph(line, S["body_small"])]
+    if rec.get("value") is None:
+        els.append(Paragraph(f"<b>Value:</b> {_safe(rec.get('value_from') or '')}", S["body"]))
+    else:
+        els.extend(_record_block(rec["value"], S, small=True))
+    if rec.get("by"):
+        els.append(Paragraph(f"Published by {_safe(rec['by'])}, not by you.", S["body_tiny"]))
+    for n in notes or []:
+        els.append(Paragraph(_safe(n), S["body_tiny"]))
+    return els
+
+
+def _change_set_block(data, S):
+    """Every record the plan asks for, in order, as on the page."""
+    cs = (data.get("security_roadmap") or {}).get("change_set") or {}
+    entries = cs.get("entries") or []
+    if not entries:
+        return []
+    els = [Paragraph("DNS changes, in order", S["subheading"]),
+           Paragraph("Every record the plan asks for, top to bottom. Where two plan items "
+                     "change one record, it appears once with both changes in it.", S["body"]),
+           Spacer(1, SP_SM)]
+    for e in entries:
+        head = f"<b>{e.get('step')}.</b> {_safe(e.get('protocol', ''))}"
+        if e.get("optional"):
+            head += " (optional)"
+        block = [Paragraph(head, S["body"]), *_change_record_els(e, e.get("notes"), S)]
+        if e.get("why"):
+            block.append(Paragraph(f"<b>Why:</b> {_safe(' '.join(e['why']))}", S["body_small"]))
+        block.append(Spacer(1, SP_SM))
+        els.append(KeepTogether(block))
+    n = cs.get("rows_without_records") or 0
+    if n:
+        els.append(Paragraph(
+            f"{n} plan {'item is' if n == 1 else 'items are'} not listed here: the change is "
+            "not a DNS record, or this audit cannot say which record. The plan above covers "
+            f"{'it' if n == 1 else 'them'}.", S["body_small"]))
+    return els
 
 
 def _is_optional_item(item):
@@ -1166,6 +1229,8 @@ def _roadmap_page(data, S, number=2):
         for i, item in enumerate(extras):
             block = _plan_item(data, item, S, optional=True)
             els.extend([KeepTogether([head, *_unwrap_keep(block)])] if i == 0 else block)
+
+    els.extend(_change_set_block(data, S))
 
     # No else branch: roadmap["summary"], printed above, already covers an
     # empty items list for every case (a real all-clear, a scoped run that

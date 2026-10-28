@@ -1006,7 +1006,8 @@ function renderResults(data, selector = '') {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
         priorityList.innerHTML = renderDnsHost(data.dns_host)
-            + renderPriorities(rm, checks, data.resilience, data.dns_host);
+            + renderPriorities(rm, checks, data.resilience, data.dns_host)
+            + renderChangeSet(rm.change_set);
         // The row opens; the link into the card is a control inside it.
         priorityList.querySelectorAll('.priority-head').forEach(head => {
             const body = document.getElementById(head.getAttribute('aria-controls'));
@@ -4016,6 +4017,35 @@ function _dmarcPolicy(card) {
     return m ? m[2].toLowerCase() : '';
 }
 
+const CHANGE_OPS = {
+    add: 'Add', replace: 'Replace', delete: 'Delete', file: 'Publish',
+};
+
+// The line above a record: what to do, the type and the name. A policy
+// file is served over HTTPS, so its "name" is the URL.
+function _recordHostLine(rec) {
+    const op = CHANGE_OPS[rec.op] || 'Add';
+    if (rec.op === 'file') return `${op} the policy file at <strong>${escapeHtml(rec.host || '')}</strong>`;
+    return `${op} the ${escapeHtml(rec.type || 'TXT')} record at <strong>${escapeHtml(rec.host || '')}</strong>`;
+}
+
+// One record from the plan: its exact value with a copy button, or, when
+// DNS cannot tell us the value, who supplies it.
+function _changeRecordBlock(rec, notes) {
+    const value = rec.value === null || rec.value === undefined
+        ? `<div class="plan-record-from"><span class="plan-record-from-label">Value:</span> ${escapeHtml(rec.value_from || '')}</div>`
+        : `<div class="record-block record-block-inset${rec.op === 'file' ? ' record-block-file' : ''}">
+            <span class="record-text">${escapeHtml(rec.value)}</span>
+            <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
+        </div>`;
+    const by = rec.by ? `<div class="plan-record-note">Published by ${escapeHtml(rec.by)}, not by you.</div>` : '';
+    return `<div class="plan-record">
+        <div class="plan-record-host">${_recordHostLine(rec)}</div>
+        ${value}${by}
+        ${(notes || []).map(n => `<div class="plan-record-note">${escapeHtml(n)}</div>`).join('')}
+    </div>`;
+}
+
 function _planRecordBlock(host, type, value, comment) {
     return `<div class="plan-record">
         <div class="plan-record-host">${escapeHtml(type || 'TXT')} record at <strong>${escapeHtml(host || '')}</strong></div>
@@ -4024,6 +4054,43 @@ function _planRecordBlock(host, type, value, comment) {
             <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
         </div>
         ${comment ? `<div class="fix-comment">${escapeHtml(comment)}</div>` : ''}
+    </div>`;
+}
+
+// The change set: every record the plan asks for, in order, one entry per
+// record. Rows that edit one record share an entry whose value carries all
+// their edits, so working down the list never undoes a step. Closed by
+// default under the plan.
+function renderChangeSet(cs) {
+    const entries = (cs && cs.entries) || [];
+    if (entries.length === 0) return '';
+    const bodyId = `change-set-body-${++_planSeq}`;
+    const parts = [`${entries.length} ${entries.length === 1 ? 'change' : 'changes'}`];
+    if (cs.from_provider) parts.push(`${cs.from_provider} with a value from your provider or you`);
+    const rows = entries.map(e => `<li class="cs-entry">
+        <div class="cs-meta">
+            <span class="cs-step">${e.step}</span>
+            <span class="priority-protocol">${escapeHtml(e.protocol)}</span>
+            ${e.optional ? '<span class="tag tag-low">Optional</span>' : ''}
+        </div>
+        <div class="cs-body">
+            ${_changeRecordBlock(e, e.notes)}
+            ${e.why && e.why.length ? `<div class="cs-why"><span class="plan-record-from-label">Why:</span> ${escapeHtml(e.why.join(' '))}</div>` : ''}
+        </div>
+    </li>`).join('');
+    const rest = cs.rows_without_records
+        ? `<p class="cs-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
+        : '';
+    return `<div class="change-set">
+        <button type="button" class="plan-optional-toggle" aria-expanded="false" aria-controls="${bodyId}">
+            <span>DNS changes, in order <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></span>
+            <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+        </button>
+        <div class="change-set-body is-hidden" id="${bodyId}">
+            <p class="cs-intro">Every record the plan asks for, top to bottom. Where two plan items change one record, it appears once with both changes in it.</p>
+            <ol class="cs-list">${rows}</ol>
+            ${rest}
+        </div>
     </div>`;
 }
 
@@ -4049,7 +4116,16 @@ function _planWhat(item, card, anchor) {
         const host = item.host || `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
         let html = _planRecordBlock(host, 'TXT', item.record);
         if (item.host_note) html += `<div class="plan-record-note">${escapeHtml(item.host_note)}</div>`;
-        html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        // A first record has no current policy for "the next edit" to be at.
+        if (card && card.record) html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
+        return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
+    }
+
+    // Every other row carries its records too: the exact value where DNS
+    // tells us it, or who supplies it.
+    if (item.records && item.records.length > 0) {
+        let html = item.records.map(r => _changeRecordBlock(r, r.note ? [r.note] : [])).join('');
         if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
         return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
     }
