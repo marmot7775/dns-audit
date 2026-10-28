@@ -1,9 +1,7 @@
 """
-Intelligent DKIM Selector Discovery via SPF Analysis
-Uses SPF includes to detect vendors, then prioritizes appropriate DKIM selectors.
-
-This is 10x smarter than blind looping through all selectors.
-Based on real-world consulting experience with 100+ enterprise deployments.
+DKIM selector discovery. The vendor dictionary and its order come from
+Sendermap's catalog, ranked by the domain's SPF includes and MX hosts;
+generic_selectors.py is the fallback sweep when that finds nothing.
 """
 
 import re
@@ -49,12 +47,11 @@ _UNANSWERED = object()
 # tested, as before, but not as answered, since nothing was learned.
 _FAILED = object()
 
-# Map SPF includes to vendors and their DKIM selectors
+# Map SPF includes to the vendor and category the SPF card names
 SPF_VENDOR_MAP = {
     # Google
     '_spf.google.com': {
         'vendor': 'Google Workspace',
-        'dkim_selectors': ['google', '20230601', '20221208', '20210112', '20161025', '20120113', 'ga1', 'googlemail'],
         'category': 'email_provider'
     },
     
@@ -68,96 +65,82 @@ SPF_VENDOR_MAP = {
     # and a domain publishing three live keys was reported as unconfirmed.
     '_spf.protonmail.ch': {
         'vendor': 'Proton Mail',
-        'dkim_selectors': ['protonmail', 'protonmail2', 'protonmail3'],
         'category': 'email_provider'
     },
 
     # Microsoft 365
     'spf.protection.outlook.com': {
         'vendor': 'Microsoft 365',
-        'dkim_selectors': ['selector1', 'selector2'],
         'category': 'email_provider'
     },
     
     # Proofpoint
     '_spf.pphosted.com': {
         'vendor': 'Proofpoint',
-        'dkim_selectors': ['proofpoint', 'pp', 'default'],
         'category': 'email_security'
     },
     
     # Mailchimp
     'servers.mcsv.net': {
         'vendor': 'Mailchimp',
-        'dkim_selectors': ['k1', 'k2', 'k3'],
         'category': 'marketing_esp'
     },
     
     # SendGrid
     'sendgrid.net': {
         'vendor': 'SendGrid',
-        'dkim_selectors': ['em', 's1', 's2', 'sendgrid'],
         'category': 'transactional_esp'
     },
     
     # Amazon SES
     'amazonses.com': {
         'vendor': 'Amazon SES',
-        'dkim_selectors': ['amazonses', 'ses'],
         'category': 'transactional_esp'
     },
     
     # Mailgun
     'mailgun.org': {
         'vendor': 'Mailgun',
-        'dkim_selectors': ['mailgun', 'mg', 'k1'],
         'category': 'transactional_esp'
     },
     
     # Mandrill
     'mandrillapp.com': {
         'vendor': 'Mandrill',
-        'dkim_selectors': ['mandrill', 'k1'],
         'category': 'transactional_esp'
     },
     
     # SparkPost
     'sparkpostmail.com': {
         'vendor': 'SparkPost',
-        'dkim_selectors': ['sparkpost', 'scph'],
         'category': 'transactional_esp'
     },
     
     # Constant Contact
     'constantcontact.com': {
         'vendor': 'Constant Contact',
-        'dkim_selectors': ['k1', 'k2'],
         'category': 'marketing_esp'
     },
     
     # HubSpot
     '_spf.hubspot.com': {
         'vendor': 'HubSpot',
-        'dkim_selectors': ['hs1', 'hs2', 'k1'],
         'category': 'marketing_esp'
     },
     
     # Zendesk
     'mail.zendesk.com': {
         'vendor': 'Zendesk',
-        'dkim_selectors': ['zendesk1', 'zendesk2', 'k1'],
         'category': 'support_platform'
     },
 
     # Omnivery / Mailkit
     'spf.mailkit.eu': {
         'vendor': 'Omnivery/Mailkit',
-        'dkim_selectors': ['mailkit', 'mkt', 'omnivery', 'mk'],
         'category': 'transactional_esp'
     },
     'mailkit.eu': {
         'vendor': 'Omnivery/Mailkit',
-        'dkim_selectors': ['mailkit', 'mkt', 'omnivery', 'mk'],
         'category': 'transactional_esp'
     },
 }
@@ -170,102 +153,6 @@ def parse_spf_record(spf_record: str) -> List[str]:
     """
     include_pattern = r'include:([^\s]+)'
     return re.findall(include_pattern, spf_record, flags=re.IGNORECASE)
-
-def detect_vendors_from_spf(spf_record: str) -> List[Dict]:
-    """
-    Detect email vendors/ESPs from SPF record includes.
-    
-    Example:
-        SPF: v=spf1 include:_spf.google.com include:servers.mcsv.net ~all
-        Detects: Google Workspace + Mailchimp
-        Returns: Their respective DKIM selectors to test
-    """
-    includes = parse_spf_record(spf_record)
-    detected_vendors = []
-    seen_vendors = set()
-    
-    for include in includes:
-        # Match on label boundaries, not substrings. "sendgrid.net" inside
-        # "sendgrid.net.attacker.example" is a lookalike, not SendGrid, and
-        # labeling it as the vendor is the wrong way for this tool to fail.
-        include_lower = include.lower().rstrip(".")
-        for pattern, vendor_info in SPF_VENDOR_MAP.items():
-            if include_lower == pattern or include_lower.endswith("." + pattern):
-                vendor_name = vendor_info['vendor']
-                if vendor_name not in seen_vendors:
-                    detected_vendors.append({
-                        'vendor': vendor_name,
-                        'dkim_selectors': vendor_info['dkim_selectors'],
-                        'category': vendor_info['category'],
-                        'spf_include': include
-                    })
-                    seen_vendors.add(vendor_name)
-    
-    return detected_vendors
-
-
-# MX hostname to vendor name, for the handful of vendors that both receive
-# and sign mail on the same hosted platform (Google Workspace, Microsoft
-# 365), or run as a relay that resigns outbound mail (Proofpoint, Mimecast).
-# Deliberately a small set, keyed to the same vendor names SPF_VENDOR_MAP
-# already has selectors for, so a domain that never mentions its vendor in SPF (self-hosted DNS in
-# front of a hosted mailbox, or an SPF record this audit could not read) can
-# still have its selectors prioritized instead of falling straight to the
-# generic sweep.
-MX_VENDOR_PATTERNS = {
-    'google.com': 'Google Workspace',
-    'outlook.com': 'Microsoft 365',
-    'protection.outlook.com': 'Microsoft 365',
-    'pphosted.com': 'Proofpoint',
-    'mimecast.com': 'Mimecast',
-}
-
-_VENDOR_NAME_TO_INFO = {
-    info['vendor']: info for info in SPF_VENDOR_MAP.values()
-}
-
-
-def detect_vendors_from_mx(mx_hosts: List[str]) -> List[Dict]:
-    """Detect email vendors from MX hostnames, the same way
-    detect_vendors_from_spf detects them from SPF includes."""
-    detected_vendors = []
-    seen_vendors = set()
-
-    for mx_host in mx_hosts or []:
-        mx_lower = (mx_host or "").lower().rstrip(".")
-        for pattern, vendor_name in MX_VENDOR_PATTERNS.items():
-            if mx_lower == pattern or mx_lower.endswith("." + pattern):
-                if vendor_name in seen_vendors:
-                    continue
-                vendor_info = _VENDOR_NAME_TO_INFO.get(vendor_name)
-                if not vendor_info:
-                    continue
-                detected_vendors.append({
-                    'vendor': vendor_name,
-                    'dkim_selectors': vendor_info['dkim_selectors'],
-                    'category': vendor_info['category'],
-                    'mx_host': mx_host,
-                })
-                seen_vendors.add(vendor_name)
-
-    return detected_vendors
-
-
-def _selectors_from_vendors(vendors: List[Dict], base_selectors: List[str]) -> List[str]:
-    """Reorder base_selectors so the selectors named by vendors come first."""
-    priority_selectors = []
-    for vendor in vendors:
-        priority_selectors.extend(vendor['dkim_selectors'])
-
-    # Remove duplicates while preserving order
-    seen = set()
-    priority_selectors = [x for x in priority_selectors if not (x in seen or seen.add(x))]
-
-    # Add remaining base selectors
-    remaining = [s for s in base_selectors if s not in priority_selectors]
-
-    return priority_selectors + remaining
-
 
 # One budget for every registrable-domain check together, run in parallel
 # after the probe waves, so dangling targets cannot hold an audit open.
@@ -346,27 +233,19 @@ def _cname_chain(answers, qname: str) -> List[str]:
     return chain
 
 
-def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selectors: int = 40,
+def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
                      mx_hosts: Optional[List[str]] = None,
                      progress_callback: Optional[Callable[[int], None]] = None,
                      executor: Optional[ThreadPoolExecutor] = None) -> Dict:
     """
-    INTELLIGENT DKIM checking using SPF- and MX-based vendor detection.
-
-    This is the smart version that:
-    1. Analyzes SPF and MX to detect vendors
-    2. Prioritizes relevant DKIM selectors
-    3. Finds records faster with fewer DNS queries
-    4. Returns vendor context with each found selector
+    Probe Sendermap's selector sweep, vendors the domain's SPF or MX points
+    at first, then the generic fallback if nothing was found.
 
     Args:
         domain: Domain to check
         spf_record: SPF record (optional, will query if not provided)
-        max_selectors: Max prioritized selectors to test (default 40, 0 = unlimited).
-            ESP_SELECTORS are added on top of this cap, not inside it.
-        mx_hosts: MX hostnames, for vendors that both receive and sign mail
-            (Google Workspace, Microsoft 365) or resign it as a relay
-            (Proofpoint, Mimecast). Used alongside SPF-detected vendors.
+        mx_hosts: MX hostnames. With the SPF includes, they move the
+            catalog rules whose hints match to the front of the sweep.
         executor: Pool to run the selector probes on. Defaults to a private
             pool. Callers that already run inside a pool must pass one that is
             not the pool they are running on.
@@ -374,15 +253,13 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
     Returns:
         Complete DKIM discovery results with vendor intelligence
     """
-    from comprehensive_selectors import (
-        COMPREHENSIVE_DKIM_SELECTORS as DKIM_SELECTORS,
-        ESP_SELECTORS,
-        GENERIC_SELECTORS,
-    )
+    from sendermap.selectors import probe_order, rank_rules
+
+    import sendermap_adapter
+    from generic_selectors import GENERIC_SELECTORS, LOCAL_SELECTORS
 
     result = {
         'domain': domain,
-        'vendors_detected': [],
         'found_selectors': [],
         'tested_count': 0,
         'discovery_method': 'blind_loop',
@@ -403,59 +280,35 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.DNSException):
             spf_record = None
 
-    # Combine SPF- and MX-detected vendors, SPF first: a domain naming its
-    # own vendor in SPF is a stronger signal than an MX host pattern match.
-    # A domain hosted at Google Workspace with no SPF include for it (rare,
-    # but SPF can fail to resolve) still gets Google's selectors from MX.
-    vendors = []
-    seen_vendor_names = set()
-    from_spf = False
-    if spf_record:
-        for v in detect_vendors_from_spf(spf_record):
-            if v['vendor'] not in seen_vendor_names:
-                vendors.append(v)
-                seen_vendor_names.add(v['vendor'])
-                from_spf = True
-    for v in detect_vendors_from_mx(mx_hosts or []):
-        if v['vendor'] not in seen_vendor_names:
-            vendors.append(v)
-            seen_vendor_names.add(v['vendor'])
-    result['vendors_detected'] = vendors
-
-    if vendors:
-        priority_selectors = _selectors_from_vendors(vendors, DKIM_SELECTORS)
-        result['discovery_method'] = 'spf_intelligent' if from_spf else 'mx_intelligent'
-    else:
-        # No vendor detected from either signal: the head of the master
-        # list, which is organized by named vendor before it gets to the
-        # sequential/date-based/generic tail, is no more likely to match
-        # than anywhere else. The generic fallback below is what actually
-        # finds these domains (chiefly "default", self-hosted mail's own
-        # convention).
-        priority_selectors = DKIM_SELECTORS
-        result['discovery_method'] = 'blind_loop'
-
-    if max_selectors > 0:
-        priority_selectors = priority_selectors[:max_selectors]
-
-    # ESP_SELECTORS go on top of the cap, in the same wave, the way the
-    # generics were added for "default" before they became a fallback. The
-    # 40-name slice ends inside the mailbox providers, so k1, s1, zendesk1
-    # and the rest were probed only when the vendor's include was in SPF,
-    # and ESPs usually send from their own Return-Path domain. A domain on
-    # Google plus Mailchimp then showed only the Google key, and one whose
-    # only signer was an ESP was told it had no DKIM.
+    # Sendermap's catalog is the vendor dictionary: its sweep, plus the names
+    # production found that it does not carry yet, with the rules whose hints
+    # match this domain's MX or SPF moved to the front. The whole sweep is the
+    # priority wave; it goes out in chunks of DKIM_WAVE_CHUNK below.
+    cat = sendermap_adapter.catalog()
+    includes = parse_spf_record(spf_record) if spf_record else []
+    ranked = rank_rules(cat.rules, mx_hosts or [], includes)
+    priority_selectors = list(probe_order(ranked, (*cat.probe_selectors, *LOCAL_SELECTORS)))
     _seen_priority = set(priority_selectors)
-    priority_selectors = priority_selectors + [
-        s for s in ESP_SELECTORS if not (s in _seen_priority or _seen_priority.add(s))
-    ]
+
+    # The names a matched rule claims: a key found at one of them belongs to
+    # the vendor this domain's own MX or SPF points at.
+    mx_set = frozenset(h.lower().rstrip(".") for h in mx_hosts or [])
+    spf_set = frozenset(i.lower().rstrip(".") for i in includes)
+    backed = {}
+    for rule in ranked:
+        if rule.hints.matches(mx_set, spf_set):
+            for name in rule.shape.expand():
+                backed.setdefault(name.lower(), rule.vendor)
+    if any(rule.hints.matches(frozenset(), spf_set) for rule in ranked):
+        result['discovery_method'] = 'spf_intelligent'
+    elif backed:
+        result['discovery_method'] = 'mx_intelligent'
 
     # GENERIC_SELECTORS is a fallback sweep, not a standing addition. Before,
     # it was unioned into every probe regardless of outcome, so every audit
     # ran 40 (capped priority) + 156 (generic) = 196 probes even when the
     # very first vendor-implied selector was going to match. It only runs
-    # now when the priority list -- vendor-implied selectors, or the head of
-    # the master list when no vendor was detected -- finds nothing, which is
+    # now when the priority list, Sendermap's whole sweep, finds nothing, which is
     # the common case for self-hosted mail publishing "default" and the rare
     # case for everyone else.
     fallback_selectors = [
@@ -488,8 +341,6 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         pass  # No wildcard -- proceed normally
 
     # Test selectors in parallel
-    vendors_detected = result.get('vendors_detected', [])
-
     def _test_selector(selector: str) -> dict | None:
         fqdn = f"{selector}._domainkey.{domain}"
         try:
@@ -536,11 +387,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
             # base64 length cannot tell 2048 from 3072 or 4096 apart.
             key_analysis = analyze_dkim_key_strength(dkim_record)
 
-            matched_vendor = None
-            for vendor in vendors_detected:
-                if selector in vendor['dkim_selectors']:
-                    matched_vendor = vendor['vendor']
-                    break
+            matched_vendor = backed.get(selector.lower())
 
             return {
                 'selector': selector,
@@ -639,9 +486,8 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         return unanswered >= DKIM_DROP_THRESHOLD
 
     try:
-        # The priority wave always runs in full: these are the selectors the
-        # domain's own SPF or MX points at, plus ESP_SELECTORS, and they go
-        # out first. Doc 102 sends them in chunks of DKIM_WAVE_CHUNK, so one
+        # The priority wave always runs in full: Sendermap's sweep, with the
+        # names the domain's own SPF or MX points at first. Doc 102 sends them in chunks of DKIM_WAVE_CHUNK, so one
         # audit holds at most that many probe threads; between chunks it stops
         # where a single wave would, at DKIM_MAX_FOUND (_run_wave also stops
         # on the deadline). No drop check here: the full priority wave ran
@@ -659,7 +505,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None, max_selector
         if own_pool:
             pool.shutdown(wait=False, cancel_futures=True)
 
-    # Preserve priority order: vendor-implied selectors, then generics.
+    # Preserve priority order: the sweep in rule order, then generics.
     selector_order = {sel: i for i, sel in enumerate(priority_selectors + fallback_selectors)}
     found.sort(key=lambda r: selector_order.get(r['selector'], 999))
 

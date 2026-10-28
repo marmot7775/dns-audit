@@ -13,7 +13,7 @@
 - `static/app.js` -- frontend logic, SSE client, result rendering
 - `static/style.css` -- all styles, responsive breakpoints in one file
 - `static/index.html` -- single-page app shell
-- `comprehensive_selectors.py` -- DKIM selector list for auto-discovery
+- `generic_selectors.py` -- generic DKIM fallback sweep; the vendor selectors are Sendermap's catalog
 - `dns_tools.py` -- domain normalization, audit entry point
 
 ## Rules

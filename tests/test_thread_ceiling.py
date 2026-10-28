@@ -21,7 +21,8 @@ from test_dkim_discovery_starvation import DKIM_RECORD
 import audit_engine
 import server as server_module
 import spf_intelligence
-from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS, ESP_SELECTORS
+from generic_selectors import GENERIC_SELECTORS, LOCAL_SELECTORS
+from sendermap_adapter import catalog
 from config import MAX_CONCURRENT_AUDITS
 
 DOMAIN = "threads.test"
@@ -139,12 +140,12 @@ def test_priority_wave_runs_in_full_but_in_chunks():
     assert [s["selector"] for s in result["found_selectors"]] == ["selector2"]
     # One audit never holds more than one chunk of probe threads.
     assert 0 < zone.peak <= spf_intelligence.DKIM_WAVE_CHUNK, zone.peak
-    # And every ESP selector in the priority wave was still asked.
-    assert set(ESP_SELECTORS) <= zone.selectors
+    # And every name in the priority wave was still asked.
+    assert {s.lower() for s in (*catalog().probe_selectors, *LOCAL_SELECTORS)} <= zone.selectors
 
 
 def test_priority_chunks_stop_at_max_found():
-    many = list(COMPREHENSIVE_DKIM_SELECTORS) + list(ESP_SELECTORS)
+    many = [*catalog().probe_selectors, *LOCAL_SELECTORS, *GENERIC_SELECTORS]
     zone = _zone(keys=many)
     pool = ThreadPoolExecutor(max_workers=300)
     try:

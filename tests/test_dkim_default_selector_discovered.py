@@ -8,6 +8,8 @@ time and any domain running OpenDKIM, cPanel or Plesk out of the box got
 there was nothing to prioritize them back into range either.
 
 The generics are now unioned in on top of the cap rather than inside it.
+Since Doc 105 the cap is gone: the priority wave is Sendermap's whole sweep,
+and default is one of its generic names, so it is inside the first wave.
 """
 import sys
 import os
@@ -43,20 +45,21 @@ def _self_hosted_zone():
     })
 
 
-def test_default_selector_is_inside_the_tested_slice():
-    """The unit-level cause: default has to survive the cap."""
-    from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS
+def _first_wave(spf):
+    """The priority wave smart_dkim_check builds for this SPF and no MX."""
+    from sendermap.selectors import probe_order, rank_rules
 
-    # No vendor in SPF, so nothing gets prioritized and the raw master order
-    # is what the cap slices.
-    prioritized = spf_intelligence._selectors_from_vendors(
-        spf_intelligence.detect_vendors_from_spf("v=spf1 ip4:203.0.113.10 -all"),
-        COMPREHENSIVE_DKIM_SELECTORS,
-    )
-    assert prioritized.index("default") > 200, (
-        "fixture no longer reproduces the bug: default is already near the "
-        "front of the prioritized list"
-    )
+    from generic_selectors import LOCAL_SELECTORS
+    from sendermap_adapter import catalog
+
+    ranked = rank_rules(catalog().rules, [], spf_intelligence.parse_spf_record(spf))
+    return list(probe_order(ranked, (*catalog().probe_selectors, *LOCAL_SELECTORS)))
+
+
+def test_default_selector_is_inside_the_tested_slice():
+    """The unit-level cause: default has to be in the first wave. No vendor
+    in SPF, so nothing is ranked and the catalog order is what is sent."""
+    assert "default" in _first_wave("v=spf1 ip4:203.0.113.10 -all")
 
 
 def test_smart_dkim_check_finds_default_selector(monkeypatch):
@@ -99,9 +102,4 @@ def test_tested_count_reports_probes_that_actually_ran(monkeypatch):
         "example.com", spf_record="v=spf1 ip4:203.0.113.10 -all"
     )
     assert result["tested_count"] > 0
-    assert result["tested_count"] <= len(
-        spf_intelligence._selectors_from_vendors(
-            spf_intelligence.detect_vendors_from_spf("v=spf1 ip4:203.0.113.10 -all"),
-            __import__("comprehensive_selectors").COMPREHENSIVE_DKIM_SELECTORS,
-        )
-    )
+    assert result["tested_count"] <= len(_first_wave("v=spf1 ip4:203.0.113.10 -all"))
