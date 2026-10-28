@@ -1517,6 +1517,112 @@ def _negative_lookup_probe() -> Optional[str]:
     return None
 
 
+# ============================================================
+# Usage notes from the sister tools
+# ============================================================
+
+# The APRF Report Reader (aprf.dns-audit.com) and the Email Header Decoder
+# (headers.dns-audit.com) do their work in the visitor's browser. After each
+# use they send one note here, so their use shows in the same audit log and
+# weekly report as an audit. A note carries counts and a result, never what
+# the visitor read: no report contents and no header text. The APRF note may
+# name the signing domains in the reports, as an audit names its domain.
+_USAGE_TOOLS = {"aprf-reader", "header-decoder"}
+_USAGE_COUNTS = ("reports", "streams", "warnings", "skipped", "copies")
+_HEADER_STATUSES = {"pass", "fail", "forwarded", "none", "error", "unknown"}
+_USAGE_MAX_BODY = 4096
+_USAGE_MAX_DOMAINS = 20
+# Per IP and hour; a note past this is dropped, and audits are not affected
+_USAGE_PER_HOUR = 120
+_usage_hits: dict = defaultdict(list)
+_usage_lock = threading.Lock()
+
+
+def _usage_allowed(client_ip: str) -> bool:
+    now = time.time()
+    with _usage_lock:
+        if len(_usage_hits) > _RATE_LIMIT_MAX_IPS:
+            _usage_hits.clear()
+        hits = [t for t in _usage_hits[client_ip] if now - t < 3600]
+        if len(hits) >= _USAGE_PER_HOUR:
+            _usage_hits[client_ip] = hits
+            return False
+        hits.append(now)
+        _usage_hits[client_ip] = hits
+        return True
+
+
+def _usage_entry(note: dict) -> Optional[dict]:
+    """The log fields for a valid note, or None. Unknown fields are ignored."""
+    tool = note.get("tool")
+    if tool not in _USAGE_TOOLS:
+        return None
+    entry: dict = {"tool": tool}
+    if note.get("sample") is True:
+        entry["sample"] = True
+    if tool == "aprf-reader":
+        for k in _USAGE_COUNTS:
+            v = note.get(k)
+            if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 10_000_000:
+                return None
+            entry[k] = v
+        domains = note.get("domains", [])
+        if not isinstance(domains, list):
+            return None
+        kept = []
+        for d in domains[:_USAGE_MAX_DOMAINS]:
+            # A roll-up report names "*.example.com"; the domain is what matters
+            d = d.lower().removeprefix("*.") if isinstance(d, str) else ""
+            if DOMAIN_PATTERN.match(d) and d not in kept:
+                kept.append(d)
+        entry["domains"] = kept
+    else:
+        status = note.get("status")
+        if status not in _HEADER_STATUSES:
+            return None
+        entry["status"] = status
+    return entry
+
+
+@app.post("/api/usage", tags=["System"], status_code=204)
+async def usage_note(request: Request):
+    """One note per use of a sister tool, written to the audit log.
+
+    Sent as text/plain so the tool pages need no CORS preflight; the body
+    is JSON all the same. Answers 204, or 400 for a note that does not fit
+    the shape, or 429 past the hourly limit.
+    """
+    body = await request.body()
+    if len(body) > _USAGE_MAX_BODY:
+        return Response(status_code=400)
+    try:
+        note = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return Response(status_code=400)
+    entry = _usage_entry(note) if isinstance(note, dict) else None
+    if entry is None:
+        return Response(status_code=400)
+    if not _usage_allowed(_get_client_ip(request)):
+        return Response(status_code=429)
+    ua_raw = request.headers.get("User-Agent", "")
+    line = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": "tool",
+        **entry,
+        "ua": ua_summary(ua_raw),
+        "bot": is_bot(ua_raw),
+        "vid": _visitor_id(request),
+    }
+    ref = _referer_host(request)
+    if ref:
+        line["ref"] = ref
+    try:
+        audit_logger.info(json.dumps(line))
+    except Exception as e:
+        log.warning("Audit log write failed: %s", e)
+    return Response(status_code=204)
+
+
 @app.get("/api/health", tags=["System"])
 async def health():
     """
