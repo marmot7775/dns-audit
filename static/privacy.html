@@ -69,6 +69,16 @@
         </section>
 
         <section class="dbis-section">
+            <h2>The APRF Report Reader and Header Decoder</h2>
+            <p>After each use of the <a href="https://aprf.dns-audit.com/">APRF Report Reader</a> or the <a href="https://headers.dns-audit.com/">Header Decoder</a>, the page sends one short note to this server, and it goes into the same log as an audit. The reports and headers themselves are not part of it.</p>
+            <ul>
+                <li>From the APRF Report Reader: how many reports, streams, warnings and skipped files it read, and the signing domains named in the reports, as an audit records its domain. Nothing from inside the reports beyond that.</li>
+                <li>From the Header Decoder: the overall result, such as pass or fail. No header text, no addresses, and no domains.</li>
+                <li>From both: the time, the same browser and operating system label, bot flag, and daily visitor token an audit records, the hostname of the page that linked you to the tool, and whether the run used the built-in sample.</li>
+            </ul>
+        </section>
+
+        <section class="dbis-section">
             <h2>Your IP address</h2>
             <p>Your IP address is not written to the audit log, and the application does not write it to any other file. It is used two ways, both of them in memory.</p>
             <p>Rate limiting counts recent requests per IP so that one client cannot flood the service. Each address holds only the timestamps from the last 60 seconds, and the entry is dropped once that window empties.</p>
@@ -125,7 +135,7 @@
         <section class="dbis-section">
             <h2>Changes</h2>
             <p>This page describes the tool as it works today. When the tool changes, this page changes with it.</p>
-            <p><strong>Last updated:</strong> 25 October 2026</p>
+            <p><strong>Last updated:</strong> 28 October 2026</p>
         </section>
     </main>
     <footer class="site-footer">
