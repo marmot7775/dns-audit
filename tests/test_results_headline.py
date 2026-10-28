@@ -131,23 +131,34 @@ def test_an_older_result_without_a_headline_shows_its_verdict(browser):  # noqa:
 
 SUBLINE_CASES = [
     ([{"priority": "critical", "protocol": "DMARC"}, {"priority": "high", "protocol": "SPF"},
-      {"priority": "low", "protocol": "DMARC"}], "2 fixes needed below."),
-    ([{"priority": "medium", "protocol": "DMARC"}], "1 fix needed below."),
+      {"priority": "low", "protocol": "DMARC"}],
+     ["1 to fix now", "1 important", "1 optional"]),
+    ([{"priority": "medium", "protocol": "DMARC"}], ["1 recommended"]),
     ([{"priority": "low", "protocol": "DMARC"},
       {"priority": "medium", "protocol": "MTA-STS", "status": "absent"}],
-     "2 optional improvements below."),
-    ([{"priority": "medium", "protocol": "MTA-STS", "optional": True}],
-     "1 optional improvement below."),
-    ([], "Nothing to fix."),
+     ["2 optional"]),
+    ([{"priority": "medium", "protocol": "MTA-STS", "optional": True}], ["1 optional"]),
+    ([], []),
 ]
+
+SUBLINE_JS = """rm => {
+    const d = document.createElement('div');
+    d.innerHTML = headlineSubline(rm);
+    return {counts: [...d.querySelectorAll('.es-count')].map(b => b.textContent),
+            tiers: [...d.querySelectorAll('.es-count')].map(b => b.dataset.planTier),
+            text: d.textContent};
+}"""
 
 
 @pytest.mark.parametrize("items,expected", SUBLINE_CASES,
                          ids=["fixes", "one-fix", "optional", "one-optional", "nothing"])
-def test_headline_subline_counts_fixes_and_optional_items(browser, items, expected):  # noqa: F811
+def test_headline_subline_counts_each_tier_the_plan_lists(browser, items, expected):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", 1280)
     try:
-        assert page.evaluate("rm => headlineSubline(rm)", {"items": items}) == expected
+        got = page.evaluate(SUBLINE_JS, {"items": items})
+        assert got["counts"] == expected
+        if not expected:
+            assert got["text"] == "Nothing to fix."
     finally:
         ctx.close()
 
@@ -157,16 +168,12 @@ def test_subline_agrees_with_the_what_to_do_heading(browser, fixture_result):  #
     try:
         _render(page, fixture_result)
         m = page.evaluate("""() => ({
-            sub: (document.querySelector('#executive-summary .es-subline') || {}).textContent,
+            counts: [...document.querySelectorAll('#executive-summary .es-count')]
+                .map(b => b.textContent),
             summary: document.getElementById('priority-summary').textContent,
-            optional: document.querySelectorAll('.plan-optional-body .priority-row').length,
-            main: document.querySelectorAll('#priority-list > .priority-row').length,
         })""")
-        if m["main"]:
-            n = m["main"]
-            assert m["sub"] == (f"{n} fixes needed below." if n > 1 else "1 fix needed below.")
-        else:
-            assert "optional improvement" in m["sub"] or m["sub"] == "Nothing to fix."
+        assert m["counts"], "the fixture has rows, so the headline has counts"
+        assert ", ".join(m["counts"]) == m["summary"]
         assert errors == []
     finally:
         ctx.close()

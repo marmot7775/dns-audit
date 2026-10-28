@@ -888,7 +888,7 @@ function renderResults(data, selector = '') {
     // Prompt 2: Record to recent audits in localStorage
     _recordRecentAudit(data.domain);
 
-    // -- Gmail, Yahoo and Microsoft sender requirements, under the headline --
+    // -- Gmail, Yahoo and Microsoft sender requirements, closed, under What to do --
     renderRequirements(data);
 
     // -- What changed since this browser last audited the domain --
@@ -986,12 +986,10 @@ function renderResults(data, selector = '') {
 
     // Doc 92: the card list is the technical layer, and says how many checks
     // it holds.
-    const resultsHeading = document.getElementById('results-heading');
-    if (resultsHeading) {
-        resultsHeading.textContent = checks.length === 1
-            ? 'Technical details: 1 check'
-            : `Technical details: all ${checks.length} checks`;
-    }
+    // The section starts closed on every audit, and its toggle says how many
+    // checks are behind it.
+    _techCheckCount = checks.length;
+    setTechOpen(false);
 
     // -- Authentication Resilience --
     // No longer a panel of its own at the top of the page: it restated the
@@ -1015,6 +1013,8 @@ function renderResults(data, selector = '') {
             const toggle = () => {
                 const open = !body.classList.toggle('is-hidden');
                 head.setAttribute('aria-expanded', open ? 'true' : 'false');
+                const cue = head.querySelector('.priority-cue');
+                if (cue) cue.textContent = open ? 'Hide fix' : 'Show fix';
             };
             head.addEventListener('click', toggle);
             head.addEventListener('keydown', ev => {
@@ -1035,6 +1035,10 @@ function renderResults(data, selector = '') {
                 const block = btn.closest('.record-block');
                 _copyToClipboard(block?.querySelector('.record-text')?.textContent || '', btn, 'Copy');
             });
+        });
+        // Each count in the headline goes to its first row and opens it.
+        document.querySelectorAll('#executive-summary [data-plan-tier]').forEach(btn => {
+            btn.addEventListener('click', () => openPlanTier(btn.dataset.planTier));
         });
     } else {
         priorityList.innerHTML = '';
@@ -1711,9 +1715,17 @@ function renderRequirements(data) {
     };
     const inDns = req.rows.filter(r => r.status !== 'outside_dns');
     const outside = req.rows.filter(r => r.status === 'outside_dns');
-    slot.innerHTML = `<section class="req-block req-state-${safeClass(req.state)}" aria-labelledby="req-heading">
-        <h2 class="req-heading" id="req-heading">Gmail, Yahoo, and Microsoft sender requirements</h2>
-        <p class="req-summary">${escapeHtml(req.summary)}</p>
+    // Closed to a heading and the one-line summary, under What to do: the
+    // fixes come first, and this is the check against the three providers'
+    // rules. Opening it lists every row.
+    slot.innerHTML = `<details class="req-block req-state-${safeClass(req.state)}">
+        <summary class="req-head">
+            <span class="req-head-text">
+                <h2 class="req-heading" id="req-heading">Gmail, Yahoo, and Microsoft sender requirements</h2>
+                <span class="req-summary">${escapeHtml(req.summary)}</span>
+            </span>
+            <span class="req-head-chevron" aria-hidden="true">${ICON.chevron}</span>
+        </summary>
         <h3 class="req-sub">What your DNS shows</h3>
         <ul class="req-list">${inDns.map(row).join('')}</ul>
         <details class="req-more">
@@ -1721,7 +1733,7 @@ function renderRequirements(data) {
             <ul class="req-list">${outside.map(row).join('')}</ul>
         </details>
         <p class="req-foot">Bulk senders send about 5,000 or more messages a day to one provider's users.</p>
-    </section>`;
+    </details>`;
     slot.querySelectorAll('[data-req-scope]').forEach(btn => {
         btn.addEventListener('click', () => {
             const pill = document.querySelector(`.scope-btn[data-scope="${btn.dataset.reqScope}"]`);
@@ -1829,8 +1841,6 @@ function createResultCard(check, index) {
     card.dataset.status = check.status;
     card.dataset.check = check.name || '';
     card.style.animationDelay = `${index * 60}ms`;
-    // Off-screen paint skip from the sixth card on (style.css).
-    if (index >= 5) card.classList.add('result-card-deferred');
 
     const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
 
@@ -3747,14 +3757,26 @@ function planCounts(rm) {
     return { n, fixes: n.critical + n.high + n.medium, optional: n.low + optional };
 }
 
+// The count at the head of What to do and the count in the headline box
+// are one list of parts, so they cannot disagree. Each part names the tier
+// its rows carry.
+function planTierParts(rm) {
+    const { n, optional } = planCounts(rm);
+    const parts = [];
+    if (n.critical) parts.push({ tier: 'critical', text: `${n.critical} to fix now` });
+    if (n.high) parts.push({ tier: 'high', text: `${n.high} important` });
+    if (n.medium) parts.push({ tier: 'medium', text: `${n.medium} recommended` });
+    if (optional) parts.push({ tier: 'low', text: `${optional} optional` });
+    return parts;
+}
+
+// "What to do: 1 important, 1 recommended, 5 optional", each count a button
+// that scrolls to its first row.
 function headlineSubline(rm) {
-    const c = planCounts(rm);
-    if (c.fixes) return c.fixes === 1 ? '1 fix needed below.' : `${c.fixes} fixes needed below.`;
-    if (c.optional) {
-        return c.optional === 1 ? '1 optional improvement below.'
-            : `${c.optional} optional improvements below.`;
-    }
-    return 'Nothing to fix.';
+    const parts = planTierParts(rm);
+    if (!parts.length) return '<span class="es-subline-text">Nothing to fix.</span>';
+    const links = parts.map(p => `<button type="button" class="es-count" data-plan-tier="${p.tier}">${escapeHtml(p.text)}</button>`);
+    return `<span class="es-subline-text">What to do:</span> <span class="es-counts">${links.join('')}</span>`;
 }
 
 function _headlineHtml(es, roadmap) {
@@ -3776,7 +3798,7 @@ function _headlineHtml(es, roadmap) {
         ${icon}
         <div class="es-head-text">
             ${headline ? `<div class="es-verdict">${escapeHtml(headline)}</div>` : ''}
-            ${sub ? `<p class="es-subline">${escapeHtml(sub)}</p>` : ''}
+            ${sub ? `<p class="es-subline">${sub}</p>` : ''}
         </div>
     </div>`;
 }
@@ -3815,13 +3837,7 @@ function _defensiveHtml(data) {
 // The count beside the heading, in the words the pills use. Optional extras
 // are counted once, as optional, whatever their tier.
 function priorityTierSummary(rm) {
-    const { n, optional } = planCounts(rm);
-    const parts = [];
-    if (n.critical) parts.push(`${n.critical} to fix now`);
-    if (n.high) parts.push(`${n.high} important`);
-    if (n.medium) parts.push(`${n.medium} recommended`);
-    if (optional) parts.push(`${optional} optional`);
-    return parts.join(', ');
+    return planTierParts(rm).map(p => p.text).join(', ');
 }
 
 // One row per roadmap item, in the roadmap's order, with the optional
@@ -3838,23 +3854,44 @@ function renderPriorities(rm, checks, resilience, dnsHost) {
     const main = items.filter(i => !isOptionalPlanItem(i));
     const extras = items.filter(i => isOptionalPlanItem(i));
 
-    let html = main.map(item => _priorityRow(item, cards, resilience, false, dnsHost)).join('');
+    // The first row, the most severe, opens with its fix on show: the reader
+    // should not have to find a chevron to learn what to paste. When nothing
+    // but optional extras remain, the group opens to show its first row.
+    const openFirstExtra = main.length === 0;
+    let html = main.map((item, i) => _priorityRow(item, cards, resilience, false, dnsHost, i === 0)).join('');
     if (extras.length > 0) {
         const groupId = `plan-optional-${++_planSeq}`;
         html += `<div class="plan-optional">
-            <button type="button" class="plan-optional-toggle" aria-expanded="false" aria-controls="${groupId}">
+            <button type="button" class="plan-optional-toggle" aria-expanded="${openFirstExtra}" aria-controls="${groupId}">
                 <span>Optional extras (${extras.length})</span>
                 <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
             </button>
-            <div class="plan-optional-body is-hidden" id="${groupId}">
-                ${extras.map(item => _priorityRow(item, cards, resilience, true, dnsHost)).join('')}
+            <div class="plan-optional-body${openFirstExtra ? '' : ' is-hidden'}" id="${groupId}">
+                ${extras.map((item, i) => _priorityRow(item, cards, resilience, true, dnsHost, openFirstExtra && i === 0)).join('')}
             </div>
         </div>`;
     }
     return html;
 }
 
-function _priorityRow(item, cards, resilience, optional, dnsHost) {
+// The first row of a tier, opened and scrolled to. A row in the closed
+// optional group opens the group first.
+function openPlanTier(tier) {
+    const row = document.querySelector(`#priority-list .priority-row[data-tier="${tier}"]`);
+    if (!row) return;
+    const group = row.closest('.plan-optional-body');
+    if (group && group.classList.contains('is-hidden')) {
+        const toggle = document.querySelector(`[aria-controls="${group.id}"]`);
+        if (toggle) toggle.click();
+    }
+    const head = row.querySelector('.priority-head');
+    if (head && head.getAttribute('aria-expanded') !== 'true') head.click();
+    const headerH = document.querySelector('.site-header')?.offsetHeight || 0;
+    const y = row.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+}
+
+function _priorityRow(item, cards, resilience, optional, dnsHost, open) {
     const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
     const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     const card = cards[item.protocol];
@@ -3874,9 +3911,11 @@ function _priorityRow(item, cards, resilience, optional, dnsHost) {
         <div class="plan-part-body">${body}</div>
     </div>`;
 
-    return `<div class="priority-row">
+    // Every row says what a click does, in words: the chevron alone gave no
+    // cue that the fix was inside.
+    return `<div class="priority-row" data-tier="${safeClass(tier)}">
         <div class="priority-head" role="button" tabindex="0"
-             aria-expanded="false" aria-controls="${bodyId}">
+             aria-expanded="${open ? 'true' : 'false'}" aria-controls="${bodyId}">
             <span class="status-icon ${st}">${ICON[st]}</span>
             <span class="priority-text">
                 ${plain ? `<span class="priority-plain">${escapeHtml(plain)}</span>` : ''}
@@ -3886,9 +3925,12 @@ function _priorityRow(item, cards, resilience, optional, dnsHost) {
                 <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
                 <span class="tag tag-${safeClass(tier)}">${escapeHtml(tierLabel)}</span>
             </span>
-            <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+            <span class="priority-toggle">
+                <span class="priority-cue" aria-hidden="true">${open ? 'Hide fix' : 'Show fix'}</span>
+                <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+            </span>
         </div>
-        <div class="priority-body is-hidden" id="${bodyId}">
+        <div class="priority-body${open ? '' : ' is-hidden'}" id="${bodyId}">
             ${why ? part('Why it matters', why) : ''}
             ${part(what.hasRecord ? 'What to paste' : 'What to change', what.html)}
             ${item.who ? part('Who does this', escapeHtml(_planWho(item.who, dnsHost))) : ''}
@@ -4519,6 +4561,7 @@ function openCard(id) {
     const target = document.getElementById(id);
     if (!target) return;
     const card = target.closest('.result-card');
+    if (target.closest('#technical-body')) setTechOpen(true);
     if (card) {
         setCardExpanded(card, true);
         // A panel inside Details is behind one or two collapsed sections,
@@ -4537,17 +4580,24 @@ function openCard(id) {
         }
         syncToggleAllLabel();
     }
-    // A card that skips painting off screen is held at a 300px guess until
-    // it renders. Any such card above the target (or holding it) would
-    // shrink to its real height mid-scroll and carry the target up under
-    // the header, so it paints for real first.
-    document.querySelectorAll('.result-card-deferred').forEach(c => {
-        if (c.contains(target) || (c.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-            c.classList.remove('result-card-deferred');
-        }
-    });
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+// The technical layer: every check card, the status tiles and Draft
+// standards, behind one closed toggle under What to do.
+let _techCheckCount = 0;
+function setTechOpen(open) {
+    const toggle = document.getElementById('tech-toggle');
+    const body = document.getElementById('technical-body');
+    if (!toggle || !body) return;
+    setDisclosure(toggle, body, open);
+    const n = _techCheckCount;
+    const what = n === 1 ? '1 check' : n ? `all ${n} checks` : 'all checks';
+    document.getElementById('tech-toggle-label').textContent = `${open ? 'Hide' : 'Show'} ${what}`;
+}
+document.getElementById('tech-toggle')?.addEventListener('click', ev => {
+    setTechOpen(ev.currentTarget.getAttribute('aria-expanded') !== 'true');
+});
 
 function majorityExpanded() {
     const cards = document.querySelectorAll('.result-card');

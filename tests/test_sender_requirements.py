@@ -76,10 +76,12 @@ def test_the_page_shows_it_under_the_headline(browser, audit, scope, shown):  # 
         assert (page.locator(".req-block").count() == 1) is shown
         if shown:
             assert page.text_content("#req-heading") == HEADING
-            words = page.eval_on_selector_all(".req-list:not(details .req-list) .req-word",
+            words = page.eval_on_selector_all(".req-block > .req-list .req-word",
                                               "els => els.map(e => e.textContent)")
             assert words == ["Met", "Met", "Met"]
-            # The five rows DNS cannot show start folded.
+            # The block starts closed to its heading and one summary line, and
+            # the five rows DNS cannot show start folded.
+            assert page.evaluate("() => document.querySelector('.req-block').open") is False
             assert page.evaluate("() => document.querySelector('.req-more').open") is False
         assert not errors, errors
     finally:
@@ -95,6 +97,7 @@ def test_the_alignment_row_switches_to_who_sends_as_you(browser, audit):  # noqa
     page.route("**/api/**", lambda route: None)
     try:
         _render(page, data)
+        page.click(".req-block > summary")
         page.click(".req-more > summary")
         page.click("[data-req-scope='senders']")
         assert page.get_attribute(".scope-btn[data-scope='senders']", "aria-checked") == "true"

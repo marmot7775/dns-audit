@@ -375,13 +375,18 @@ def _page(browser, theme, width, path="/"):
     return ctx, page, errors
 
 
-def _render(page, data):
+def _render(page, data, open_checks=True):
+    """Render a result. The check cards sit behind the closed "Show all
+    checks" toggle, so they are opened unless a test is about that toggle."""
     page.evaluate("""d => {
         document.getElementById('domain-input').value = d.domain;
         document.querySelector('.audit-input-section').classList.add('compact');
         renderResults(d);
     }""", data)
-    page.wait_for_selector("#results-list .result-card", state="visible")
+    page.wait_for_selector("#results-list .result-card", state="attached")
+    if open_checks:
+        page.evaluate("setTechOpen(true)")
+        page.wait_for_selector("#results-list .result-card", state="visible")
     page.wait_for_timeout(800)
 
 

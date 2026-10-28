@@ -25,7 +25,8 @@ from test_status_semantics import DOMAIN, MONITORING, _js_functions, _zone  # no
 def _plan_text(result):
     pages = [" ".join((p.extract_text() or "").split()) for p in
              PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages]
-    start = next(i for i, p in enumerate(pages) if "What to do" in p and "Across " in p)
+    # From the short answer, which holds the tier bar, to the appendix.
+    start = next(i for i, p in enumerate(pages) if "The short answer" in p)
     end = next(i for i, p in enumerate(pages) if "Part 2: Appendix" in p)
     return " ".join(pages[start:end])
 
@@ -55,7 +56,7 @@ def test_optional_rows_are_labelled_optional_and_listed_last(result):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_the_tier_bar_counts_what_the_web_heading_counts(result):
-    program = _js_functions("isOptionalPlanItem", "planCounts", "priorityTierSummary") + """
+    program = _js_functions("isOptionalPlanItem", "planCounts", "planTierParts", "priorityTierSummary") + """
 const OPTIONAL_PROTOCOLS = ['MTA-STS', 'TLS-RPT', 'BIMI', 'DNSSEC', 'CAA', 'DANE'];
 const rm = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 process.stdout.write(priorityTierSummary(rm));
@@ -68,15 +69,16 @@ process.stdout.write(priorityTierSummary(rm));
     text = _plan_text(result)
     bar = dict((label, int(n)) for n, label in
                re.findall(r"(\d+) (FIX NOW|IMPORTANT|RECOMMENDED|OPTIONAL)", text)[:4])
-    # All four tiers must be on the bar, or the loop below checks nothing.
-    assert set(bar) == {"FIX NOW", "IMPORTANT", "RECOMMENDED", "OPTIONAL"}, text[:600]
+    # A tier with no rows has no cell, as the web headline has no count for
+    # it, so the bar and the web summary name the same tiers.
+    assert {"IMPORTANT", "OPTIONAL"} <= set(bar), text[:600]
     words = {"FIX NOW": "to fix now", "IMPORTANT": "important",
              "RECOMMENDED": "recommended", "OPTIONAL": "optional"}
-    for label, n in bar.items():
-        if n:
-            assert f"{n} {words[label]}" in web, (label, n, web)
+    for label, word in words.items():
+        if label in bar:
+            assert f"{bar[label]} {word}" in web, (label, bar[label], web)
         else:
-            assert words[label] not in web, (label, web)
+            assert word not in web, (label, web)
 
 
 def test_a_plan_with_no_extras_has_no_extras_heading(audit):

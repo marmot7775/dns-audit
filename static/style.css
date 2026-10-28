@@ -1096,7 +1096,7 @@ main {
     display: grid;
     grid-template-columns: 16px 1fr auto auto;
     align-items: center;
-    column-gap: var(--space-sm);
+    column-gap: var(--space-md);
     min-height: 44px;
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius);
@@ -1110,6 +1110,19 @@ main {
 .priority-head:hover,
 .priority-head:focus-visible {
     background: var(--surface-hover);
+}
+
+.priority-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.priority-cue {
+    font-size: var(--font-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
 }
 
 .priority-chevron {
@@ -1309,7 +1322,7 @@ main {
     }
 
     .priority-head {
-        grid-template-columns: 16px 1fr auto;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
         row-gap: var(--space-xs);
         padding-block: var(--space-sm);
     }
@@ -1318,9 +1331,15 @@ main {
         grid-column: 2 / 3;
         grid-row: 2;
         justify-self: start;
+        flex-wrap: wrap;
+        min-width: 0;
     }
 
-    .priority-head .priority-chevron {
+    .priority-meta .priority-protocol {
+        white-space: normal;
+    }
+
+    .priority-head .priority-toggle {
         grid-column: 3;
         grid-row: 1;
     }
@@ -1467,6 +1486,38 @@ a.tag { text-decoration: none; }
     margin: 0;
 }
 
+/* The technical layer: one closed section under What to do. */
+.tech-section {
+    margin-top: var(--space-xl);
+}
+
+h2.tech-heading {
+    margin: 0;
+}
+
+.tech-section .tech-toggle {
+    width: 100%;
+    justify-content: space-between;
+    padding: 0 var(--space-md);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--text-primary);
+}
+
+.tech-section .tech-toggle:hover {
+    border-color: var(--primary-border);
+}
+
+.tech-body > .results-toolbar {
+    margin-top: var(--space-md);
+    justify-content: flex-end;
+}
+
 .toggle-all-btn {
     display: inline-flex;
     align-items: center;
@@ -1580,23 +1631,12 @@ a.tag { text-decoration: none; }
     }
 }
 
-/* Skip painting off-screen cards. This is a paint optimisation only, not
-   the removed DOM-lazy-loading: the card stays in the document, reachable
-   by focus, find-in-page and assistive tech. But content-visibility:auto
-   also clamps an off-screen card to contain-intrinsic-size until it is
-   near the viewport, so any accessibility sweep of this page must force
-   these cards to paint first (override content-visibility to visible)
-   before scanning. Without that override, on / with cloudflare.com at
-   1280px only four cards render their real content and the other eight
-   clamp to 302px -- a sweep run that way reports a clean result from a
-   quarter of the page, the exact mistake PR #29 made. */
-/* Doc 101: the cards sit in per-area lists now, so a :nth-child count
-   restarts in each list and never reaches 6. createResultCard marks the
-   sixth card on with .result-card-deferred instead. */
-.result-card-deferred {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 300px;
-}
+/* Cards used to skip painting off screen (content-visibility: auto from the
+   sixth card on). Closed, a card is one 69px row, so the skip saved almost
+   nothing, and it held every off-screen card at a 302px guess: the page was
+   about 1,800px taller than its content until each card was scrolled near,
+   and a full-page screenshot showed the cards in Your domain's DNS and Draft
+   standards as empty boxes. Every card paints now. */
 
 .result-card[data-status="pass"] {
     border-left-color: var(--pass);
@@ -4307,6 +4347,39 @@ input[type="search"],
     margin: 0.25rem 0 0;
 }
 
+.es-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-sm);
+    vertical-align: middle;
+}
+
+.es-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--space-sm);
+    background: var(--surface-hover);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.es-count:hover {
+    border-color: var(--primary-border);
+    color: var(--primary);
+}
+
+@media (max-width: 640px) {
+    .es-count {
+        min-height: 44px;
+    }
+}
+
 .es-first:empty {
     display: none;
 }
@@ -4474,7 +4547,8 @@ h2.services-heading {
     margin: 0 0 var(--space-md);
 }
 
-.services-toggle {
+.services-toggle,
+.tech-toggle {
     display: inline-flex;
     align-items: center;
     gap: var(--space-sm);
@@ -4489,15 +4563,18 @@ h2.services-heading {
     cursor: pointer;
 }
 
-.services-toggle:hover {
+.services-toggle:hover,
+.tech-toggle:hover {
     color: var(--text-primary);
 }
 
-.services-chevron {
+.services-chevron,
+.tech-chevron {
     transition: transform var(--duration-slow) var(--ease-out);
 }
 
-.services-toggle[aria-expanded="true"] .services-chevron {
+.services-toggle[aria-expanded="true"] .services-chevron,
+.tech-toggle[aria-expanded="true"] .tech-chevron {
     transform: rotate(180deg);
 }
 
@@ -7863,8 +7940,36 @@ h3.services-sub,
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.25rem 1.75rem;
+    padding: 0.75rem 1.75rem;
     margin-bottom: var(--space-xl);
+}
+
+.req-block > summary.req-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    min-height: 44px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.req-block > summary.req-head::-webkit-details-marker {
+    display: none;
+}
+
+.req-head-text {
+    min-width: 0;
+}
+
+.req-head-chevron {
+    display: inline-flex;
+    color: var(--text-tertiary);
+    transition: transform 0.2s ease;
+}
+
+.req-block[open] > summary .req-head-chevron {
+    transform: rotate(180deg);
 }
 
 .req-heading {
@@ -7875,9 +7980,9 @@ h3.services-sub,
 }
 
 .req-summary {
+    display: block;
     font-size: var(--font-sm);
     color: var(--text-secondary);
-    margin: 0 0 var(--space-md);
     line-height: 1.5;
 }
 
@@ -7991,7 +8096,7 @@ h3.services-sub,
 
 @media (max-width: 640px) {
     .req-block {
-        padding: 1rem 1.1rem;
+        padding: 0.5rem 1.1rem;
     }
 
     .req-row {

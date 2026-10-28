@@ -32,6 +32,14 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   services listed and no missing records claimed.
 
 ### Changed
+- Results page and PDF, fixes first (2026-10-28). The headline counts are the
+  What to do counts, and each one jumps to its first row. The first row opens
+  with its fix showing, and every row says Show fix or Hide fix. The check
+  cards, tiles and Draft standards sit behind one closed "Show all 12 checks"
+  toggle under What to do. The sender requirements are a one-line summary
+  below the plan. The PDF runs verdict and counts, every fix written out,
+  sender requirements, then checks; "Do these first" and the page-one check
+  list no longer repeat what follows them.
 - The DANE card on a Microsoft 365 legacy MX says "Exchange Online can
   publish it for you" instead of repeating its pill in a sentence the
   results row cut off.
@@ -55,6 +63,10 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - README leads with a real audit result and states the floor by reference.
 
 ### Fixed
+- Cards skipped painting off screen (`content-visibility: auto`), which held
+  every card below the fifth at a 302px placeholder and showed Your domain's
+  DNS and Draft standards as blank boxes in a full-page screenshot. Every
+  card paints now.
 - The PDF button used the DKIM selector in the input box, not the one the
   results were run with (#192, #193).
 - Shared links dropped the DKIM selector; they now carry `sel=`, and the

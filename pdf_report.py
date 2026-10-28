@@ -409,12 +409,12 @@ class _PageTpl:
 # Page 1: The short answer (Doc 92)
 # ================================================================
 
-# The line under "Do these first". It names where the plan and the evidence
-# are, so a reader who stops after page 1 knows what the rest is for.
-SHORT_ANSWER_POINTER = ("Page 2, What to do, is for whoever manages your DNS. "
+# The line under the verdict. It names what follows and where the evidence
+# is, so a reader knows what each part is for.
+SHORT_ANSWER_POINTER = ("What to do, next, is for whoever manages your DNS. "
                         "Part 2 holds the evidence.")
 # The report without its appendix (2026-10-25, the page's default PDF).
-SHORT_ANSWER_POINTER_NO_APPENDIX = "Page 2, What to do, is for whoever manages your DNS."
+SHORT_ANSWER_POINTER_NO_APPENDIX = "What to do, next, is for whoever manages your DNS."
 
 
 def _has_appendix(data):
@@ -621,12 +621,12 @@ def _checks_at_a_glance(data, S):
 
 
 def _cover_page(data, S):
-    """Page 1: the plain verdict, at most three things to do first, and
-    every check on one line each.
+    """Page 1: the plain verdict and the counts behind it. What to do
+    follows it, then the sender requirements, then the checks, the order of
+    the results page.
 
-    Doc 92 moved the tally to one line on the plan page, and the tiles, the
-    attack surface table and the contents to the start of Part 2. A reader
-    who stops here has the answer and the whole result.
+    The tiles, the attack surface table and the contents are at the start
+    of Part 2.
     """
     domain = data.get("domain", "unknown")
     es = data.get("executive_summary", {}) or {}
@@ -684,7 +684,15 @@ def _cover_page(data, S):
         els.append(vt)
         els.append(Spacer(1, SP_MD))
 
-    box = _do_first_box(data, S)
+    # The counts under the verdict are the web headline's, from the same
+    # roadmap. The fixes themselves follow in What to do, written out in
+    # full, so this page no longer lists the first few a second time. What
+    # stays is the sentence that stands in when there is nothing to list.
+    bar = _tier_bar(data, S)
+    if bar:
+        els.append(bar)
+        els.append(Spacer(1, SP_MD))
+    box = [] if _do_first(data) else _do_first_box(data, S)
     if box:
         els.extend(box)
         els.append(Spacer(1, SP_MD))
@@ -711,7 +719,6 @@ def _cover_page(data, S):
 
     els.append(Paragraph(f"Audit performed: {now}", S["body_small"]))
     els.append(Spacer(1, SP_MD))
-    els.extend(_checks_at_a_glance(data, S))
 
     return els
 
@@ -1077,57 +1084,71 @@ def _requirements_block(data, S):
     return [KeepTogether(els)]
 
 
-def _roadmap_page(data, S, number=2):
-    """Build the plan: the one prioritized list, as on the web.
-
-    Doc 92 put it on page 2, for whoever manages the DNS, with the check
-    tally once, as one line.
-    """
-    roadmap = data.get("security_roadmap", {})
-    items = roadmap.get("items", [])
-    els = [PageBreak()]
-    els.extend(_section_header(str(number), "What to do", S))
-
-    # Summary
-    summary = roadmap.get("summary", "")
-    if summary:
-        els.append(Paragraph(_safe(summary), S["body"]))
-        els.append(Spacer(1, SP_SM))
-    els.append(_tally_line(data.get("checks", []) or [], S))
-    els.append(Spacer(1, SP_MD))
-    els.extend(_requirements_block(data, S))
-    els.extend(_dns_host_block(data, S))
-
-    # Tier summary bar. Counted as the web heading counts them: an optional
-    # extra is optional whatever its tier.
+def _tier_bar(data, S):
+    """The tier counts as one bar, in the web headline's words. Counted as
+    the web counts them: an optional extra is optional whatever its tier.
+    A tier with no rows has no cell, as the headline has no count for it."""
+    items = (data.get("security_roadmap") or {}).get("items", [])
     main = [i for i in items if not _is_optional_item(i)]
     extras = [i for i in items if _is_optional_item(i)]
     tiers = {t: sum(1 for i in main if i.get("priority") == t)
              for t in ("critical", "high", "medium", "low")}
     tiers["low"] += len(extras)
-    tier_cells = []
-    for tier_name in ["critical", "high", "medium", "low"]:
-        count = tiers.get(tier_name, 0)
+    cells = []
+    for tier_name in ("critical", "high", "medium", "low"):
+        count = tiers[tier_name]
+        if not count:
+            continue
         t_clr = PRIORITY_CLR.get(tier_name, TEXT_SEC)
-        tier_cells.append([
+        cells.append([
             Paragraph(f'<font color="{t_clr.hexval()}" size="14"><b>{count}</b></font>',
                       ParagraphStyle("TC", fontName=FONTS["sans"], alignment=TA_CENTER, leading=18)),
             Paragraph(f'<font color="#6b6b6b" size="8">{TIER_LABELS[tier_name].upper()}</font>',
                       ParagraphStyle("TL", fontName=FONTS["sans"], alignment=TA_CENTER, leading=12)),
         ])
-    if any(tiers.values()):
-        tier_bar = Table([tier_cells], colWidths=[1.625*inch]*4)
-        tier_bar.setStyle(TableStyle([
-            ("VALIGN", (0,0), (-1,-1), "TOP"),
-            ("TOPPADDING", (0,0), (-1,-1), 8),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
-            ("LINEAFTER", (0,0), (2,0), 0.5, BORDER),
-            ("BACKGROUND", (0,0), (-1,-1), SURFACE_BG),
-            ("BOX", (0,0), (-1,-1), 0.5, BORDER),
-            ("ROUNDEDCORNERS", [4,4,4,4]),
-        ]))
-        els.append(tier_bar)
+    if not cells:
+        return None
+    bar = Table([cells], colWidths=[6.5*inch / len(cells)] * len(cells))
+    bar.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("TOPPADDING", (0,0), (-1,-1), 8),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ("LINEAFTER", (0,0), (-2,0), 0.5, BORDER),
+        ("BACKGROUND", (0,0), (-1,-1), SURFACE_BG),
+        ("BOX", (0,0), (-1,-1), 0.5, BORDER),
+        ("ROUNDEDCORNERS", [4,4,4,4]),
+    ]))
+    return bar
+
+
+def _roadmap_page(data, S, number=2):
+    """Build the plan: the one prioritized list, as on the web.
+
+    It follows the verdict and its counts straight on, for whoever manages
+    the DNS. A PDF cannot expand, so every row is written out whole. The
+    sender requirements come after the last row, and the check tally leads
+    the Checks section.
+    """
+    roadmap = data.get("security_roadmap", {})
+    items = roadmap.get("items", [])
+    els = []
+    # Who sends as you is answered by the sender list, so it comes first, as
+    # the Sender Map does above the plan on the page.
+    if (data.get("scope") or "complete") == "senders":
+        els.extend(_vendors(data, S))
         els.append(Spacer(1, SP_MD))
+    els.extend(_section_header(str(number), "What to do", S))
+
+    # Nothing to list: the roadmap's own sentence says why (a real all-clear,
+    # a scoped run, or a lookup that failed and is not an all-clear).
+    summary = roadmap.get("summary", "")
+    if summary and not items:
+        els.append(Paragraph(_safe(summary), S["body"]))
+        els.append(Spacer(1, SP_SM))
+    els.extend(_dns_host_block(data, S))
+
+    main = [i for i in items if not _is_optional_item(i)]
+    extras = [i for i in items if _is_optional_item(i)]
 
     # One block per item, in roadmap order, carrying the same three parts as
     # the web row. The table this replaces gave a line per item with no
@@ -1152,6 +1173,7 @@ def _roadmap_page(data, S, number=2):
     # all-clear"). A hardcoded line here either repeated that or contradicted
     # it on the same page.
 
+    els.extend(_requirements_block(data, S))
     return els
 
 
@@ -1595,8 +1617,15 @@ def _protocol_details(data, S, number=3, appendix=None):
     when there is something to fix. The explanation paragraph and the SPF
     and DKIM tables are in the appendix, and each check says where.
     """
-    els = [PageBreak()]
+    # Follows the sender requirements on the same page when there is room.
+    els = [CondPageBreak(3.5*inch)]
     els.extend(_section_header(str(number), "Checks", S))
+    # The tally and one line per check, ahead of the detail: the PDF's
+    # "all checks" list, which the page keeps behind its toggle.
+    els.append(_tally_line(data.get("checks", []) or [], S))
+    els.append(Spacer(1, SP_SM))
+    els.extend(_checks_at_a_glance(data, S))
+    els.append(Spacer(1, SP_MD))
 
     pointers = appendix or {}
     # Doc 101: the same three areas, order and wording as the results page.
@@ -1615,8 +1644,9 @@ def _protocol_details(data, S, number=3, appendix=None):
         for card in rendered[1:]:
             els.extend(card)
 
-    # Detected vendors
-    els.extend(_vendors(data, S))
+    # Detected vendors. For Who sends as you they lead What to do instead.
+    if (data.get("scope") or "complete") != "senders":
+        els.extend(_vendors(data, S))
 
     return els
 
