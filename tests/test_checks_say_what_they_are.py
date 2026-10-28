@@ -216,7 +216,7 @@ def _ct_raw_with_a_mismatch():
     hand-written.
     """
     import audit_engine
-    import requests
+    import http_tls
 
     later = "2030-01-01T00:00:00"
     rows = [{
@@ -239,13 +239,13 @@ def _ct_raw_with_a_mismatch():
         def json(self):
             return rows
 
-    real_get = requests.get
-    requests.get = lambda *a, **kw: _Resp()
+    real_get = http_tls.get
+    http_tls.get = lambda *a, **kw: _Resp()
     try:
         return audit_engine._raw_check_ct_uncached(
             DOMAIN, {"caa": {"authorized_cas": ["digicert.com"]}})
     finally:
-        requests.get = real_get
+        http_tls.get = real_get
 
 
 def test_the_ct_card_prints_the_caa_mismatch_once_in_the_engines_words():
