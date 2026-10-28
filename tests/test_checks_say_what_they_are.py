@@ -173,8 +173,9 @@ def pdf_text(fixture_result):
 
 
 def test_the_checks_section_carries_the_label_once_per_check(pdf_text):
-    # Twelve checks, plus the APRF card in the Draft standards section.
-    assert pdf_text.count("What this is") == 13
+    # Twelve checks. The fixture publishes no APRF record, and the PDF prints
+    # that as one line under Draft standards, with no note.
+    assert pdf_text.count("What this is") == 12
 
 
 def test_every_line_reaches_the_pdf(pdf_text):
@@ -199,7 +200,7 @@ def test_a_check_with_no_line_prints_no_label_in_the_pdf(fixture_result):
         if check["name"] == "CAA":
             del check["what_this_is"]
     text = _pdf_text(data)
-    assert text.count("What this is") == 12  # eleven checks and the APRF card
+    assert text.count("What this is") == 11
     assert " ".join(WHAT_THIS_IS["CAA"].split()) not in text
 
 

@@ -32,6 +32,7 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   services listed and no missing records claimed.
 
 ### Changed
+- Results page and PDF: an APRF record that is not published is one collapsed line under Draft standards instead of a full card. The PDF prints the line alone. The 90 day review check for the APRF note warns instead of failing the test run.
 - Results page and PDF, fixes first (2026-10-28). The headline counts are the
   What to do counts, and each one jumps to its first row. The first row opens
   with its fix showing, and every row says Show fix or Hide fix. The check
