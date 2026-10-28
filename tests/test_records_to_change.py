@@ -285,7 +285,7 @@ def test_no_em_dash_or_double_hyphen_in_the_blocks_words():
 # The page
 # ---------------------------------------------------------------
 
-def _long_value_result(fixture_result):
+def _long_value_result(fixture_result):  # noqa: F811
     """The fixture audit with one record whose value is 600 unbroken
     characters, the way a DKIM public key arrives."""
     import copy
@@ -337,7 +337,7 @@ def test_the_dns_host_steps_sit_above_the_block_and_the_recheck_follows(browser,
     assert res
 
 
-def _render_with_host(pg, fixture_result):
+def _render_with_host(pg, fixture_result):  # noqa: F811
     import copy
     res = copy.deepcopy(fixture_result)
     res["dns_host"] = res.get("dns_host") or {
