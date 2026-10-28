@@ -111,5 +111,13 @@ def test_scope_buttons_come_before_the_form():
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
 def test_header_links_to_the_header_decoder(path):
     """The sister tool lives on its own subdomain; every page links to it."""
-    assert ('<a href="https://headers.dns-audit.com/" class="nav-link" '
-            'rel="noopener">Header Decoder</a>') in _header(path)
+    assert ('<a href="https://headers.dns-audit.com/" class="nav-link" rel="noopener" '
+            'aria-label="Header Decoder"><span class="nav-long">Header Decoder</span>'
+            '<span class="nav-short">Headers</span></a>') in _header(path)
+
+
+@pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
+def test_header_links_to_the_aprf_reader(path):
+    """The APRF Report Reader lives on its own subdomain; every page links to it."""
+    assert ('<a href="https://aprf.dns-audit.com/" class="nav-link" rel="noopener" '
+            'aria-label="APRF Reader">APRF<span class="nav-long"> Reader</span></a>') in _header(path)

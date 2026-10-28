@@ -8524,6 +8524,22 @@ h4.smap-detail-sub {
     display: none;
 }
 
+/* Five nav links and the theme toggle overflow a phone, so the two tool
+   links take short labels there; aria-label keeps their full names. */
+.nav-short {
+    display: none;
+}
+
+@media (max-width: 480px) {
+    .nav-long {
+        display: none;
+    }
+
+    .nav-short {
+        display: inline;
+    }
+}
+
 /* Four nav links plus the theme toggle need 312px; a 320 viewport leaves
    296 inside the gutters. Trim the side padding so the nav still fits on
    one line. Each link keeps its 44px height and min-width. */

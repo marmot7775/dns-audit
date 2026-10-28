@@ -29,8 +29,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=7dd4479">
-    <script src="/static/theme.js?v=7dd4479"></script>
+    <link rel="stylesheet" href="/static/style.css?v=c42d44f">
+    <script src="/static/theme.js?v=c42d44f"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -84,7 +84,8 @@
                     <a href="/" class="nav-link">Home</a>
                     <a href="/articles/" class="nav-link nav-link-active">Articles</a>
                     <a href="/about" class="nav-link">About</a>
-                    <a href="https://headers.dns-audit.com/" class="nav-link" rel="noopener">Header Decoder</a>
+                    <a href="https://headers.dns-audit.com/" class="nav-link" rel="noopener" aria-label="Header Decoder"><span class="nav-long">Header Decoder</span><span class="nav-short">Headers</span></a>
+                    <a href="https://aprf.dns-audit.com/" class="nav-link" rel="noopener" aria-label="APRF Reader">APRF<span class="nav-long"> Reader</span></a>
                     <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
                         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
                         <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
@@ -154,6 +155,7 @@
                 <p>Google Workspace and Microsoft 365 both sign with your domain. Google Workspace uses the selector <code>google</code> unless you chose another when you turned DKIM on. Microsoft 365 uses <code>selector1</code> and <code>selector2</code> and switches between them when it rotates keys, so publish the bare record at <code>_aprf._domainkey.&lt;your domain&gt;</code> rather than one per selector, and it covers whichever selector is active. The bare record is also the right choice for any platform that gives you CNAME records at your domain. The APRF record sits at a different name from the DKIM CNAME, so the two don't collide.</p>
                 <p>If you send real volume to Comcast addresses, you may see placement data now, and when the next provider turns reporting on, you're already set up. A day with no report can mean too little Comcast traffic to report. The draft lets a provider hold back reports below a volume threshold, or decline to send to any address it chooses. Until more providers send, read the numbers as a rough signal from one provider, not a measurement.</p>
                 <p>dns-audit.com checks each domain you audit for an APRF record, shows where reports would go, and checks whether an outside destination has agreed to receive them. The check is for information and doesn't change your results.</p>
+                <p>Once reports arrive, drop them on the <a href="https://aprf.dns-audit.com/">APRF Report Reader</a>. It charts each count day by day, marks the days with no report, and points out jumps in unwanted mail. It reads the files in your browser, so nothing is uploaded.</p>
             </section>
             <section class="dbis-section">
                 <h2>Technical details</h2>

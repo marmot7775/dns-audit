@@ -190,10 +190,10 @@ def test_every_article_has_a_byline_linking_about_neil():
         assert '<h2 id="neil">Who built this</h2>' in f.read()
 
 
-# The APRF article cites no sources and links nowhere (Neil, 2026-10-09:
-# no citations).
+# The APRF article cites no sources (Neil, 2026-10-09: no citations). Its only
+# links are the byline and the APRF Report Reader, a dns-audit.com tool.
 def test_aprf_article_has_no_links():
     with open(os.path.join(ARTICLES_DIR, "aprf.html"), encoding="utf-8") as f:
         content = f.read()
     article = content[content.index("<article"):content.index("</article>")]
-    assert [h for h, _ in _anchors(article)] == ["/about#neil"]
+    assert [h for h, _ in _anchors(article)] == ["/about#neil", "https://aprf.dns-audit.com/"]
