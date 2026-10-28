@@ -56,7 +56,7 @@ def test_aprf_note_is_logged_with_counts_and_clean_domains(logged):
     assert e["source"] == "tool" and e["tool"] == "aprf-reader"
     assert (e["reports"], e["streams"], e["warnings"], e["skipped"], e["copies"]) == (40, 2, 3, 1, 0)
     assert e["domains"] == ["example.com", "news.example.com"]  # lowercased, roll-up star dropped, junk and repeats out
-    assert e["ref"] == "aprf.dns-audit.com"  # host only, never the path
+    assert "ref" not in e  # the request's Referer is the tool page itself, so it is not used
     assert len(e["vid"]) == 12 and "Chrome" in e["ua"] and e["bot"] is False
 
 
@@ -81,6 +81,13 @@ def test_header_note_carries_the_result_only(logged):
 def test_bad_notes_are_refused_and_not_logged(logged, note, raw):
     assert _post(TestClient(server_module.app), note, raw).status_code == 400
     assert logged == []
+
+
+def test_linking_host_comes_from_the_note(logged):
+    client = TestClient(server_module.app)
+    _post(client, {**APRF, "ref": "www.LinkedIn.com"})
+    _post(client, {**APRF, "ref": "https://evil.example/path?x=1"})
+    assert logged[0]["ref"] == "www.linkedin.com" and "ref" not in logged[1]
 
 
 def test_sample_runs_are_marked(logged):

@@ -1560,6 +1560,11 @@ def _usage_entry(note: dict) -> Optional[dict]:
     entry: dict = {"tool": tool}
     if note.get("sample") is True:
         entry["sample"] = True
+    # The page that linked the visitor to the tool, host only. The request's own
+    # Referer is the tool page itself, so the page sends this from document.referrer.
+    ref = note.get("ref")
+    if isinstance(ref, str) and DOMAIN_PATTERN.match(ref.lower()):
+        entry["ref"] = ref.lower()
     if tool == "aprf-reader":
         for k in _USAGE_COUNTS:
             v = note.get(k)
@@ -1613,9 +1618,6 @@ async def usage_note(request: Request):
         "bot": is_bot(ua_raw),
         "vid": _visitor_id(request),
     }
-    ref = _referer_host(request)
-    if ref:
-        line["ref"] = ref
     try:
         audit_logger.info(json.dumps(line))
     except Exception as e:
