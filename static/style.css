@@ -8417,3 +8417,15 @@ h4.smap-detail-sub {
         padding: 0.25rem 0.2rem;
     }
 }
+
+/* Below about 480px the four links no longer share a row with the
+   wordmark, so the sticky header is two rows (about 114px). Anchored cards
+   and panels need the larger offset to land below it. */
+@media (max-width: 480px) {
+    .results-section,
+    .result-card,
+    .result-card [id],
+    #neil {
+        scroll-margin-top: 7.5rem;
+    }
+}
