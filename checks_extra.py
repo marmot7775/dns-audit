@@ -16,7 +16,7 @@ _STS_ID_RE = re.compile(r"[A-Za-z0-9]{1,32}")
 
 try:
     import requests
-    from requests.adapters import HTTPAdapter
+    import http_tls
 
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -86,14 +86,21 @@ def _resolve_and_validate(hostname: str) -> str:
 
 
 if REQUESTS_AVAILABLE:
-    class _PinnedHostSSLAdapter(HTTPAdapter):
+    class _PinnedHostSSLAdapter(http_tls.SharedContextAdapter):
         """Use the Host header for SNI and TLS cert validation.
 
         Lets us connect to a DNS-pinned IP (SSRF protection) while still
         validating the certificate against the original hostname, as
         required by RFC 8461 §3.3 for MTA-STS. Pattern from
         requests-toolbelt's HostHeaderSSLAdapter.
+
+        Uses the process-wide pinned SSLContext from http_tls. urllib3 sets
+        check_hostname to False on that context and matches the certificate
+        against assert_hostname itself, so every request through here must
+        carry a Host header; without one there would be no hostname check.
         """
+
+        context_name = "pinned"
 
         def send(self, request, **kwargs):
             host_header = None
@@ -107,8 +114,7 @@ if REQUESTS_AVAILABLE:
                 connection_pool_kw["assert_hostname"] = ssl_hostname
                 connection_pool_kw["server_hostname"] = ssl_hostname
             else:
-                connection_pool_kw.pop("assert_hostname", None)
-                connection_pool_kw.pop("server_hostname", None)
+                raise ValueError("_PinnedHostSSLAdapter requires a Host header")
             return super().send(request, **kwargs)
 
 
@@ -142,10 +148,9 @@ def _safe_fetch(url: str, timeout: float = 10.0, **kwargs) -> "requests.Response
 
     # Fresh session per call: urllib3 snapshots connection_pool_kw at pool
     # creation, so a shared session could reuse a stale pool with the wrong
-    # SNI/assert_hostname for a different Host header.
-    session = requests.Session()
-    if parsed.scheme == "https":
-        session.mount("https://", _PinnedHostSSLAdapter())
+    # SNI/assert_hostname for a different Host header. Only the SSLContext
+    # underneath is shared (http_tls), so the CA bundle is not reparsed per call.
+    session = http_tls.session(_PinnedHostSSLAdapter())
 
     return session.get(
         pinned_url,

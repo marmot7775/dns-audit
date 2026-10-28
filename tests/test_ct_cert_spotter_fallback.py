@@ -70,7 +70,7 @@ def _get(crt, spotter):
 
 
 def _raw(crt, spotter):
-    with patch("requests.get", _get(crt, spotter)):
+    with patch("http_tls.get", _get(crt, spotter)):
         return audit_engine._raw_check_ct_uncached(D, {})
 
 
