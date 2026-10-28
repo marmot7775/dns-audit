@@ -97,7 +97,8 @@ def test_page_one_is_the_short_answer(monitoring):
     assert "The short answer" in first
     # The headline the web page shows, not the longer policy verdict.
     assert " ".join(monitoring["executive_summary"]["headline"].split()) in first
-    assert "Do these first" in first
+    # The plan's first rows are not listed a second time under the verdict.
+    assert "Do these first" not in first
     assert pdf_report.SHORT_ANSWER_POINTER in first
     # The tally, the tiles and the contents moved off it.
     for gone in ("checks total", "Across", "Table of Contents", "Contents",
@@ -105,26 +106,14 @@ def test_page_one_is_the_short_answer(monitoring):
         assert gone not in first, gone
 
 
-def test_do_these_first_falls_back_to_the_first_items_that_are_not_low(monitoring):
-    monitoring = _without_backend_fields(monitoring)
-    first = _pages(monitoring)[0]
-    # Not low, and not an optional protocol that is simply not set up.
-    wanted = [i for i in monitoring["security_roadmap"]["items"]
-              if i["priority"] != "low" and i.get("status") != "absent"][:3]
-
-    assert wanted
-    for n, item in enumerate(wanted, 1):
-        assert f"{n}. {item['action']}" in first, item["action"]
-    assert "4." not in first.split("Do these first", 1)[1].split("Page 2 is")[0]
-
-
-def test_do_these_first_uses_the_backend_list_when_present(monitoring):
+def test_the_first_items_are_written_out_once_in_the_plan(monitoring):
     result = _with_backend_fields(monitoring)
     first = _pages(result)[0]
-
-    for n, item in enumerate(result["executive_summary"]["do_first"], 1):
-        # The consequence first, then the instruction, then the term.
-        assert f"{n}. {item['plain_head']} {item['title']} ({item['protocol']})" in first
+    # Each row of the plan is written out in full where What to do begins,
+    # with its head and its action; none is repeated in a box above it.
+    top = result["security_roadmap"]["items"][0]
+    assert first.count(top["plain_head"]) == 1
+    assert f"{top['plain_head']} {top['action']}" in first
 
 
 def test_an_empty_do_first_list_says_nothing_is_urgent(monitoring):
@@ -154,12 +143,13 @@ def test_the_box_is_red_only_for_a_critical_item(no_dmarc):
 # Page 2: the plan
 # ---------------------------------------------------------------
 
-def test_page_two_is_the_plan_with_the_tally_once(monitoring):
+def test_the_plan_follows_the_verdict_and_the_tally_leads_the_checks(monitoring):
     pages = _pages(monitoring)
 
-    assert "2 What to do" in pages[1]
+    assert "2 What to do" in pages[0]
+    checks = next(i for i, p in enumerate(pages) if "3 Checks" in p)
     assert re.search(r"Across \d+ checks: \d+ needs? fixing, \d+ could be stronger, \d+ pass, "
-                     r"\d+ optional and not set up", pages[1]), pages[1][:600]
+                     r"\d+ optional and not set up", pages[checks]), pages[checks][:600]
     assert sum(p.count("Across ") for p in pages) == 1
     # The five counter tiles are gone.
     assert "Not configured Not checked" not in " ".join(pages)

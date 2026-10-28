@@ -232,18 +232,18 @@ def test_web_counters_tab_title_share_text_and_pdf_cover_agree(audit):
         counts["pass"], counts["warn"], counts["fail"], counts["absent"], counts["unavailable"],
         counts["not_applicable"])
 
-    # Doc 92: the tally is one line on the plan page, page 2, and is
+    # The tally is one line at the top of the Checks section and is
     # printed nowhere else.
     pages = [p.extract_text() or "" for p in
              PdfReader(io.BytesIO(pdf_report.generate_pdf(result))).pages]
-    cover = " ".join(pages[1].split())
-    assert "Across 12 checks:" in cover, cover[:400]
+    checks = " ".join(" ".join(p.split()) for p in pages)
+    assert "Across 12 checks:" in checks, checks[:400]
     assert sum(" ".join(p.split()).count("Across 12 checks:") for p in pages) == 1
     # Doc 92: the tally uses the pill words.
-    assert _cover_count(cover, r"needs? fixing") == counts["fail"]
-    assert _cover_count(cover, r"could be stronger") == counts["warn"]
-    assert _cover_count(cover, r"optional and not set up") == counts["absent"]
-    assert _cover_count(cover, r"pass\b") == counts["pass"]
+    assert _cover_count(checks, r"needs? fixing") == counts["fail"]
+    assert _cover_count(checks, r"could be stronger") == counts["warn"]
+    assert _cover_count(checks, r"optional and not set up") == counts["absent"]
+    assert _cover_count(checks, r"pass\b") == counts["pass"]
 
     assert web["title"] == f"(2 warnings) {DOMAIN} | DNS Audit"
     assert web["tweet"].endswith("0 issues, 2 warnings")
