@@ -189,6 +189,13 @@ needs busting and only `static/articles/index.html` references it.
 
 The older pattern `grep -oP 'v=\K[a-f0-9]+'` is broken: it only matches hex characters, so version strings containing non-hex letters (e.g. `ds17`, `sec9`) produce a partial or empty match and sed silently no-ops. Do not use the old pattern.
 
+## Site chrome
+The header and footer on every static page are the canonical
+copy for all three apps; docs/site-chrome.html holds the
+block and the allowed per-app differences. After changing
+either, run python3 tools/check_chrome.py against the live
+sites once everything is deployed.
+
 ## Testing
 Dependencies are declared in pyproject.toml only: runtime under [project] dependencies, test-only under [project.optional-dependencies] dev, never in a workflow file. Then run `python3 tools/gen_requirements.py`; the requirements files are generated and tests/test_requirements_generated.py fails if they drift.
 

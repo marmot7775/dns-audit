@@ -37,7 +37,7 @@ _FIXTURE = "user" + "@" + "gmail" + ".com"
 # already listed), and its doc names it. Doc 90 put it in the About page
 # body and a second results note (both files already listed); its doc names it.
 # Doc 99 took it out of app.js (Cloudflare never obfuscates a script), and
-# its doc names it.
+# its doc names it. Doc 105 keeps the canonical footer in docs/site-chrome.html.
 ALIAS = "dns" + "@" + "dns-audit" + ".com"
 ALIAS_FILES = (
     "static/index.html",
@@ -58,6 +58,7 @@ ALIAS_FILES = (
     "docs/history/doc-90.md",
     "docs/history/doc-99.md",
     "SECURITY.md",
+    "docs/site-chrome.html",
 )
 
 ALLOWED = {
