@@ -8422,6 +8422,14 @@ h3.services-sub,
     margin: 0 0 var(--space-md);
 }
 
+.smap-domain-findings {
+    margin: 0 0 var(--space-md);
+}
+
+.smap-domain-findings h3.smap-detail-sub {
+    margin-top: 0;
+}
+
 .smap-legend {
     display: flex;
     flex-wrap: wrap;
@@ -8599,6 +8607,7 @@ h3.services-sub,
     margin: var(--space-xs) 0 0;
 }
 
+h3.smap-detail-sub,
 h4.smap-detail-sub {
     font-size: var(--font-xs);
     font-weight: 600;
