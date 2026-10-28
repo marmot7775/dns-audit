@@ -24,6 +24,8 @@ HOSTS = [
     "https://aprf.dns-audit.com/",
 ]
 REPO_RE = re.compile(r"(https://github\.com/marmot7775/)[^/]+")
+# Cloudflare email obfuscation rewrites the mailto with a per-response key.
+OBFUSCATED_RE = re.compile(r"(/cdn-cgi/l/email-protection)#\w+")
 
 
 class ChromeLinks(HTMLParser):
@@ -52,7 +54,8 @@ class ChromeLinks(HTMLParser):
         elif tag == "footer":
             self._in_footer = False
         elif tag == "a" and self._href is not None:
-            pair = (" ".join("".join(self._text).split()), self._href)
+            href = OBFUSCATED_RE.sub(r"\1", self._href)
+            pair = (" ".join("".join(self._text).split()), href)
             (self.nav if self._in_nav else self.footer).append(pair)
             self._href = None
 

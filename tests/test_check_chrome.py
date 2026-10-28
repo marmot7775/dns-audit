@@ -28,3 +28,9 @@ def test_own_repo_hrefs_are_info_and_anything_else_fails():
     broken = links(CANONICAL.replace(">Articles</a>", ">Posts</a>", 1))
     failures, _ = compare({"a": page, "b": broken})
     assert failures == ["b: nav differs from a"]
+
+
+def test_cloudflare_obfuscated_mailto_compares_without_its_key():
+    a = '<footer><a href="/cdn-cgi/l/email-protection#91f5ff">x</a></footer>'
+    b = '<footer><a href="/cdn-cgi/l/email-protection#2a4e44">x</a></footer>'
+    assert compare({"a": links(a), "b": links(b)}) == ([], [])
