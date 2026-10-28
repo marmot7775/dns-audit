@@ -48,6 +48,7 @@ spf_recursive.py           SPF lookup counter
 spf_execution_engine.py    SPF trace, DMARC evaluation summary
 spf_intelligence.py        DKIM selector discovery on Sendermap's catalog
 checks_extra.py            MTA-STS, TLS-RPT, BIMI
+http_tls.py                Shared TLS contexts for outbound HTTPS, built once per process
 mx_check.py                MX analysis
 dkim_formatter.py          DKIM key analysis
 generic_selectors.py       Generic DKIM fallback sweep, LOCAL_SELECTORS
