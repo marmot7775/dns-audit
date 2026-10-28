@@ -151,6 +151,12 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 
 ## 2026-10-28: Google's dated DKIM keys are Sendermap's
 
+- The vendor panel maps sending subdomains (em., mail., send. and the
+  like), not just the domain itself: disneyplus.com shows 8 services, not
+  4, among them Amazon SES, Cheetah Digital and Marketing Cloud on its
+  subdomains. A domain-only map runs beside it and stands in when the
+  subdomain map runs past SENDER_MAP_BUDGET, so no panel comes back
+  emptier than before. Large domains' audits take up to about 6 s longer.
 - sendermap 0.1.10: the vendor panel names Cheetah Digital by its
   cheetahmail.com NS delegation; Amazon SES no longer claims MX hosts
   under mail-manager-smtp.us-east-1.on.aws, whose proof drifted.

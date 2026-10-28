@@ -114,9 +114,13 @@ def _nx_chain_of(error: dns.resolver.NXDOMAIN, name: str) -> Tuple[str, ...]:
 def map_senders(domain: str, budget_seconds: float) -> Optional[SenderMap]:
     """Sendermap's map of `domain` from DNS alone, or None past the budget.
 
-    DNS only: no website, subdomain or certificate log reads, which would
-    reach beyond what an audit fetches. Runs its own event loop, so call it
-    from a worker thread, the way the audit runs the fingerprinter.
+    DNS only: no website or certificate log reads. Two maps run at once, one
+    with the sending subdomains Sendermap finds by DNS (em., mail., send. and
+    the like) and one of the domain alone. The subdomain map is the answer
+    when it finishes within the budget; a large domain's can take 10 to 15
+    seconds, so past it the domain-only map stands in, which finishes in one
+    or two. Runs its own event loop, so call it from a worker thread, the way
+    the audit runs the fingerprinter.
 
     Not asyncio.run: on the way out it waits for every question already
     queued, so a map past its budget would keep the caller waiting for all
@@ -125,17 +129,21 @@ def map_senders(domain: str, budget_seconds: float) -> Optional[SenderMap]:
     QUERY_TIMEOUT.
     """
     loop = asyncio.new_event_loop()
-    task = loop.create_task(map_domain(
+    checked_at = datetime.now(timezone.utc)
+    full, apex = (loop.create_task(map_domain(
         domain,
-        checked_at=datetime.now(timezone.utc),
+        checked_at=checked_at,
         resolver=AuditResolver(),
         use_web=False,
-        use_subdomains=False,
+        use_subdomains=subdomains,
         use_ct=False,
-    ))
+    )) for subdomains in (True, False))
     try:
-        return loop.run_until_complete(asyncio.wait_for(task, timeout=budget_seconds))
-    except TimeoutError:
+        end = loop.time() + budget_seconds
+        for task in (full, apex):
+            loop.run_until_complete(asyncio.wait({task}, timeout=max(0.0, end - loop.time())))
+            if task.done() and not task.cancelled() and task.exception() is None:
+                return task.result()
         log.warning("Sender map for %s exceeded its %gs budget", domain, budget_seconds)
     except Exception:
         log.debug("Sender map failed", exc_info=True)
