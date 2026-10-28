@@ -151,6 +151,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 
 ## 2026-10-28: Google's dated DKIM keys are Sendermap's
 
+- sendermap 0.1.10: the vendor panel names Cheetah Digital by its
+  cheetahmail.com NS delegation; Amazon SES no longer claims MX hosts
+  under mail-manager-smtp.us-east-1.on.aws, whose proof drifted.
 - sendermap 0.1.9 (was 0.1.2). Its catalog credits 20161025, 20210112,
   20221208 and 20230601 to Google Workspace as backed only names, so
   google.com's keys show their provider again. Doc 105 had dropped it.
