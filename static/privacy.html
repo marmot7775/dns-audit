@@ -70,11 +70,11 @@
 
         <section class="dbis-section">
             <h2>The APRF Report Reader and Header Decoder</h2>
-            <p>The <a href="https://aprf.dns-audit.com/">APRF Report Reader</a> and the <a href="https://headers.dns-audit.com/">Header Decoder</a> read your files and headers in your browser. What you drop or paste is not sent anywhere. After each use, the page sends one short note to this server, and it goes into the same log as an audit.</p>
+            <p>After each use of the <a href="https://aprf.dns-audit.com/">APRF Report Reader</a> or the <a href="https://headers.dns-audit.com/">Header Decoder</a>, the page sends one short note to this server, and it goes into the same log as an audit. The reports and headers themselves are not part of it.</p>
             <ul>
                 <li>From the APRF Report Reader: how many reports, streams, warnings and skipped files it read, and the signing domains named in the reports, as an audit records its domain. Nothing from inside the reports beyond that.</li>
                 <li>From the Header Decoder: the overall result, such as pass or fail. No header text, no addresses, and no domains.</li>
-                <li>From both: the time, the same browser and operating system label, bot flag, daily visitor token, and linking hostname an audit records, and whether the run used the built-in sample.</li>
+                <li>From both: the time, the same browser and operating system label, bot flag, and daily visitor token an audit records, the hostname of the page that linked you to the tool, and whether the run used the built-in sample.</li>
             </ul>
         </section>
 
