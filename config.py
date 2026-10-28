@@ -109,6 +109,21 @@ def _read_build_sha() -> str:
         return override[:40]
 
     git_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".git")
+    # A worktree's .git is a file naming its own git dir, which holds HEAD;
+    # refs and packed-refs stay in the main repository's (the commondir).
+    common_dir = git_dir
+    if os.path.isfile(git_dir):
+        try:
+            with open(git_dir, encoding="utf-8") as fh:
+                pointer = fh.read().strip()
+            if not pointer.startswith("gitdir:"):
+                return "unknown"
+            git_dir = os.path.join(os.path.dirname(git_dir), pointer[7:].strip())
+            common_dir = git_dir
+            with open(os.path.join(git_dir, "commondir"), encoding="utf-8") as fh:
+                common_dir = os.path.join(git_dir, fh.read().strip())
+        except OSError:
+            pass
     try:
         with open(os.path.join(git_dir, "HEAD"), encoding="utf-8") as fh:
             head = fh.read().strip()
@@ -125,14 +140,14 @@ def _read_build_sha() -> str:
         return "unknown"
 
     try:
-        with open(os.path.join(git_dir, *ref.split("/")), encoding="utf-8") as fh:
+        with open(os.path.join(common_dir, *ref.split("/")), encoding="utf-8") as fh:
             return fh.read().strip()[:7]
     except OSError:
         pass
 
     # A ref that has been packed has no loose file under .git/refs.
     try:
-        with open(os.path.join(git_dir, "packed-refs"), encoding="utf-8") as fh:
+        with open(os.path.join(common_dir, "packed-refs"), encoding="utf-8") as fh:
             for line in fh:
                 if line.startswith(("#", "^")):
                     continue
