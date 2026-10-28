@@ -1005,9 +1005,13 @@ function renderResults(data, selector = '') {
     if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
-        priorityList.innerHTML = renderDnsHost(data.dns_host)
+        // With a records block, the DNS host's click path moves down to sit
+        // directly above it; with none it stays above the plan, as before.
+        const recordsBlock = renderChangeSet(rm.change_set, data.dns_host);
+        priorityList.innerHTML = (recordsBlock ? '' : renderDnsHost(data.dns_host))
             + renderPriorities(rm, checks, data.resilience, data.dns_host)
-            + renderChangeSet(rm.change_set);
+            + recordsBlock;
+        wireChangeSet(priorityList, data);
         // The row opens; the link into the card is a control inside it.
         priorityList.querySelectorAll('.priority-head').forEach(head => {
             const body = document.getElementById(head.getAttribute('aria-controls'));
@@ -4029,8 +4033,8 @@ function _recordHostLine(rec) {
     return `${op} the ${escapeHtml(rec.type || 'TXT')} record at <strong>${escapeHtml(rec.host || '')}</strong>`;
 }
 
-// One record from the plan: its exact value with a copy button, or, when
-// DNS cannot tell us the value, who supplies it.
+// One record from the plan, inside a plan row: its exact value with a copy
+// button, or, when DNS cannot tell us the value, who supplies it.
 function _changeRecordBlock(rec, notes) {
     const value = rec.value === null || rec.value === undefined
         ? `<div class="plan-record-from"><span class="plan-record-from-label">Value:</span> ${escapeHtml(rec.value_from || '')}</div>`
@@ -4039,9 +4043,10 @@ function _changeRecordBlock(rec, notes) {
             <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
         </div>`;
     const by = rec.by ? `<div class="plan-record-note">Published by ${escapeHtml(rec.by)}, not by you.</div>` : '';
+    const warn = rec.placeholder ? `<div class="plan-record-note rc-placeholder-note">${escapeHtml(RC_PLACEHOLDER_WARNING)}</div>` : '';
     return `<div class="plan-record">
         <div class="plan-record-host">${_recordHostLine(rec)}</div>
-        ${value}${by}
+        ${value}${by}${warn}
         ${(notes || []).map(n => `<div class="plan-record-note">${escapeHtml(n)}</div>`).join('')}
     </div>`;
 }
@@ -4057,41 +4062,105 @@ function _planRecordBlock(host, type, value, comment) {
     </div>`;
 }
 
-// The change set: every record the plan asks for, in order, one entry per
-// record. Rows that edit one record share an entry whose value carries all
-// their edits, so working down the list never undoes a step. Closed by
-// default under the plan.
-function renderChangeSet(cs) {
-    const entries = (cs && cs.entries) || [];
-    if (entries.length === 0) return '';
-    const bodyId = `change-set-body-${++_planSeq}`;
-    const parts = [`${entries.length} ${entries.length === 1 ? 'change' : 'changes'}`];
-    if (cs.from_provider) parts.push(`${cs.from_provider} with a value from your provider or you`);
-    const rows = entries.map(e => `<li class="cs-entry">
-        <div class="cs-meta">
-            <span class="cs-step">${e.step}</span>
-            <span class="priority-protocol">${escapeHtml(e.protocol)}</span>
+const RC_PLACEHOLDER_WARNING = 'Replace REPLACE-WITH-YOUR-ADDRESS with a mailbox or report service you read before you publish. This audit does not know your address.';
+
+const RC_OPS = { add: 'Add', replace: 'Replace', delete: 'Delete', file: 'Publish' };
+
+// The text one row contributes to "Copy all records": the step, what to do
+// and where, then the value, or who supplies it.
+function _rcPlainRow(e) {
+    const what = e.op === 'file' ? `Publish the policy file at ${e.host}`
+        : `${RC_OPS[e.op] || 'Add'} ${e.type} record at ${e.host}`;
+    const lines = [`${e.step}. ${what}`];
+    if (e.op === 'delete') {
+        if (e.current) lines.push(`Current value: ${e.current}`);
+    } else if (e.value !== null && e.value !== undefined) {
+        lines.push(e.value);
+    } else {
+        lines.push(`Value from: ${e.value_from || 'your DNS host'}`);
+    }
+    return lines.join('\n');
+}
+
+function rcCopyAllText(cs) {
+    return ((cs && cs.entries) || []).map(_rcPlainRow).join('\n\n');
+}
+
+function _rcRow(e) {
+    const op = RC_OPS[e.op] || 'Add';
+    const hasValue = e.value !== null && e.value !== undefined;
+    let valueHtml;
+    if (e.op === 'delete') {
+        valueHtml = `<div class="rc-field"><span class="rc-label">Delete</span>
+            <p class="rc-plain">Remove this record. Nothing replaces it.</p></div>`;
+    } else if (hasValue) {
+        valueHtml = `<div class="rc-field"><span class="rc-label">${e.op === 'replace' ? 'New value' : 'Value'}</span>
+            <div class="record-block record-block-inset${e.op === 'file' ? ' record-block-file' : ''}">
+                <span class="record-text">${escapeHtml(e.value)}</span>
+                <button class="copy-btn" aria-label="Copy value for step ${e.step}">Copy</button>
+            </div></div>`;
+    } else {
+        valueHtml = `<div class="rc-field"><span class="rc-label">Value</span>
+            <p class="rc-from"><strong>Comes from someone else.</strong> ${escapeHtml(e.value_from || '')}</p></div>`;
+    }
+    const current = e.current
+        ? `<div class="rc-field"><span class="rc-label">${e.op === 'delete' ? 'Current value' : 'Current value, replaced'}</span>
+            <div class="rc-current"><span class="rc-current-text">${escapeHtml(e.current)}</span></div></div>`
+        : '';
+    const warn = e.placeholder ? `<p class="rc-placeholder">${escapeHtml(RC_PLACEHOLDER_WARNING)}</p>` : '';
+    const by = e.by ? `<p class="rc-note">Published by ${escapeHtml(e.by)}, not by you.</p>` : '';
+    const notes = (e.notes || []).map(n => `<p class="rc-note">${escapeHtml(n)}</p>`).join('');
+    return `<li class="rc-row" data-rc-step="${e.step}">
+        <div class="rc-head">
+            <span class="rc-step" aria-label="Step ${e.step}">${e.step}</span>
+            <span class="rc-op rc-op-${escapeHtml(e.op)}">${op}</span>
+            <span class="rc-type">${escapeHtml(e.type)}</span>
+            <span class="rc-proto">${escapeHtml(e.protocol)}</span>
             ${e.optional ? '<span class="tag tag-low">Optional</span>' : ''}
         </div>
-        <div class="cs-body">
-            ${_changeRecordBlock(e, e.notes)}
-            ${e.why && e.why.length ? `<div class="cs-why"><span class="plan-record-from-label">Why:</span> ${escapeHtml(e.why.join(' '))}</div>` : ''}
-        </div>
-    </li>`).join('');
+        <div class="rc-field"><span class="rc-label">${e.op === 'file' ? 'URL' : 'Host name'}</span>
+            <code class="rc-host">${escapeHtml(e.host)}</code></div>
+        ${valueHtml}${current}${warn}${by}${notes}
+    </li>`;
+}
+
+// Records to change: every record the plan asks for, in the plan's order,
+// one row each. Rows that edit one record share a row whose value carries
+// all their edits, so working down the list never undoes a step. Open, right
+// after What to do, with the DNS host's click path above it.
+function renderChangeSet(cs, host) {
+    const entries = (cs && cs.entries) || [];
+    if (entries.length === 0) return '';
+    const parts = [`${entries.length} ${entries.length === 1 ? 'record' : 'records'}`];
+    if (cs.from_provider) parts.push(`${cs.from_provider} with a value that comes from someone else`);
+    if (cs.placeholders) parts.push(`${cs.placeholders} with an address for you to fill in`);
     const rest = cs.rows_without_records
-        ? `<p class="cs-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
+        ? `<p class="rc-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
         : '';
-    return `<div class="change-set">
-        <button type="button" class="plan-optional-toggle" aria-expanded="false" aria-controls="${bodyId}">
-            <span>DNS changes, in order <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></span>
-            <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
-        </button>
-        <div class="change-set-body is-hidden" id="${bodyId}">
-            <p class="cs-intro">Every record the plan asks for, top to bottom. Where two plan items change one record, it appears once with both changes in it.</p>
-            <ol class="cs-list">${rows}</ol>
-            ${rest}
+    return `<section class="records-block" id="records-to-change" aria-labelledby="records-title">
+        <h3 class="records-title" id="records-title">Records to change <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></h3>
+        <p class="rc-intro">Top to bottom, in the order of the plan above. Where two plan items change one record, it appears once with both changes in it.</p>
+        ${renderDnsHost(host)}
+        <ol class="rc-list">${entries.map(_rcRow).join('')}</ol>
+        <div class="rc-actions">
+            <button type="button" class="rc-copy-all" data-rc-copy-all>Copy all records</button>
         </div>
-    </div>`;
+        ${rest}
+        <p class="rc-recheck">After you publish, <button type="button" class="rc-rerun" data-rc-rerun>run this audit again</button>. The panel headed "Since" near the top of the page lists what changed. DNS changes can take a few minutes to reach resolvers.</p>
+    </section>`;
+}
+
+function wireChangeSet(root, data) {
+    const block = root.querySelector('#records-to-change');
+    if (!block) return;
+    const all = block.querySelector('[data-rc-copy-all]');
+    if (all) all.addEventListener('click', () => {
+        _copyToClipboard(rcCopyAllText(data.security_roadmap.change_set), all, 'Copy all records');
+    });
+    const again = block.querySelector('[data-rc-rerun]');
+    if (again) again.addEventListener('click', () => {
+        if (data.domain) runAudit(data.domain);
+    });
 }
 
 // What to change: a record the reader can publish, or the card's own fix

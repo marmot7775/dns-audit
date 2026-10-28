@@ -22,6 +22,9 @@ Each record is a dict:
     value_from  who supplies the value, when value is None
     note        what to check before or after publishing it
     by          who publishes it, when that is not the domain's owner
+    current     the value published now, for a replace or a delete
+    placeholder True when the value holds RUA_PLACEHOLDER, an address the
+                owner must replace before publishing
 
 and, while the plan is being built, an ``edit`` that says how the value
 was derived from the published record, so that two rows editing one
@@ -40,17 +43,38 @@ SPF_PROVIDER_INCLUDES = {
     "Microsoft 365": "include:spf.protection.outlook.com",
 }
 
+SPF_LOOKUP_LIMIT = 10
+
 # SPF terms that cost a DNS lookup (RFC 7208 section 4.6.4).
 _SPF_LOOKUP_TERMS = ("include", "a", "mx", "ptr", "exists", "redirect")
 
 
+# A report address this audit cannot know. It is never a working mailbox:
+# the owner swaps it for their own before publishing, and the page and the
+# PDF flag every record that still holds it.
+RUA_PLACEHOLDER = "REPLACE-WITH-YOUR-ADDRESS"
+
+
+def rua_placeholder(domain: str) -> str:
+    return f"mailto:{RUA_PLACEHOLDER}@{domain}"
+
+
+def has_placeholder(value: Optional[str]) -> bool:
+    return bool(value) and RUA_PLACEHOLDER in value
+
+
 def record(op: str, rtype: str, host: str, value: Optional[str] = None,
            value_from: Optional[str] = None, note: Optional[str] = None,
-           by: Optional[str] = None, edit: Optional[Dict] = None) -> Dict:
+           by: Optional[str] = None, edit: Optional[Dict] = None,
+           current: Optional[str] = None) -> Dict:
     out = {"op": op, "type": rtype, "host": host, "value": value,
            "value_from": value_from if value is None else None, "note": note}
     if by:
         out["by"] = by
+    if current:
+        out["current"] = current
+    if has_placeholder(value):
+        out["placeholder"] = True
     if edit:
         out["edit"] = edit
     return out
@@ -141,7 +165,13 @@ def spf_merge(records: List[str]) -> Optional[str]:
                 continue
             if low not in (x.lower() for x in terms):
                 terms.append(t)
-    return " ".join(["v=spf1", *terms, all_term or "~all"])
+    merged = " ".join(["v=spf1", *terms, all_term or "~all"])
+    # RFC 7208 section 4.6.4: past 10 lookups the record is a PermError, and
+    # the services it includes add their own on top of the terms counted
+    # here, so a merge already at the limit is not offered.
+    if spf_lookup_terms(merged) > SPF_LOOKUP_LIMIT - 1:
+        return None
+    return merged
 
 
 def spf_missing_record(domain: str, providers: List[str]) -> Dict:
@@ -266,6 +296,7 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
                     merged["set"].pop(t, None)
                 merged["first"] = merged.get("first") or edit.get("first")
                 entry["value"] = _apply_edit(merged, editors)
+                entry["placeholder"] = has_placeholder(entry["value"])
                 _add_reason(entry, item, rec)
                 continue
             entry = {
@@ -279,6 +310,8 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
                 "host": rec["host"],
                 "value": rec.get("value"),
                 "value_from": rec.get("value_from"),
+                "current": rec.get("current"),
+                "placeholder": bool(rec.get("placeholder")),
                 "notes": [],
             }
             if rec.get("by"):
@@ -317,6 +350,7 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
     exact = sum(1 for e in entries if e["value"] is not None)
     return {"entries": entries, "exact": exact,
             "from_provider": len(entries) - exact,
+            "placeholders": sum(1 for e in entries if e["placeholder"]),
             "rows_without_records": rows_without}
 
 

@@ -1514,9 +1514,11 @@ def _dkim_row_records(item: Dict, dkim: Dict, domain: str) -> List[Dict]:
     for sel in item.get("_selectors") or []:
         if kind == "dkim_unregistered":
             out.append(plan_records.record(
-                "delete", "CNAME", f"{sel['selector']}._domainkey.{domain}", sel.get("cname_target"),
-                note=(f"The value shown is the target being removed. If a service still signs "
-                      f"with selector {sel['selector']}, ask it for a new selector first.")))
+                "delete", "CNAME", f"{sel['selector']}._domainkey.{domain}",
+                current=sel.get("cname_target"),
+                note=(f"The target it points at is not registered, so nothing can sign through "
+                      f"it. If a service still signs with selector {sel['selector']}, ask it "
+                      "for a new selector first.")))
             continue
         name = f"{sel}._domainkey.{domain}"
         info = sels.get(sel) or {}
@@ -1613,9 +1615,8 @@ def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
                 note = (f"Delete the {len(_multi)} v=spf1 records at {domain} and publish this "
                         "one in their place. It keeps every mechanism they list, and the "
                         "first record's all.")
-                if plan_records.spf_lookup_terms(merged) > 10:
-                    note += (" It names more than 10 lookups, so receivers will return "
-                             "PermError until services you no longer use are removed.")
+                note += (" The services it includes count their own lookups on top of the "
+                         "terms in it; the recheck after you publish shows the total.")
                 recs.append(R("replace", "TXT", domain, merged, note=note))
             else:
                 recs.append(R("replace", "TXT", domain, value_from=(
@@ -1680,6 +1681,70 @@ def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
                               else "Your DNS host.", note=fr.get("comment")))
         if recs:
             item["records"] = recs
+    _finish_plan_records(items, check_map, domain)
+
+
+def _published_values(check_map: Dict[str, Dict], domain: str) -> Dict[tuple, str]:
+    """(type, lowercased name) -> the value published now, for the names a
+    replace can touch. A check that did not complete publishes nothing here."""
+    out: Dict[tuple, str] = {}
+
+    def put(host, card):
+        rec = card.get("record") if card.get("status") != "unavailable" else None
+        if rec:
+            out[("TXT", host.lower())] = rec
+
+    put(domain, check_map.get("SPF", {}))
+    put(f"_dmarc.{domain}", check_map.get("DMARC", {}))
+    put(f"_smtp._tls.{domain}", check_map.get("TLS-RPT", {}))
+    put(f"_mta-sts.{domain}", check_map.get("MTA-STS", {}))
+    put(f"default._bimi.{domain}", check_map.get("BIMI", {}))
+    for sel, info in plan_records.dkim_selector_records(check_map.get("DKIM", {})).items():
+        if info.get("record") and not info.get("cname_target"):
+            out[("TXT", f"{sel}._domainkey.{domain}".lower())] = info["record"]
+    return out
+
+
+_INVENTED_RUA = re.compile(r"mailto:(?:dmarc|tls)-reports@([^;\s,]+)", re.I)
+
+
+def _finish_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: str) -> None:
+    """Two things every record gets once the rows are built. A replace shows
+    the value it replaces. A report address the builders made up
+    (dmarc-reports@, tls-reports@) becomes the marked placeholder, so the
+    block never offers an address nobody confirmed; an address the domain
+    already publishes in its rua is kept."""
+    published = _published_values(check_map, domain)
+    dmarc_multi = check_map.get("DMARC", {}).get("multiple_records") or []
+    spf_multi = check_map.get("SPF", {}).get("multiple_records") or []
+    for item in items:
+        for rec in item.get("records") or []:
+            if rec["op"] == "replace" and not rec.get("current"):
+                cur = published.get((rec["type"], rec["host"].lower()))
+                if rec["host"].lower() == f"_dmarc.{domain}".lower() and len(dmarc_multi) > 1:
+                    cur = "\n".join(dmarc_multi)
+                elif rec["host"].lower() == domain.lower() and len(spf_multi) > 1:
+                    cur = "\n".join(spf_multi)
+                if cur:
+                    rec["current"] = cur
+            # A merged edit rebuilds the value from its tags, so they are
+            # cleaned too.
+            _set = (rec.get("edit") or {}).get("set") or {}
+            for k, v in list(_set.items()):
+                if _INVENTED_RUA.search(v or ""):
+                    _set[k] = _INVENTED_RUA.sub(lambda m: plan_records.rua_placeholder(m.group(1)), v)
+            val = rec.get("value")
+            if val and _INVENTED_RUA.search(val):
+                rec["value"] = _INVENTED_RUA.sub(
+                    lambda m: plan_records.rua_placeholder(m.group(1)), val)
+                rec["placeholder"] = True
+                # The builders' own "Replace dmarc-reports@... with" sentence names
+                # the address just removed.
+                _kept = re.sub(r"Replace (?:dmarc|tls)-reports@\S+ with the mailbox or report "
+                               r"service[^.]*\.\s*", "", rec.get("note") or "").strip()
+                rec["note"] = (_kept + (" " if _kept else "")
+                               + "The report address is a placeholder. Replace it with a "
+                               "mailbox or report service you read before you publish.")
 
 
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,

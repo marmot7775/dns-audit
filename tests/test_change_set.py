@@ -66,7 +66,7 @@ def test_dmarc_edits_to_one_record_are_one_entry_with_every_edit():
     [entry] = _entries(rm, "DMARC")
     assert entry["op"] == "replace" and entry["type"] == "TXT"
     assert entry["host"] == f"_dmarc.{D}"
-    assert entry["value"] == f"v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc-reports@{D}"
+    assert entry["value"] == f"v=DMARC1; p=reject; sp=reject; rua=mailto:REPLACE-WITH-YOUR-ADDRESS@{D}"
     assert len(entry["actions"]) == 3 and len(entry["why"]) == 3
 
 
@@ -76,8 +76,8 @@ def test_missing_dmarc_offers_the_first_record():
                                    "deploy": {"host": f"_dmarc.{D}"}}})
     [entry] = _entries(rm, "DMARC")
     assert entry["op"] == "add"
-    assert entry["value"] == f"v=DMARC1; p=none; rua=mailto:dmarc-reports@{D}"
-    assert any(f"Replace dmarc-reports@{D}" in n for n in entry["notes"])
+    assert entry["value"] == f"v=DMARC1; p=none; rua=mailto:REPLACE-WITH-YOUR-ADDRESS@{D}"
+    assert any("placeholder" in n for n in entry["notes"])
 
 
 def test_unauthorized_report_destination_is_published_by_the_receiver():
@@ -201,7 +201,7 @@ def test_unregistered_target_is_a_cname_to_delete():
         {"selector": "old", "cname_target": "old.gone.test", "status": "unregistered"}]))
     entry = next(e for e in _entries(rm, "DKIM") if e["op"] == "delete")
     assert entry["type"] == "CNAME" and entry["host"] == f"old._domainkey.{D}"
-    assert entry["value"] == "old.gone.test"
+    assert entry["value"] is None and entry["current"] == "old.gone.test"
 
 
 # ---------------------------------------------------------------
@@ -216,7 +216,7 @@ def test_new_mta_sts_is_file_then_host_then_txt_after_tls_rpt():
     assert kinds == [("TLS-RPT", "TXT"), ("MTA-STS", "Policy file"),
                      ("MTA-STS", "A or CNAME"), ("MTA-STS", "TXT")]
     rpt, policy, host, txt = _entries(rm)
-    assert rpt["value"] == f"v=TLSRPTv1; rua=mailto:tls-reports@{D}"
+    assert rpt["value"] == f"v=TLSRPTv1; rua=mailto:REPLACE-WITH-YOUR-ADDRESS@{D}"
     assert policy["host"] == f"https://mta-sts.{D}/.well-known/mta-sts.txt"
     assert policy["value"] == ("version: STSv1\nmode: testing\nmx: mx1.example.com\n"
                                "mx: mx2.example.com\nmax_age: 604800")
@@ -347,24 +347,23 @@ def test_the_pdf_prints_the_change_set(fixture_result):
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(pdf_report.generate_pdf(fixture_result)))
     text = " ".join(" ".join((p.extract_text() or "").split()) for p in reader.pages)
-    assert "DNS changes, in order" in text
+    assert "Records to change" in text
     assert f"_smtp._tls.{UI_DOMAIN}" in text
-    assert "Publish the policy file at" in text
+    assert f"https://mta-sts.{UI_DOMAIN}/.well-known/mta-sts.txt" in text
 
 
-def test_the_page_shows_the_change_set(browser, fixture_result):  # noqa: F811
+def test_the_page_shows_the_records_block_open(browser, fixture_result):  # noqa: F811
     for width in (1280, 375):
         ctx, pg, errors = _page(browser, "dark", width)
         _render(pg, fixture_result)
-        toggle = pg.locator(".change-set .plan-optional-toggle")
-        assert toggle.count() == 1
-        assert "DNS changes, in order" in toggle.inner_text()
-        toggle.click()
-        steps = pg.locator(".cs-entry")
-        assert steps.count() == len(fixture_result["security_roadmap"]["change_set"]["entries"])
-        assert steps.first.is_visible()
-        box = toggle.bounding_box()
-        assert box["height"] >= 44
+        block = pg.locator("#records-to-change")
+        assert block.count() == 1
+        assert "Records to change" in block.locator(".records-title").inner_text()
+        rows = pg.locator(".rc-row")
+        assert rows.count() == len(fixture_result["security_roadmap"]["change_set"]["entries"])
+        assert rows.first.is_visible()
+        for sel in (".rc-copy-all", ".rc-rerun"):
+            assert block.locator(sel).first.bounding_box()["height"] >= 44
         assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert not errors, errors
         ctx.close()

@@ -1316,86 +1316,218 @@ main {
     overflow-wrap: anywhere;
 }
 
-/* The change set: every record in the plan, numbered, closed by default
-   under the plan rows. */
-.change-set {
-    margin-top: var(--space-sm);
+/* Records to change: every record the plan asks for, numbered, open right
+   after the plan rows. Colours are the existing tokens only, so the light
+   theme needs no rules of its own. */
+.records-block {
+    margin-top: var(--space-lg);
     border-top: 1px solid var(--border);
-    padding-top: var(--space-sm);
+    padding-top: var(--space-md);
+    min-width: 0;
 }
 
-.change-set .plan-optional-toggle .priority-summary {
-    margin-left: var(--space-sm);
+.records-title {
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs);
 }
 
-.change-set-body {
-    padding: 0 var(--space-sm);
-    font-size: var(--font-sm);
-    line-height: 1.6;
-    color: var(--text-secondary);
-}
-
-.cs-intro,
-.cs-foot {
+.records-title .priority-summary {
+    display: block;
+    margin-top: var(--space-xs);
     font-size: var(--font-xs);
-    color: var(--text-tertiary);
-    margin: var(--space-xs) 0 var(--space-sm);
+    font-weight: 400;
 }
 
-.cs-list {
+.rc-intro,
+.rc-foot,
+.rc-recheck {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: var(--space-xs) 0 var(--space-md);
+    overflow-wrap: anywhere;
+}
+
+.rc-list {
     list-style: none;
-    margin: 0;
+    margin: 0 0 var(--space-md);
     padding: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
 }
 
-.cs-entry {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    column-gap: var(--space-sm);
+.rc-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: var(--space-md);
     min-width: 0;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
 }
 
-.cs-meta {
+.rc-head {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-xs);
-    font-size: var(--font-xs);
-    color: var(--text-tertiary);
-    min-width: 4.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    margin-bottom: var(--space-sm);
 }
 
-.cs-step {
+.rc-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
     font-weight: 600;
     color: var(--text-primary);
 }
 
-.cs-body {
+.rc-op,
+.rc-type {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.rc-op-delete {
+    border-color: var(--fail);
+    color: var(--fail-text);
+}
+
+.rc-type {
+    font-family: var(--font-mono);
+    font-weight: 500;
+}
+
+.rc-proto {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+.rc-field {
+    margin-top: var(--space-sm);
     min-width: 0;
 }
 
-.cs-body .plan-record-host strong {
+.rc-label {
+    display: block;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+.rc-host {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+.rc-row .record-block {
+    margin: var(--space-xs) 0 0;
+}
+
+.rc-current {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    max-height: 9rem;
+    overflow: auto;
+}
+
+.rc-current-text {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+.rc-plain,
+.rc-from,
+.rc-note {
+    margin: var(--space-xs) 0 0;
     overflow-wrap: anywhere;
 }
 
-.cs-why {
+.rc-note {
     font-size: var(--font-xs);
-    margin-top: var(--space-xs);
+    color: var(--text-tertiary);
 }
 
-@media (max-width: 640px) {
-    .cs-entry {
-        grid-template-columns: 1fr;
-    }
+/* A record that still holds an address only the owner knows. */
+.rc-placeholder {
+    margin: var(--space-sm) 0 0;
+    padding-left: var(--space-sm);
+    border-left: 3px solid var(--warn);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
 
-    .cs-meta {
-        flex-direction: row;
-        align-items: center;
-        min-width: 0;
-    }
+.rc-placeholder-note {
+    border-left: 3px solid var(--warn);
+    padding-left: var(--space-sm);
+    color: var(--text-secondary);
+}
+
+.rc-actions {
+    margin-bottom: var(--space-md);
+}
+
+.rc-copy-all,
+.rc-rerun {
+    font: inherit;
+    cursor: pointer;
+}
+
+.rc-copy-all {
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+    background: var(--primary-solid);
+    border: 1px solid var(--primary-solid);
+    border-radius: var(--radius);
+    color: var(--text-inverse);
+    font-weight: 600;
+}
+
+.rc-copy-all:hover {
+    background: var(--primary-solid-hover);
+}
+
+.rc-copy-all.copied {
+    animation: copy-flash 0.3s var(--ease);
+}
+
+/* A link in the sentence, with a target tall enough to press. */
+.rc-rerun {
+    display: inline-block;
+    min-height: 44px;
+    padding: 0 0.25rem;
+    background: none;
+    border: 0;
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.rc-copy-all:focus-visible,
+.rc-rerun:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
 }
 
 .plan-card-link {
