@@ -16,7 +16,6 @@ _STS_ID_RE = re.compile(r"[A-Za-z0-9]{1,32}")
 
 try:
     import requests
-    from requests.adapters import HTTPAdapter
     import http_tls
 
     REQUESTS_AVAILABLE = True
