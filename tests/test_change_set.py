@@ -359,10 +359,10 @@ def test_the_page_shows_the_records_block_open(browser, fixture_result):  # noqa
         block = pg.locator("#records-to-change")
         assert block.count() == 1
         assert "Records to change" in block.locator(".records-title").inner_text()
-        rows = pg.locator(".rc-row")
+        rows = pg.locator(".rtc-row")
         assert rows.count() == len(fixture_result["security_roadmap"]["change_set"]["entries"])
         assert rows.first.is_visible()
-        for sel in (".rc-copy-all", ".rc-rerun"):
+        for sel in (".rtc-copy-all", ".rtc-rerun"):
             assert block.locator(sel).first.bounding_box()["height"] >= 44
         assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert not errors, errors

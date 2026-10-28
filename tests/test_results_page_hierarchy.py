@@ -150,7 +150,9 @@ def test_the_executive_summary_buttons_open_their_targets(browser, fixture_resul
         for target in targets:
             page.evaluate("""t => document.querySelector(
                 `#tech-summary-slot [data-scroll-to="${t}"]`).click()""", target)
-            page.wait_for_timeout(500)
+            # The scroll is smooth, so a longer page needs longer to arrive;
+            # the test is about where it lands.
+            page.wait_for_timeout(1500)
             state = page.evaluate("""t => {
                 const el = document.getElementById(t);
                 const card = el.closest('.result-card');

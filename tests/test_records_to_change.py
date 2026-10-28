@@ -308,7 +308,7 @@ def test_the_block_fits_the_screen_with_44px_targets(browser, fixture_result, th
     # Long values wrap or scroll inside their own box, never past the card.
     over = pg.evaluate("""() => {
         const b = document.querySelector('#records-to-change').getBoundingClientRect();
-        return [...document.querySelectorAll('#records-to-change .rc-row')]
+        return [...document.querySelectorAll('#records-to-change .rtc-row')]
             .filter(r => r.getBoundingClientRect().right > b.right + 1).length;
     }""")
     assert over == 0
@@ -326,12 +326,12 @@ def test_the_dns_host_steps_sit_above_the_block_and_the_recheck_follows(browser,
         const q = s => document.querySelector(s);
         const pos = e => e ? e.getBoundingClientRect().top + scrollY : null;
         return [pos(q('#priority-list .priority-item, #priority-list .priority-row')),
-                pos(q('#records-to-change .dns-host')), pos(q('#records-to-change .rc-list')),
-                pos(q('#records-to-change .rc-recheck'))];
+                pos(q('#records-to-change .dns-host')), pos(q('#records-to-change .rtc-list')),
+                pos(q('#records-to-change .rtc-recheck'))];
     }""")
     assert order[1] is not None and order[1] < order[2] < order[3]
     assert pg.locator(".dns-host").count() == 1
-    assert pg.locator("#records-to-change .rc-rerun").count() == 1
+    assert pg.locator("#records-to-change .rtc-rerun").count() == 1
     assert not errors, errors
     ctx.close()
     assert res
@@ -370,7 +370,7 @@ def test_each_value_has_its_own_copy_button(browser, fixture_result):  # noqa: F
     _render(pg, fixture_result)
     cs = fixture_result["security_roadmap"]["change_set"]["entries"]
     with_value = [e for e in cs if e["value"] is not None and e["op"] != "delete"]
-    assert pg.locator("#records-to-change .rc-row .copy-btn").count() == len(with_value)
+    assert pg.locator("#records-to-change .rtc-row .copy-btn").count() == len(with_value)
     assert not errors, errors
     ctx.close()
 
@@ -384,8 +384,8 @@ def test_a_placeholder_row_says_so_on_the_page(browser, fixture_result):  # noqa
     res["security_roadmap"]["change_set"]["placeholders"] = 1
     ctx, pg, errors = _page(browser, "dark", 375)
     _render(pg, res)
-    row = pg.locator("#records-to-change .rc-row").first
-    assert "Replace REPLACE-WITH-YOUR-ADDRESS" in row.locator(".rc-placeholder").inner_text()
+    row = pg.locator("#records-to-change .rtc-row").first
+    assert "Replace REPLACE-WITH-YOUR-ADDRESS" in row.locator(".rtc-placeholder").inner_text()
     assert "an address for you to fill in" in pg.locator(".records-title").inner_text()
     assert not errors, errors
     ctx.close()

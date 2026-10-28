@@ -1340,16 +1340,16 @@ main {
     font-weight: 400;
 }
 
-.rc-intro,
-.rc-foot,
-.rc-recheck {
+.rtc-intro,
+.rtc-foot,
+.rtc-recheck {
     font-size: var(--font-sm);
     color: var(--text-secondary);
     margin: var(--space-xs) 0 var(--space-md);
     overflow-wrap: anywhere;
 }
 
-.rc-list {
+.rtc-list {
     list-style: none;
     margin: 0 0 var(--space-md);
     padding: 0;
@@ -1358,7 +1358,7 @@ main {
     gap: var(--space-md);
 }
 
-.rc-row {
+.rtc-row {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface);
@@ -1368,7 +1368,7 @@ main {
     color: var(--text-secondary);
 }
 
-.rc-head {
+.rtc-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1376,7 +1376,7 @@ main {
     margin-bottom: var(--space-sm);
 }
 
-.rc-step {
+.rtc-step {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1389,8 +1389,8 @@ main {
     color: var(--text-primary);
 }
 
-.rc-op,
-.rc-type {
+.rtc-op,
+.rtc-type {
     padding: 0.1rem 0.5rem;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
@@ -1399,34 +1399,33 @@ main {
     color: var(--text-primary);
 }
 
-.rc-op-delete {
+.rtc-head .rtc-type {
+    font-family: var(--font-mono);
+}
+
+.rtc-op-delete {
     border-color: var(--fail);
     color: var(--fail-text);
 }
 
-.rc-type {
-    font-family: var(--font-mono);
-    font-weight: 500;
-}
-
-.rc-proto {
+.rtc-proto {
     font-size: var(--font-xs);
     color: var(--text-tertiary);
 }
 
-.rc-field {
+.rtc-field {
     margin-top: var(--space-sm);
     min-width: 0;
 }
 
-.rc-label {
+.rtc-label {
     display: block;
     font-size: var(--font-xs);
     font-weight: 600;
     color: var(--text-tertiary);
 }
 
-.rc-host {
+.rtc-host {
     display: block;
     font-family: var(--font-mono);
     font-size: var(--font-sm);
@@ -1435,11 +1434,11 @@ main {
     word-break: break-all;
 }
 
-.rc-row .record-block {
+.rtc-row .record-block {
     margin: var(--space-xs) 0 0;
 }
 
-.rc-current {
+.rtc-current {
     margin-top: var(--space-xs);
     padding: var(--space-sm);
     border: 1px dashed var(--border-strong);
@@ -1448,7 +1447,7 @@ main {
     overflow: auto;
 }
 
-.rc-current-text {
+.rtc-current-text {
     display: block;
     font-family: var(--font-mono);
     font-size: var(--font-xs);
@@ -1458,20 +1457,20 @@ main {
     word-break: break-all;
 }
 
-.rc-plain,
-.rc-from,
-.rc-note {
+.rtc-plain,
+.rtc-from,
+.rtc-note {
     margin: var(--space-xs) 0 0;
     overflow-wrap: anywhere;
 }
 
-.rc-note {
+.rtc-row .rtc-note {
     font-size: var(--font-xs);
     color: var(--text-tertiary);
 }
 
 /* A record that still holds an address only the owner knows. */
-.rc-placeholder {
+.rtc-placeholder {
     margin: var(--space-sm) 0 0;
     padding-left: var(--space-sm);
     border-left: 3px solid var(--warn);
@@ -1479,23 +1478,19 @@ main {
     overflow-wrap: anywhere;
 }
 
-.rc-placeholder-note {
+.rtc-placeholder-note {
     border-left: 3px solid var(--warn);
     padding-left: var(--space-sm);
     color: var(--text-secondary);
 }
 
-.rc-actions {
+.rtc-actions {
     margin-bottom: var(--space-md);
 }
 
-.rc-copy-all,
-.rc-rerun {
+.rtc-copy-all {
     font: inherit;
     cursor: pointer;
-}
-
-.rc-copy-all {
     min-height: 44px;
     padding: 0.5rem 1rem;
     background: var(--primary-solid);
@@ -1505,16 +1500,18 @@ main {
     font-weight: 500;
 }
 
-.rc-copy-all:hover {
+.rtc-copy-all:hover {
     background: var(--primary-solid-hover);
 }
 
-.rc-copy-all.copied {
+.rtc-copy-all.copied {
     animation: copy-flash 0.3s var(--ease);
 }
 
 /* A link in the sentence, with a target tall enough to press. */
-.rc-rerun {
+.rtc-rerun {
+    font: inherit;
+    cursor: pointer;
     display: inline-block;
     min-height: 44px;
     padding: 0 0.25rem;
@@ -1524,10 +1521,57 @@ main {
     text-decoration: underline;
 }
 
-.rc-copy-all:focus-visible,
-.rc-rerun:focus-visible {
+.rtc-copy-all:focus-visible,
+.rtc-rerun:focus-visible {
     outline: 2px solid var(--border-focus);
     outline-offset: 2px;
+}
+
+/* Wide screens: the step, action and type sit in a column beside the
+   fields, and each field's label sits beside its value, so the block does
+   not push the cards a screen further down. */
+@media (min-width: 900px) {
+    .rtc-list {
+        gap: var(--space-sm);
+    }
+
+    .rtc-row {
+        display: grid;
+        grid-template-columns: 9rem minmax(0, 1fr);
+        column-gap: var(--space-md);
+        padding: var(--space-sm) var(--space-md);
+        align-items: start;
+    }
+
+    .rtc-head {
+        grid-column: 1;
+        grid-row: 1 / span 20;
+        flex-direction: column;
+        align-items: flex-start;
+        margin-bottom: 0;
+    }
+
+    .rtc-row > :not(.rtc-head) {
+        grid-column: 2;
+    }
+
+    .rtc-field {
+        display: grid;
+        grid-template-columns: 7rem minmax(0, 1fr);
+        column-gap: var(--space-sm);
+        margin-top: var(--space-xs);
+    }
+
+    .rtc-field:first-of-type {
+        margin-top: 0;
+    }
+
+    .rtc-field .record-block,
+    .rtc-field .rtc-current,
+    .rtc-field .rtc-plain,
+    .rtc-field .rtc-from {
+        margin-top: 0;
+    }
 }
 
 .plan-card-link {

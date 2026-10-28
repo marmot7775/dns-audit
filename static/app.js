@@ -4043,7 +4043,7 @@ function _changeRecordBlock(rec, notes) {
             <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
         </div>`;
     const by = rec.by ? `<div class="plan-record-note">Published by ${escapeHtml(rec.by)}, not by you.</div>` : '';
-    const warn = rec.placeholder ? `<div class="plan-record-note rc-placeholder-note">${escapeHtml(RC_PLACEHOLDER_WARNING)}</div>` : '';
+    const warn = rec.placeholder ? `<div class="plan-record-note rtc-placeholder-note">${escapeHtml(RC_PLACEHOLDER_WARNING)}</div>` : '';
     return `<div class="plan-record">
         <div class="plan-record-host">${_recordHostLine(rec)}</div>
         ${value}${by}${warn}
@@ -4091,35 +4091,35 @@ function _rcRow(e) {
     const hasValue = e.value !== null && e.value !== undefined;
     let valueHtml;
     if (e.op === 'delete') {
-        valueHtml = `<div class="rc-field"><span class="rc-label">Delete</span>
-            <p class="rc-plain">Remove this record. Nothing replaces it.</p></div>`;
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">Delete</span>
+            <p class="rtc-plain">Remove this record. Nothing replaces it.</p></div>`;
     } else if (hasValue) {
-        valueHtml = `<div class="rc-field"><span class="rc-label">${e.op === 'replace' ? 'New value' : 'Value'}</span>
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">${e.op === 'replace' ? 'New value' : 'Value'}</span>
             <div class="record-block record-block-inset${e.op === 'file' ? ' record-block-file' : ''}">
                 <span class="record-text">${escapeHtml(e.value)}</span>
                 <button class="copy-btn" aria-label="Copy value for step ${e.step}">Copy</button>
             </div></div>`;
     } else {
-        valueHtml = `<div class="rc-field"><span class="rc-label">Value</span>
-            <p class="rc-from"><strong>Comes from someone else.</strong> ${escapeHtml(e.value_from || '')}</p></div>`;
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">Value</span>
+            <p class="rtc-from"><strong>Comes from someone else.</strong> ${escapeHtml(e.value_from || '')}</p></div>`;
     }
     const current = e.current
-        ? `<div class="rc-field"><span class="rc-label">${e.op === 'delete' ? 'Current value' : 'Current value, replaced'}</span>
-            <div class="rc-current"><span class="rc-current-text">${escapeHtml(e.current)}</span></div></div>`
+        ? `<div class="rtc-field"><span class="rtc-label">${e.op === 'delete' ? 'Current value' : 'Current value, replaced'}</span>
+            <div class="rtc-current"><span class="rtc-current-text">${escapeHtml(e.current)}</span></div></div>`
         : '';
-    const warn = e.placeholder ? `<p class="rc-placeholder">${escapeHtml(RC_PLACEHOLDER_WARNING)}</p>` : '';
-    const by = e.by ? `<p class="rc-note">Published by ${escapeHtml(e.by)}, not by you.</p>` : '';
-    const notes = (e.notes || []).map(n => `<p class="rc-note">${escapeHtml(n)}</p>`).join('');
-    return `<li class="rc-row" data-rc-step="${e.step}">
-        <div class="rc-head">
-            <span class="rc-step" aria-label="Step ${e.step}">${e.step}</span>
-            <span class="rc-op rc-op-${escapeHtml(e.op)}">${op}</span>
-            <span class="rc-type">${escapeHtml(e.type)}</span>
-            <span class="rc-proto">${escapeHtml(e.protocol)}</span>
+    const warn = e.placeholder ? `<p class="rtc-placeholder">${escapeHtml(RC_PLACEHOLDER_WARNING)}</p>` : '';
+    const by = e.by ? `<p class="rtc-note">Published by ${escapeHtml(e.by)}, not by you.</p>` : '';
+    const notes = (e.notes || []).map(n => `<p class="rtc-note">${escapeHtml(n)}</p>`).join('');
+    return `<li class="rtc-row" data-rtc-step="${e.step}">
+        <div class="rtc-head">
+            <span class="rtc-step" aria-label="Step ${e.step}">${e.step}</span>
+            <span class="rtc-op rtc-op-${escapeHtml(e.op)}">${op}</span>
+            <span class="rtc-type">${escapeHtml(e.type)}</span>
+            <span class="rtc-proto">${escapeHtml(e.protocol)}</span>
             ${e.optional ? '<span class="tag tag-low">Optional</span>' : ''}
         </div>
-        <div class="rc-field"><span class="rc-label">${e.op === 'file' ? 'URL' : 'Host name'}</span>
-            <code class="rc-host">${escapeHtml(e.host)}</code></div>
+        <div class="rtc-field"><span class="rtc-label">${e.op === 'file' ? 'URL' : 'Host name'}</span>
+            <code class="rtc-host">${escapeHtml(e.host)}</code></div>
         ${valueHtml}${current}${warn}${by}${notes}
     </li>`;
 }
@@ -4135,29 +4135,29 @@ function renderChangeSet(cs, host) {
     if (cs.from_provider) parts.push(`${cs.from_provider} with a value that comes from someone else`);
     if (cs.placeholders) parts.push(`${cs.placeholders} with an address for you to fill in`);
     const rest = cs.rows_without_records
-        ? `<p class="rc-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
+        ? `<p class="rtc-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
         : '';
     return `<section class="records-block" id="records-to-change" aria-labelledby="records-title">
         <h3 class="records-title" id="records-title">Records to change <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></h3>
-        <p class="rc-intro">Top to bottom, in the order of the plan above. Where two plan items change one record, it appears once with both changes in it.</p>
+        <p class="rtc-intro">Top to bottom, in the order of the plan above. Where two plan items change one record, it appears once with both changes in it.</p>
         ${renderDnsHost(host)}
-        <ol class="rc-list">${entries.map(_rcRow).join('')}</ol>
-        <div class="rc-actions">
-            <button type="button" class="rc-copy-all" data-rc-copy-all>Copy all records</button>
+        <ol class="rtc-list">${entries.map(_rcRow).join('')}</ol>
+        <div class="rtc-actions">
+            <button type="button" class="rtc-copy-all" data-rtc-copy-all>Copy all records</button>
         </div>
         ${rest}
-        <p class="rc-recheck">After you publish, <button type="button" class="rc-rerun" data-rc-rerun>run this audit again</button>. The panel headed "Since" near the top of the page lists what changed. DNS changes can take a few minutes to reach resolvers.</p>
+        <p class="rtc-recheck">After you publish, <button type="button" class="rtc-rerun" data-rtc-rerun>run this audit again</button>. The panel headed "Since" near the top of the page lists what changed. DNS changes can take a few minutes to reach resolvers.</p>
     </section>`;
 }
 
 function wireChangeSet(root, data) {
     const block = root.querySelector('#records-to-change');
     if (!block) return;
-    const all = block.querySelector('[data-rc-copy-all]');
+    const all = block.querySelector('[data-rtc-copy-all]');
     if (all) all.addEventListener('click', () => {
         _copyToClipboard(rcCopyAllText(data.security_roadmap.change_set), all, 'Copy all records');
     });
-    const again = block.querySelector('[data-rc-rerun]');
+    const again = block.querySelector('[data-rtc-rerun]');
     if (again) again.addEventListener('click', () => {
         if (data.domain) runAudit(data.domain);
     });
