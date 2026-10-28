@@ -179,6 +179,27 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - A found key's vendor tag comes from the catalog rules the domain's MX or
   SPF matched. The raw result no longer carries `vendors_detected`.
 
+## 2026-10-28: Records to change
+
+- After What to do, an open "Records to change" block lists every record the
+  plan asks for, in the plan's order: step, add / replace / delete, type,
+  full host name, the exact value with a copy button, and for a replace the
+  value it replaces. "Copy all records" copies the list. The DNS host's click
+  path sits directly above it, and a link under it runs the audit again so
+  the "Since" panel shows what changed. The PDF has the same table, values in
+  monospace, wrapping inside their column.
+- Plan rows for SPF, DKIM, MTA-STS, TLS-RPT and BIMI carry records, as the
+  DMARC rows did: +all and ?all to ~all, merged duplicate SPF records (not
+  when they would pass 10 lookups or use redirect=), DKIM tag fixes, a new
+  MTA-STS policy file and TXT, a TLS-RPT record, a dangling DKIM CNAME to
+  delete. A DKIM key, a sender's include, a certificate URL or the move to
+  enforcement comes from the provider or the owner, and the row says so.
+- A report address nobody confirmed is no longer made up: the block shows
+  REPLACE-WITH-YOUR-ADDRESS, flagged on the row and in the count. An address
+  the domain already publishes is kept. API: `security_roadmap.change_set`
+  (`entries`, `placeholders`) and each row's `records`, with `current` and
+  `placeholder`. Replaces #221.
+
 ## 2026-10-25: The certificate card asks again
 
 - The home page offers three example domains under the box (github.com,

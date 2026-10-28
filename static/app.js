@@ -1005,8 +1005,13 @@ function renderResults(data, selector = '') {
     if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
-        priorityList.innerHTML = renderDnsHost(data.dns_host)
-            + renderPriorities(rm, checks, data.resilience, data.dns_host);
+        // With a records block, the DNS host's click path moves down to sit
+        // directly above it; with none it stays above the plan, as before.
+        const recordsBlock = renderChangeSet(rm.change_set, data.dns_host);
+        priorityList.innerHTML = (recordsBlock ? '' : renderDnsHost(data.dns_host))
+            + renderPriorities(rm, checks, data.resilience, data.dns_host)
+            + recordsBlock;
+        wireChangeSet(priorityList, data);
         // The row opens; the link into the card is a control inside it.
         priorityList.querySelectorAll('.priority-head').forEach(head => {
             const body = document.getElementById(head.getAttribute('aria-controls'));
@@ -4016,6 +4021,36 @@ function _dmarcPolicy(card) {
     return m ? m[2].toLowerCase() : '';
 }
 
+const CHANGE_OPS = {
+    add: 'Add', replace: 'Replace', delete: 'Delete', file: 'Publish',
+};
+
+// The line above a record: what to do, the type and the name. A policy
+// file is served over HTTPS, so its "name" is the URL.
+function _recordHostLine(rec) {
+    const op = CHANGE_OPS[rec.op] || 'Add';
+    if (rec.op === 'file') return `${op} the policy file at <strong>${escapeHtml(rec.host || '')}</strong>`;
+    return `${op} the ${escapeHtml(rec.type || 'TXT')} record at <strong>${escapeHtml(rec.host || '')}</strong>`;
+}
+
+// One record from the plan, inside a plan row: its exact value with a copy
+// button, or, when DNS cannot tell us the value, who supplies it.
+function _changeRecordBlock(rec, notes) {
+    const value = rec.value === null || rec.value === undefined
+        ? `<div class="plan-record-from"><span class="plan-record-from-label">Value:</span> ${escapeHtml(rec.value_from || '')}</div>`
+        : `<div class="record-block record-block-inset${rec.op === 'file' ? ' record-block-file' : ''}">
+            <span class="record-text">${escapeHtml(rec.value)}</span>
+            <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
+        </div>`;
+    const by = rec.by ? `<div class="plan-record-note">Published by ${escapeHtml(rec.by)}, not by you.</div>` : '';
+    const warn = rec.placeholder ? `<div class="plan-record-note rtc-placeholder-note">${escapeHtml(RC_PLACEHOLDER_WARNING)}</div>` : '';
+    return `<div class="plan-record">
+        <div class="plan-record-host">${_recordHostLine(rec)}</div>
+        ${value}${by}${warn}
+        ${(notes || []).map(n => `<div class="plan-record-note">${escapeHtml(n)}</div>`).join('')}
+    </div>`;
+}
+
 function _planRecordBlock(host, type, value, comment) {
     return `<div class="plan-record">
         <div class="plan-record-host">${escapeHtml(type || 'TXT')} record at <strong>${escapeHtml(host || '')}</strong></div>
@@ -4025,6 +4060,107 @@ function _planRecordBlock(host, type, value, comment) {
         </div>
         ${comment ? `<div class="fix-comment">${escapeHtml(comment)}</div>` : ''}
     </div>`;
+}
+
+const RC_PLACEHOLDER_WARNING = 'Replace REPLACE-WITH-YOUR-ADDRESS with a mailbox or report service you read before you publish. This audit does not know your address.';
+
+const RC_OPS = { add: 'Add', replace: 'Replace', delete: 'Delete', file: 'Publish' };
+
+// The text one row contributes to "Copy all records": the step, what to do
+// and where, then the value, or who supplies it.
+function _rcPlainRow(e) {
+    const what = e.op === 'file' ? `Publish the policy file at ${e.host}`
+        : `${RC_OPS[e.op] || 'Add'} ${e.type} record at ${e.host}`;
+    const lines = [`${e.step}. ${what}`];
+    if (e.op === 'delete') {
+        if (e.current) lines.push(`Current value: ${e.current}`);
+    } else if (e.value !== null && e.value !== undefined) {
+        lines.push(e.value);
+    } else {
+        lines.push(`Value from: ${e.value_from || 'your DNS host'}`);
+    }
+    return lines.join('\n');
+}
+
+function rcCopyAllText(cs) {
+    return ((cs && cs.entries) || []).map(_rcPlainRow).join('\n\n');
+}
+
+function _rcRow(e) {
+    const op = RC_OPS[e.op] || 'Add';
+    const hasValue = e.value !== null && e.value !== undefined;
+    let valueHtml;
+    if (e.op === 'delete') {
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">Delete</span>
+            <p class="rtc-plain">Remove this record. Nothing replaces it.</p></div>`;
+    } else if (hasValue) {
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">${e.op === 'replace' ? 'New value' : 'Value'}</span>
+            <div class="record-block record-block-inset${e.op === 'file' ? ' record-block-file' : ''}">
+                <span class="record-text">${escapeHtml(e.value)}</span>
+                <button class="copy-btn" aria-label="Copy value for step ${e.step}">Copy</button>
+            </div></div>`;
+    } else {
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">Value</span>
+            <p class="rtc-from"><strong>Comes from someone else.</strong> ${escapeHtml(e.value_from || '')}</p></div>`;
+    }
+    const current = e.current
+        ? `<div class="rtc-field"><span class="rtc-label">${e.op === 'delete' ? 'Current value' : 'Current value, replaced'}</span>
+            <div class="rtc-current"><span class="rtc-current-text">${escapeHtml(e.current)}</span></div></div>`
+        : '';
+    const warn = e.placeholder ? `<p class="rtc-placeholder">${escapeHtml(RC_PLACEHOLDER_WARNING)}</p>` : '';
+    const by = e.by ? `<p class="rtc-note">Published by ${escapeHtml(e.by)}, not by you.</p>` : '';
+    const notes = (e.notes || []).map(n => `<p class="rtc-note">${escapeHtml(n)}</p>`).join('');
+    return `<li class="rtc-row" data-rtc-step="${e.step}">
+        <div class="rtc-head">
+            <span class="rtc-step" aria-label="Step ${e.step}">${e.step}</span>
+            <span class="rtc-op rtc-op-${escapeHtml(e.op)}">${op}</span>
+            <span class="rtc-type">${escapeHtml(e.type)}</span>
+            <span class="rtc-proto">${escapeHtml(e.protocol)}</span>
+            ${e.optional ? '<span class="tag tag-low">Optional</span>' : ''}
+        </div>
+        <div class="rtc-field"><span class="rtc-label">${e.op === 'file' ? 'URL' : 'Host name'}</span>
+            <code class="rtc-host">${escapeHtml(e.host)}</code></div>
+        ${valueHtml}${current}${warn}${by}${notes}
+    </li>`;
+}
+
+// Records to change: every record the plan asks for, in the plan's order,
+// one row each. Rows that edit one record share a row whose value carries
+// all their edits, so working down the list never undoes a step. Open, right
+// after What to do, with the DNS host's click path above it.
+function renderChangeSet(cs, host) {
+    const entries = (cs && cs.entries) || [];
+    if (entries.length === 0) return '';
+    const parts = [`${entries.length} ${entries.length === 1 ? 'record' : 'records'}`];
+    if (cs.from_provider) parts.push(`${cs.from_provider} with a value that comes from someone else`);
+    if (cs.placeholders) parts.push(`${cs.placeholders} with an address for you to fill in`);
+    const rest = cs.rows_without_records
+        ? `<p class="rtc-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
+        : '';
+    return `<section class="records-block" id="records-to-change" aria-labelledby="records-title">
+        <h3 class="records-title" id="records-title">Records to change <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></h3>
+        <p class="rtc-intro">Top to bottom, in the order of the plan above. Where two plan items change one record, it appears once with both changes in it.</p>
+        ${renderDnsHost(host)}
+        <ol class="rtc-list">${entries.map(_rcRow).join('')}</ol>
+        <div class="rtc-actions">
+            <button type="button" class="rtc-copy-all" data-rtc-copy-all>Copy all records</button>
+        </div>
+        ${rest}
+        <p class="rtc-recheck">After you publish, <button type="button" class="rtc-rerun" data-rtc-rerun>run this audit again</button>. The panel headed "Since" near the top of the page lists what changed. DNS changes can take a few minutes to reach resolvers.</p>
+    </section>`;
+}
+
+function wireChangeSet(root, data) {
+    const block = root.querySelector('#records-to-change');
+    if (!block) return;
+    const all = block.querySelector('[data-rtc-copy-all]');
+    if (all) all.addEventListener('click', () => {
+        _copyToClipboard(rcCopyAllText(data.security_roadmap.change_set), all, 'Copy all records');
+    });
+    const again = block.querySelector('[data-rtc-rerun]');
+    if (again) again.addEventListener('click', () => {
+        if (data.domain) runAudit(data.domain);
+    });
 }
 
 // What to change: a record the reader can publish, or the card's own fix
@@ -4049,7 +4185,16 @@ function _planWhat(item, card, anchor) {
         const host = item.host || `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
         let html = _planRecordBlock(host, 'TXT', item.record);
         if (item.host_note) html += `<div class="plan-record-note">${escapeHtml(item.host_note)}</div>`;
-        html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        // A first record has no current policy for "the next edit" to be at.
+        if (card && card.record) html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
+        return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
+    }
+
+    // Every other row carries its records too: the exact value where DNS
+    // tells us it, or who supplies it.
+    if (item.records && item.records.length > 0) {
+        let html = item.records.map(r => _changeRecordBlock(r, r.note ? [r.note] : [])).join('');
         if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
         return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
     }

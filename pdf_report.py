@@ -356,6 +356,11 @@ def _styles():
     s["body_tiny"]   = ParagraphStyle("BT", fontName=FONTS["sans"],         fontSize=9,  textColor=TEXT_TER, leading=12)
     s["verdict"]     = ParagraphStyle("V",  fontName=FONTS["sans_italic"], fontSize=11, textColor=TEXT_TER, leading=16, spaceAfter=5)
     s["record"]      = ParagraphStyle("R",  fontName=FONTS["mono"],           fontSize=9.5, textColor=RECORD_FG, leading=13)
+    # Records-to-change table cells: light ground, so the dark record block's
+    # text colour would vanish. Long names and values break anywhere.
+    s["record_row"]  = ParagraphStyle("RR", fontName=FONTS["mono"], fontSize=8.5, textColor=TEXT_PRI, leading=11, wordWrap="CJK")
+    s["record_row_light"] = ParagraphStyle("RL", fontName=FONTS["mono"], fontSize=8.5, textColor=TEXT_PRI, leading=11, wordWrap="CJK")
+    s["mono_current"] = ParagraphStyle("MC", fontName=FONTS["mono"], fontSize=7.5, textColor=TEXT_TER, leading=10, wordWrap="CJK")
     s["record_sm"]   = ParagraphStyle("RS", fontName=FONTS["mono"],           fontSize=8.5, textColor=RECORD_FG, leading=12)
     s["fix_label"]   = ParagraphStyle("FL", fontName=FONTS["sans_bold"],    fontSize=10, textColor=PASS_CLR, leading=13, spaceAfter=3)
     s["fix_text"]    = ParagraphStyle("FT", fontName=FONTS["sans"],         fontSize=10, textColor=TEXT_PRI, leading=14)
@@ -912,6 +917,9 @@ def _plan_what_to_change(data, item, card, S):
             els.append(Paragraph(_safe(item["host_note"]), S["body_small"]))
         # No appendix letter: the migration path's letter depends on which
         # sections rendered, and a fixed "Appendix A" pointed at the wrong one.
+        # A first record has no current policy for "the next edit" to be at.
+        if not (card or {}).get("record"):
+            return els
         els.append(Paragraph(
             "This is the next edit at your current policy. Path to enforcement "
             "in the appendix carries the steps and the enforcement end state."
@@ -919,6 +927,13 @@ def _plan_what_to_change(data, item, card, S):
             "This is the next edit at your current policy. The report with its "
             "technical appendix carries the steps to enforcement.",
             S["body_tiny"]))
+        return els
+
+    # Every other row carries its records too, as on the web.
+    if item.get("records"):
+        els = []
+        for rec in item["records"]:
+            els.extend(_change_record_els(rec, [rec["note"]] if rec.get("note") else [], S))
         return els
 
     fix_records = (card or {}).get("fix_records") or []
@@ -945,6 +960,119 @@ def _plan_what_to_change(data, item, card, S):
 TIER_LABELS = {"critical": "Fix now", "high": "Important", "medium": "Recommended",
                "low": "Optional"}
 _OPTIONAL_PROTOCOLS = ("MTA-STS", "TLS-RPT", "BIMI", "DNSSEC", "CAA", "DANE")
+
+
+_CHANGE_OPS = {"add": "Add", "replace": "Replace", "delete": "Delete", "file": "Publish"}
+
+
+def _change_record_els(rec, notes, S):
+    """One record from the plan: the line saying what to do and where, the
+    exact value, or who supplies it when DNS cannot tell us. app.js's
+    _changeRecordBlock draws the same thing."""
+    op = _CHANGE_OPS.get(rec.get("op"), "Add")
+    host = _safe(rec.get("host", ""))
+    if rec.get("op") == "file":
+        line = f"{op} the policy file at <b>{host}</b>"
+    else:
+        line = f"{op} the {_safe(rec.get('type', 'TXT'))} record at <b>{host}</b>"
+    els = [Paragraph(line, S["body_small"])]
+    if rec.get("value") is None:
+        els.append(Paragraph(f"<b>Value:</b> {_safe(rec.get('value_from') or '')}", S["body"]))
+    else:
+        els.extend(_record_block(rec["value"], S, small=True))
+    if rec.get("by"):
+        els.append(Paragraph(f"Published by {_safe(rec['by'])}, not by you.", S["body_tiny"]))
+    for n in notes or []:
+        els.append(Paragraph(_safe(n), S["body_tiny"]))
+    return els
+
+
+_RC_PLACEHOLDER_WARNING = ("Replace REPLACE-WITH-YOUR-ADDRESS with a mailbox or report "
+                           "service you read before you publish. This audit does not know "
+                           "your address.")
+
+
+def _rc_value_cell(e, S):
+    """The value column of one row: the exact value in monospace, or who
+    supplies it, then the value it replaces and the notes."""
+    cell = []
+    mono = S["record_row"]
+    if e.get("op") == "delete":
+        cell.append(Paragraph("Remove this record. Nothing replaces it.", S["body_small"]))
+    elif e.get("value") is not None:
+        for ln in [x for x in str(e["value"]).split("\n") if x.strip()] or [""]:
+            cell.append(Paragraph(_safe(ln), mono))
+    else:
+        cell.append(Paragraph(f"<b>Comes from someone else.</b> {_safe(e.get('value_from') or '')}",
+                              S["body_small"]))
+    if e.get("current"):
+        label = "Current value" if e.get("op") == "delete" else "Current value, replaced"
+        cell.append(Paragraph(f"<b>{label}:</b>", S["body_tiny"]))
+        for ln in [x for x in str(e["current"]).split("\n") if x.strip()]:
+            cell.append(Paragraph(_safe(ln), S["mono_current"]))
+    if e.get("placeholder"):
+        cell.append(Paragraph(f"<b>{_safe(_RC_PLACEHOLDER_WARNING)}</b>", S["body_tiny"]))
+    if e.get("by"):
+        cell.append(Paragraph(f"Published by {_safe(e['by'])}, not by you.", S["body_tiny"]))
+    for n in e.get("notes") or []:
+        cell.append(Paragraph(_safe(n), S["body_tiny"]))
+    return cell
+
+
+def _change_set_block(data, S):
+    """Records to change, as a table: step, what to do, type, host name and
+    value. The same rows as the page, with nothing behind a toggle."""
+    cs = (data.get("security_roadmap") or {}).get("change_set") or {}
+    entries = cs.get("entries") or []
+    if not entries:
+        return []
+    bits = [f"{len(entries)} {'record' if len(entries) == 1 else 'records'}"]
+    if cs.get("from_provider"):
+        bits.append(f"{cs['from_provider']} with a value that comes from someone else")
+    if cs.get("placeholders"):
+        bits.append(f"{cs['placeholders']} with an address for you to fill in")
+    els = [Paragraph("Records to change", S["subheading"]),
+           Paragraph(_safe(", ".join(bits)) + ".", S["body_small"]),
+           Paragraph("Top to bottom, in the order of the plan above. Where two plan items "
+                     "change one record, it appears once with both changes in it.", S["body"]),
+           Spacer(1, SP_SM)]
+    els.extend(_dns_host_block(data, S))
+    head = [Paragraph(f"<b>{t}</b>", S["body_tiny"]) for t in
+            ("Step", "Do", "Type", "Host name", "Value")]
+    rows = [head]
+    for e in entries:
+        op = _CHANGE_OPS.get(e.get("op"), "Add")
+        proto = _safe(e.get("protocol", "")) + (" (optional)" if e.get("optional") else "")
+        rows.append([
+            Paragraph(f"<b>{e.get('step')}</b>", S["body_small"]),
+            [Paragraph(f"<b>{op}</b>", S["body_small"]), Paragraph(proto, S["body_tiny"])],
+            Paragraph(_safe(e.get("type", "")), S["body_small"]),
+            Paragraph(_safe(e.get("host", "")), S["record_row_light"]),
+            _rc_value_cell(e, S),
+        ])
+    widths = [0.45*inch, 0.85*inch, 0.75*inch, 1.7*inch, 2.75*inch]
+    table = Table(rows, colWidths=widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, 0), NEUTRAL_BG),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, BORDER),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    els.append(table)
+    n = cs.get("rows_without_records") or 0
+    if n:
+        els.extend([Spacer(1, SP_SM), Paragraph(
+            f"{n} plan {'item is' if n == 1 else 'items are'} not listed here: the change is "
+            "not a DNS record, or this audit cannot say which record. The plan above covers "
+            f"{'it' if n == 1 else 'them'}.", S["body_small"])])
+    els.extend([Spacer(1, SP_SM), Paragraph(
+        "After you publish, run the audit again at dns-audit.com. The panel headed "
+        "\"Since\" at the top of the results lists what changed. DNS changes can take a few "
+        "minutes to reach resolvers.", S["body_small"]), Spacer(1, SP_MD)])
+    return els
 
 
 def _is_optional_item(item):
@@ -1145,7 +1273,9 @@ def _roadmap_page(data, S, number=2):
     if summary and not items:
         els.append(Paragraph(_safe(summary), S["body"]))
         els.append(Spacer(1, SP_SM))
-    els.extend(_dns_host_block(data, S))
+    # The DNS host's steps sit above the records table when there is one.
+    if not ((roadmap.get("change_set") or {}).get("entries")):
+        els.extend(_dns_host_block(data, S))
 
     main = [i for i in items if not _is_optional_item(i)]
     extras = [i for i in items if _is_optional_item(i)]
@@ -1166,6 +1296,8 @@ def _roadmap_page(data, S, number=2):
         for i, item in enumerate(extras):
             block = _plan_item(data, item, S, optional=True)
             els.extend([KeepTogether([head, *_unwrap_keep(block)])] if i == 0 else block)
+
+    els.extend(_change_set_block(data, S))
 
     # No else branch: roadmap["summary"], printed above, already covers an
     # empty items list for every case (a real all-clear, a scoped run that
