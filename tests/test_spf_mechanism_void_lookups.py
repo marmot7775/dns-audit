@@ -70,3 +70,14 @@ def test_live_a_and_mx_targets_are_not_void():
         f"A record whose mechanisms all resolve, inside the lookup limit, "
         f"must pass. Got {card['status']!r}"
     )
+
+
+def test_two_dead_a_targets_are_within_the_limit():
+    record = "v=spf1 a:no1.example.test a:no2.example.test ip4:192.0.2.1 -all"
+    raw, card = _run({DOMAIN: {"TXT": [record]}}, record)
+
+    assert raw["void_lookup_count"] == 2
+    assert card["status"] != "fail", (
+        f"Two void lookups is within the RFC 7208 4.6.4 limit and must not "
+        f"fail the card. Got {card['status']!r}"
+    )
