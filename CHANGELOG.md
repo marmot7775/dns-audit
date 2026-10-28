@@ -157,6 +157,12 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   subdomains. A domain-only map runs beside it and stands in when the
   subdomain map runs past SENDER_MAP_BUDGET, so no panel comes back
   emptier than before. Large domains' audits take up to about 6 s longer.
+- Who sends as you: risks and warnings that no service's records explain,
+  such as an SPF include of a name with no SPF record, show above the map
+  under Across the domain. Before, no node carried them, so they were
+  never shown.
+- sendermap 0.1.11: the map's JSON now flags an SPF include or redirect
+  whose target publishes no SPF record, or several, as a risk.
 - sendermap 0.1.10: the vendor panel names Cheetah Digital by its
   cheetahmail.com NS delegation; Amazon SES no longer claims MX hosts
   under mail-manager-smtp.us-east-1.on.aws, whose proof drifted.

@@ -1300,10 +1300,20 @@ const SMAP_TIER_ORDER = ['In use', 'Configured', 'Likely', 'Account only'];
 // The risk findings that cite one of this service's own records (name, type
 // and value: the apex name is shared by every service there).
 const _smapEvKey = e => `${e.name}|${e.rtype}|${e.value}`;
+const _smapOwnKeys = svcs => new Set(svcs.flatMap(s => s.claims || []).map(c => c.evidence).filter(Boolean).map(_smapEvKey));
 function serviceFindings(svc, map) {
-    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(_smapEvKey));
+    const own = _smapOwnKeys([svc]);
     return ((map && map.findings) || []).filter(f =>
         (f.evidence || []).some(e => own.has(_smapEvKey(e))));
+}
+
+// Risks and warnings that cite no service's records, such as an SPF include
+// of a name with no SPF record. No node would show them, so they sit above
+// the map. Notes stay out: they inform, and repeat what the nodes show.
+function domainFindings(map) {
+    const own = _smapOwnKeys((map && map.services) || []);
+    return ((map && map.findings) || []).filter(f => f.severity !== 'note' &&
+        !(f.evidence || []).some(e => own.has(_smapEvKey(e))));
 }
 
 function senderMapNodes(map) {
@@ -1408,9 +1418,11 @@ function renderSenderMap(data) {
         .filter(k => counts[k])
         .map(k => `<span class="smap-legend-item smap-${k}"><span class="smap-dot"></span>${SMAP_STATE_WORD[k]} (${counts[k]})</span>`)
         .join('');
+    const domainFinds = domainFindings(map).map(f => `<li class="smap-finding-${safeClass(f.severity)}"><strong>${escapeHtml(f.title)}.</strong> ${escapeHtml(f.detail || '')}</li>`).join('');
     slot.innerHTML = `<section class="smap" aria-labelledby="smap-heading">
         <h2 class="smap-heading" id="smap-heading">Who sends as ${escapeHtml(data.domain)}</h2>
         ${map.story ? `<p class="smap-story">${escapeHtml(smapStory(map.story))}</p>` : ''}
+        ${domainFinds ? `<div class="smap-domain-findings"><h3 class="smap-detail-sub">Across the domain</h3><ul class="smap-findings">${domainFinds}</ul></div>` : ''}
         <div class="smap-legend">${legend}</div>
         <div class="smap-canvas">
             <svg class="smap-lines" aria-hidden="true" focusable="false"></svg>
