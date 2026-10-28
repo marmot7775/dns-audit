@@ -4838,9 +4838,9 @@ _probe_executor = ThreadPoolExecutor(
 # Also sized off the concurrency cap, for the same reason as _probe_executor:
 # a fixed 20 workers under 8 concurrent audits each submitting a full wave is
 # the starvation this pool exists to fix. The width is the most probes one
-# audit submits at once. Since Doc 102 both the priority wave (max_selectors
-# 40 plus ESP_SELECTORS) and the generic fallback go out in chunks of
-# DKIM_WAVE_CHUNK (52, equal to DKIM_FALLBACK_CHUNK), so
+# audit submits at once. Since Doc 102 both the priority wave (since Doc
+# 105 Sendermap's sweep plus LOCAL_SELECTORS) and the generic fallback go
+# out in chunks of DKIM_WAVE_CHUNK (52, equal to DKIM_FALLBACK_CHUNK), so
 # 52 x MAX_CONCURRENT_AUDITS (8) = 416 workers. It was 86 x 8 = 688 when the
 # priority wave went out whole. Never size it below DKIM_FALLBACK_CHUNK per
 # audit, or concurrent fallback chunks queue behind each other.

@@ -184,7 +184,7 @@ def test_absent_transport_cards_score_no_not_unknown(audit):
 def test_pdf_does_not_call_an_unenumerated_dkim_a_failed_lookup(audit):
     zone = _zone(f"v=DMARC1; p=reject; {RUA}")
     # The shared fixture publishes s1, which discovery reaches since Doc 93
-    # (ESP_SELECTORS). Drop it so nothing is found and the card is the
+    # (now in Sendermap's sweep). Drop it so nothing is found and the card is the
     # unconfirmed one this test is about.
     zone._records.pop(zone._key(f"s1._domainkey.{DOMAIN}", "TXT"))
     result = audit(zone, DOMAIN)  # no selector supplied

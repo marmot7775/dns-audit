@@ -136,6 +136,23 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
 
+## 2026-10-27: Doc 105. The DKIM sweep is Sendermap's dictionary
+
+- The audit's DKIM probe sends Sendermap's selector sweep (106 names) plus
+  `LOCAL_SELECTORS` (15 names this probe found in production that the
+  catalog does not carry yet), with the vendors the domain's MX or SPF
+  points at first, by the catalog's hints. The 40-name cap and the separate
+  ESP wave are gone; the whole sweep is the priority wave, still in chunks
+  of `DKIM_WAVE_CHUNK`. The generic fallback is unchanged.
+- `comprehensive_selectors.py` is now `generic_selectors.py`: the generic
+  fallback and `LOCAL_SELECTORS`. The 1,130-name master list, the ESP list
+  and the SPF vendor map with selectors are deleted, as are
+  `detect_vendors_from_spf`, `detect_vendors_from_mx` and
+  `MX_VENDOR_PATTERNS` in `spf_intelligence.py`. `SPF_VENDOR_MAP` keeps
+  vendor and category for the SPF card, without selectors.
+- A found key's vendor tag comes from the catalog rules the domain's MX or
+  SPF matched. The raw result no longer carries `vendors_detected`.
+
 ## 2026-10-25: The certificate card asks again
 
 - The home page offers three example domains under the box (github.com,

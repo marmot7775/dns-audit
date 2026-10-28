@@ -12,7 +12,7 @@ import dns.resolver
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import comprehensive_selectors
+import generic_selectors
 import spf_intelligence
 from conftest import FakeZone, fake_dns
 from result_transformer import build_security_roadmap, transform_dkim
@@ -47,7 +47,7 @@ def _zone(dangling=(), keys=(), registered=()):
 
 
 def _run(zone, monkeypatch):
-    monkeypatch.setattr(comprehensive_selectors, "GENERIC_SELECTORS", [])
+    monkeypatch.setattr(generic_selectors, "GENERIC_SELECTORS", [])
     with fake_dns(zone):
         return spf_intelligence.smart_dkim_check(DOMAIN, SPF, mx_hosts=[])
 
