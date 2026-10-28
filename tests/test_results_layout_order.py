@@ -7,7 +7,6 @@ through renderResults(), as tests/test_results_page_hierarchy.py does; they
 skip where Chromium is not installed, and CI installs it.
 """
 import io
-import json
 import os
 import re
 import sys
