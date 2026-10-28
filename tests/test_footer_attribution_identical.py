@@ -22,6 +22,10 @@ alone, so the footer-trust row (version, Security Policy, MIT License) sat on
 index.html and on none of the other seven pages for as long as it has existed
 and no test noticed. The comparison is now the whole <footer> element, which
 covers the trust row, the nav and anything added beside them later.
+
+Doc 105: two rows. Brand and nav on the first; on the second, under a
+hairline, the attribution sentence on the left and the trust group on the
+right. The attribution is a <p> now, and "Security policy" is sentence case.
 """
 import os
 import re
@@ -31,7 +35,7 @@ import pytest
 
 from static_pages import PAGES, STATIC
 
-ATTRIBUTION_RE = re.compile(r'<div class="footer-attribution">.*?</div>', re.DOTALL)
+ATTRIBUTION_RE = re.compile(r'<p class="footer-attribution">.*?</p>', re.DOTALL)
 FOOTER_RE = re.compile(r'<footer class="site-footer">.*?</footer>', re.DOTALL)
 TRUST_RE = re.compile(r'<div class="footer-trust">.*?</div>\s*</div>', re.DOTALL)
 LINKEDIN = "https://www.linkedin.com/in/neilanuskiewicz/"
@@ -89,16 +93,18 @@ def test_every_page_carries_the_trust_row(path):
     rel = os.path.relpath(path, STATIC)
     assert '<div class="footer-trust">' in footer, rel
     assert '<span class="footer-version">' in footer, rel
-    assert ">Security Policy</a>" in footer, rel
+    assert ">Security policy</a>" in footer, rel
     assert ">MIT License</a>" in footer, rel
 
 
-def test_the_trust_row_sits_between_the_nav_and_the_attribution():
+def test_the_meta_row_holds_the_attribution_then_the_trust_group():
     footer = _footer(os.path.join(STATIC, "index.html"))
-    nav = footer.index('<div class="footer-nav">')
+    nav = footer.index('<nav class="footer-nav" aria-label="Footer">')
+    meta = footer.index('<div class="footer-row footer-meta">')
+    attribution = footer.index('<p class="footer-attribution">')
     trust = footer.index('<div class="footer-trust">')
-    attribution = footer.index('<div class="footer-attribution">')
-    assert nav < trust < attribution
+    assert nav < meta < attribution < trust
+    assert "footer-dot" not in footer
 
 
 def test_the_footer_version_matches_the_packaged_version():
@@ -115,7 +121,7 @@ def test_footer_attribution_says_what_neil_does():
     block = _attribution(os.path.join(STATIC, "index.html"))
     # Doc 99: no email_off markers, so Cloudflare obfuscates the address.
     assert "email_off" not in block
-    assert block.startswith('<div class="footer-attribution">Built by Neil Anuskiewicz.')
+    assert block.startswith('<p class="footer-attribution">Built by Neil Anuskiewicz.')
     for service in ("email deliverability", "email security", "DNS"):
         assert service in block, service
     assert block.count("<a ") == 2

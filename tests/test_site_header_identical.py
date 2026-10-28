@@ -6,6 +6,11 @@ different spelling and the accent on a different word. This test extracts
 the <header> block from every static HTML page, strips the one permitted
 per-page difference (which nav link carries nav-link-active) and asserts
 that all eight blocks are byte-identical, so the header cannot drift again.
+
+Doc 105: the nav is the canonical copy for all three apps. Tools first
+(DNS Audit, Header Decoder, APRF Reader), a divider, then Articles and
+About. Every href is absolute, and the active link also carries
+aria-current="page", which the normalisation strips with the class.
 """
 import os
 import re
@@ -30,7 +35,7 @@ def _header(path):
 
 
 def _normalised(path):
-    return _header(path).replace(" nav-link-active", "")
+    return _header(path).replace(" nav-link-active", "").replace(' aria-current="page"', "")
 
 
 def test_every_static_page_is_covered():
@@ -55,19 +60,28 @@ def test_header_carries_the_wordmark(path):
     assert WORDMARK in header
     assert '<div class="header-right">' in header
     assert '<nav class="site-nav" aria-label="Main navigation">' in header
-    for label in ("Home", "Articles", "About"):
-        assert re.search(rf'class="nav-link(?: nav-link-active)?">{label}</a>', header), label
+    for label in ("DNS Audit", "Header Decoder", "APRF Reader"):
+        assert re.search(rf'class="nav-link(?: nav-link-active" aria-current="page)?"[^>]*>'
+                         rf'<span class="nav-long">{label}</span>', header), label
+    for label in ("Articles", "About"):
+        assert re.search(rf'class="nav-link(?: nav-link-active" aria-current="page)?">{label}</a>',
+                         header), label
+    assert ">Home<" not in header
+    assert '<span class="nav-sep" aria-hidden="true"></span>' in header
+    assert header.index("APRF Reader") < header.index("nav-sep") < header.index(">Articles<")
     assert 'id="theme-toggle"' in header
 
 
 @pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
 def test_at_most_one_active_nav_link(path):
-    assert _header(path).count("nav-link-active") <= 1
+    header = _header(path)
+    assert header.count("nav-link-active") <= 1
+    assert header.count('aria-current="page"') == header.count("nav-link-active")
 
 
 def test_active_link_matches_the_page():
     expected = {
-        "index.html": "Home",
+        "index.html": "DNS Audit",
         "about.html": "About",
         "articles/index.html": "Articles",
         "articles/dane.html": "Articles",
@@ -80,7 +94,12 @@ def test_active_link_matches_the_page():
     }
     for rel, label in expected.items():
         header = _header(os.path.join(STATIC, rel))
-        assert f'class="nav-link nav-link-active">{label}</a>' in header, rel
+        active = re.search(r'<a [^>]*class="nav-link nav-link-active" aria-current="page"[^>]*>(.*?)</a>',
+                           header)
+        assert active, rel
+        assert re.sub(r'<span class="nav-short">.*?</span>|<[^>]+>', "", active.group(1)) == label, rel
+    for rel in ("privacy.html", "404.html"):
+        assert "nav-link-active" not in _header(os.path.join(STATIC, rel)), rel
 
 
 def _index():
@@ -120,4 +139,5 @@ def test_header_links_to_the_header_decoder(path):
 def test_header_links_to_the_aprf_reader(path):
     """The APRF Report Reader lives on its own subdomain; every page links to it."""
     assert ('<a href="https://aprf.dns-audit.com/" class="nav-link" rel="noopener" '
-            'aria-label="APRF Reader">APRF<span class="nav-long"> Reader</span></a>') in _header(path)
+            'aria-label="APRF Reader"><span class="nav-long">APRF Reader</span>'
+            '<span class="nav-short">APRF</span></a>') in _header(path)

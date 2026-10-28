@@ -1675,7 +1675,7 @@ function renderRecheck(data) {
         ${better.length ? `<h3 class="recheck-sub recheck-good">Better (${better.length})</h3>${list(better.map(moveLine), 'recheck-better')}` : ''}
         ${d.added.length ? `<h3 class="recheck-sub recheck-bad">New (${d.added.length})</h3>${list(d.added, 'recheck-new')}` : ''}
         ${worse.length ? `<h3 class="recheck-sub recheck-bad">Worse (${worse.length})</h3>${list(worse.map(moveLine), 'recheck-worse')}` : ''}
-        <p class="recheck-foot">Compared in your browser with the last audit you ran here. Nothing is stored on the server.</p>
+        <p class="recheck-foot">Compared with the last audit you ran here.</p>
     </section>`;
 }
 
