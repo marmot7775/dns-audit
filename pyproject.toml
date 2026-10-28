@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 # deploy and CI install from them; tests/test_requirements_generated.py fails
 # when they drift. Edit here, then run: python3 tools/gen_requirements.py
 dependencies = [
-    "dnspython==2.8.0",
+    "dnspython==2.9.0",
     "fastapi==0.141.1",
     "uvicorn[standard]==0.40.0",
     "starlette>=1.3.1,<1.4",
