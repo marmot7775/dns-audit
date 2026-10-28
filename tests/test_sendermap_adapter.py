@@ -187,18 +187,50 @@ def test_map_senders_returns_none_past_its_budget_and_logs_it(monkeypatch, caplo
     assert "Sender map for example.test exceeded its 0.05s budget" in caplog.text
 
 
-def test_map_senders_asks_dns_only(monkeypatch):
-    seen = {}
+def test_map_senders_asks_dns_only_with_and_without_subdomains(monkeypatch):
+    seen = []
 
     async def fake_map(domain, **kwargs):
-        seen.update(kwargs, domain=domain)
-        return "map"
+        seen.append(kwargs)
+        return "with" if kwargs["use_subdomains"] else "without"
 
     monkeypatch.setattr(sendermap_adapter, "map_domain", fake_map)
-    assert map_senders("example.test", 5) == "map"
-    assert (seen["use_web"], seen["use_subdomains"], seen["use_ct"]) == (False, False, False)
-    assert isinstance(seen["resolver"], AuditResolver)
-    assert seen["checked_at"].tzinfo is not None
+    assert map_senders("example.test", 5) == "with"
+    assert sorted((k["use_web"], k["use_subdomains"], k["use_ct"]) for k in seen) == [
+        (False, False, False), (False, True, False)]
+    assert all(isinstance(k["resolver"], AuditResolver) for k in seen)
+    assert all(k["checked_at"].tzinfo is not None for k in seen)
+
+
+def _maps(subdomains_map, domain_map):
+    async def fake_map(domain, **kwargs):
+        return await (subdomains_map if kwargs["use_subdomains"] else domain_map)()
+    return fake_map
+
+
+def test_the_domain_only_map_stands_in_when_subdomains_run_past_the_budget(monkeypatch):
+    async def slow():
+        await asyncio.sleep(5)
+
+    async def quick():
+        return "domain only"
+
+    monkeypatch.setattr(sendermap_adapter, "map_domain", _maps(slow, quick))
+    started = time.monotonic()
+    assert map_senders("big.test", 0.2) == "domain only"
+    assert time.monotonic() - started < 2
+
+
+def test_the_domain_only_map_stands_in_when_the_subdomain_map_fails(monkeypatch):
+    async def broken():
+        raise RuntimeError("boom")
+
+    async def later():
+        await asyncio.sleep(0.1)
+        return "domain only"
+
+    monkeypatch.setattr(sendermap_adapter, "map_domain", _maps(broken, later))
+    assert map_senders("odd.test", 5) == "domain only"
 
 
 def test_the_audit_reads_sendermap_and_not_the_fingerprinter():
@@ -234,4 +266,5 @@ def test_a_map_past_its_budget_leaves_the_shared_pool_working(monkeypatch):
 
     monkeypatch.setattr(sendermap_adapter, "map_domain", quick)
     assert map_senders("quick.test", 5) == "answer"
-    assert calls == ["slow.test", "quick.test"]
+    # Two maps per audit (with and without subdomains), each asking once.
+    assert calls[:2] == ["slow.test", "slow.test"] and set(calls[2:]) == {"quick.test"}

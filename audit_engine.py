@@ -26,7 +26,9 @@ CHECK_TIMEOUT = 15
 
 # Seconds the sender map (Sendermap) gets inside the audit's deadline, the
 # fingerprinter's 8 s before it. Measured over tools' 20 step 1 domains on a
-# warm and a cold cache: see the Sendermap step 2 commit.
+# warm and a cold cache: see the Sendermap step 2 commit. Since sending
+# subdomains are mapped too (2026-10-28) a large domain's map can need 10 to
+# 15 s; past this budget the domain-only map stands in (map_senders).
 SENDER_MAP_BUDGET = 8
 
 # CT (crt.sh) result cache -- 24-hour TTL because CT data rarely changes
