@@ -8408,3 +8408,12 @@ h4.smap-detail-sub {
 .audit-input-section.compact .try-examples {
     display: none;
 }
+
+/* Four nav links plus the theme toggle need 312px; a 320 viewport leaves
+   296 inside the gutters. Trim the side padding so the nav still fits on
+   one line. Each link keeps its 44px height and min-width. */
+@media (max-width: 340px) {
+    .nav-link {
+        padding: 0.25rem 0.2rem;
+    }
+}
