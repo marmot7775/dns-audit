@@ -2,8 +2,9 @@
 
 Before, the audit probed from its own 1,130-name list, ordered by its own
 vendor tables, beside the sender map probing Sendermap's. Now every name the
-audit probes is in Sendermap's sweep, in LOCAL_SELECTORS (found in
-production, waiting on a catalog entry) or in the generic fallback.
+audit probes is in Sendermap's sweep, backed by a vendor the domain shows
+(Catalog.backs), in LOCAL_SELECTORS (found in production, waiting on a
+catalog entry) or in the generic fallback.
 """
 import os
 import sys
@@ -79,3 +80,18 @@ def test_a_key_at_a_matched_rules_name_carries_that_vendor():
             DOMAIN, None, mx_hosts=["contoso-com.mail.protection.outlook.com"])
     vendors = {s["selector"]: s["vendor"] for s in raw["found_selectors"]}
     assert vendors == {"selector1": "Microsoft 365", "default": None}
+
+
+def test_a_backed_only_name_is_asked_and_credited_only_where_its_vendor_is_shown():
+    # Google's dated keys are backed only names in the catalog: outside the
+    # sweep, asked and credited where the domain's MX or SPF shows Google.
+    with_google = _zone(keys=("20230601",), mx="smtp.google.com")
+    with fake_dns(with_google):
+        raw = spf_intelligence.smart_dkim_check(DOMAIN, None, mx_hosts=["smtp.google.com"])
+    vendors = {s["selector"]: s["vendor"] for s in raw["found_selectors"]}
+    assert vendors == {"20230601": "Google Workspace"}
+
+    without = _zone(keys=("20230601",))
+    with fake_dns(without):
+        spf_intelligence.smart_dkim_check(DOMAIN, None, mx_hosts=[])
+    assert "20230601" not in _probe_order(without)

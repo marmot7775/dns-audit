@@ -287,18 +287,21 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
     cat = sendermap_adapter.catalog()
     includes = parse_spf_record(spf_record) if spf_record else []
     ranked = rank_rules(cat.rules, mx_hosts or [], includes)
-    priority_selectors = list(probe_order(ranked, (*cat.probe_selectors, *LOCAL_SELECTORS)))
-    _seen_priority = set(priority_selectors)
 
-    # The names a matched rule claims: a key found at one of them belongs to
-    # the vendor this domain's own MX or SPF points at.
+    # The names a matched rule's vendor backs (Catalog.backs, as Sendermap's
+    # own engine does): a key found at one of them belongs to the vendor this
+    # domain's own MX or SPF points at. Backed only names such as Google's
+    # dated keys are outside the sweep and asked only here.
     mx_set = frozenset(h.lower().rstrip(".") for h in mx_hosts or [])
     spf_set = frozenset(i.lower().rstrip(".") for i in includes)
     backed = {}
     for rule in ranked:
         if rule.hints.matches(mx_set, spf_set):
-            for name in rule.shape.expand():
+            for name in sorted(cat.backs(rule.vendor)):
                 backed.setdefault(name.lower(), rule.vendor)
+    priority_selectors = list(
+        probe_order(ranked, (*cat.probe_selectors, *backed, *LOCAL_SELECTORS)))
+    _seen_priority = set(priority_selectors)
     if any(rule.hints.matches(frozenset(), spf_set) for rule in ranked):
         result['discovery_method'] = 'spf_intelligent'
     elif backed:
