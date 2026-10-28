@@ -26,6 +26,8 @@ covers the trust row, the nav and anything added beside them later.
 Doc 105: two rows. Brand and nav on the first; on the second, under a
 hairline, the attribution sentence on the left and the trust group on the
 right. The attribution is a <p> now, and "Security policy" is sentence case.
+The sentence is shorter: name, email, LinkedIn. The services question lives
+on About.
 """
 import os
 import re
@@ -122,8 +124,8 @@ def test_footer_attribution_says_what_neil_does():
     # Doc 99: no email_off markers, so Cloudflare obfuscates the address.
     assert "email_off" not in block
     assert block.startswith('<p class="footer-attribution">Built by Neil Anuskiewicz.')
-    for service in ("email deliverability", "email security", "DNS"):
-        assert service in block, service
+    # Doc 105 dropped the services question so the row fits one line at 1440.
+    assert "Need help" not in block
     assert block.count("<a ") == 2
     assert f'href="{LINKEDIN}"' in block
     assert 'target="_blank"' in block and 'rel="noopener"' in block

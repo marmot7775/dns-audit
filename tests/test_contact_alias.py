@@ -40,6 +40,7 @@ OTHER_FILES = [
     "docs/history/doc-88.md",
     "docs/history/doc-90.md",
     "docs/history/doc-99.md",
+    "docs/site-chrome.html",  # Doc 105: the canonical footer
 ]
 
 
