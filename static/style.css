@@ -5018,7 +5018,7 @@ h3.services-sub,
     }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 455px) {
     .sua-table th:nth-child(2),
 .sua-table td:nth-child(2),
 .sua-table th:nth-child(4),
@@ -8418,10 +8418,10 @@ h4.smap-detail-sub {
     }
 }
 
-/* Below about 480px the four links no longer share a row with the
+/* Below about 455px the four links no longer share a row with the
    wordmark, so the sticky header is two rows (about 114px). Anchored cards
    and panels need the larger offset to land below it. */
-@media (max-width: 480px) {
+@media (max-width: 455px) {
     .results-section,
     .result-card,
     .result-card [id],
