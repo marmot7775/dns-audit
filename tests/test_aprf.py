@@ -349,7 +349,8 @@ _LINE_JS = """() => {
 }"""
 
 
-@pytest.mark.parametrize("theme, width", [("dark", 375), ("light", 1280)])
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("width", [375, 1280])
 def test_not_published_is_one_collapsed_line(browser, not_published, theme, width):  # noqa: F811
     card = not_published["draft_standards"][0]
     assert card["aprf_state"] == "none"
