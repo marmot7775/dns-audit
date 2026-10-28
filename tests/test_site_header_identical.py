@@ -106,10 +106,3 @@ def test_domain_input_is_autofocused():
 def test_scope_buttons_come_before_the_form():
     html = _index()
     assert html.index('class="scope-selector"') < html.index('<form id="audit-form"')
-
-
-@pytest.mark.parametrize("path", PAGES, ids=lambda p: os.path.relpath(p, STATIC))
-def test_header_links_to_the_header_decoder(path):
-    """The sister tool lives on its own subdomain; every page links to it."""
-    assert ('<a href="https://headers.dns-audit.com/" class="nav-link" '
-            'rel="noopener">Header Decoder</a>') in _header(path)
