@@ -161,6 +161,8 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   such as an SPF include of a name with no SPF record, show above the map
   under Across the domain. Before, no node carried them, so they were
   never shown.
+- Who sends as you: risks read in red, in Across the domain and in a
+  service's own Risks list.
 - sendermap 0.1.11: the map's JSON now flags an SPF include or redirect
   whose target publishes no SPF record, or several, as a risk.
 - sendermap 0.1.10: the vendor panel names Cheetah Digital by its

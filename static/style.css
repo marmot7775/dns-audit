@@ -8639,9 +8639,12 @@ h4.smap-detail-sub {
     line-height: 1.55;
 }
 
-.smap-setup-missing,
-.smap-finding-risk {
+.smap-setup-missing {
     color: var(--text-primary);
+}
+
+.smap-finding-risk {
+    color: var(--fail-text);
 }
 
 .smap-claim-kind {
