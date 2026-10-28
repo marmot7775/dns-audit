@@ -57,8 +57,11 @@ def _tab_stops(page, limit=400):
         page.keyboard.press("Tab")
         info = page.evaluate("""() => { const e = document.activeElement;
             if (!e || e === document.body) return null;
+            // Two stops can read alike (the Copy buttons in the records block),
+            // so a stop is told apart by its element, not its text.
+            e.__tabId = e.__tabId || (window.__tabN = (window.__tabN || 0) + 1);
             return {inside: !!e.closest('#es-tech, .plan-optional-body, #services-body'),
-                    text: (e.textContent || '').trim().slice(0, 40)}; }""")
+                    text: (e.textContent || '').trim().slice(0, 40), id: e.__tabId}; }""")
         if info is None or info in seen[-1:]:
             break
         seen.append(info)

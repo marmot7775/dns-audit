@@ -1383,9 +1383,9 @@ main {
     min-width: 1.75rem;
     height: 1.75rem;
     padding: 0 0.4rem;
-    border-radius: 999px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-strong);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-primary);
 }
 
@@ -1395,7 +1395,7 @@ main {
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     font-size: var(--font-xs);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-primary);
 }
 
@@ -1502,7 +1502,7 @@ main {
     border: 1px solid var(--primary-solid);
     border-radius: var(--radius);
     color: var(--text-inverse);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .rc-copy-all:hover {
