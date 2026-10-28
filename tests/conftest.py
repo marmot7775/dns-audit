@@ -340,7 +340,7 @@ def fake_dns(zone, mta_sts_policy=None, ct_certs=None, bimi_logo=None):
     with patch("dns.resolver.Resolver.resolve", _method), \
          patch("dns.resolver.resolve", zone.resolve), \
          patch("checks_extra._safe_fetch", _fetch), \
-         patch("requests.get", _requests_get), \
+         patch("http_tls.get", _requests_get), \
          patch("requests.post", _blocked_http), \
          patch("requests.Session.request", _blocked_http), \
          patch("socket.getaddrinfo", _blocked_http), \

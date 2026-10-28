@@ -76,14 +76,14 @@ def test_crt_sh_query_asks_for_deduplicated_rows():
             seen["params"] = params
         raise requests.exceptions.ConnectionError("network disabled in tests")
 
-    with patch("requests.get", _fake_get):
+    with patch("http_tls.get", _fake_get):
         audit_engine._raw_check_ct_uncached("example.com", {})
     assert seen["params"].get("deduplicate") == "Y"
 
 
 def test_ct_check_gives_up_within_six_seconds():
     fake = _NeverAnswers()
-    with patch("requests.get", fake):
+    with patch("http_tls.get", fake):
         start = time.monotonic()
         raw = audit_engine._raw_check_ct("slow.example", {})
         took = time.monotonic() - start
@@ -100,7 +100,7 @@ def test_full_audit_is_not_held_by_crt_sh():
     other_checks = baseline["elapsed_seconds"]
 
     fake = _NeverAnswers()
-    with fake_dns(_zone()), patch("requests.get", fake):
+    with fake_dns(_zone()), patch("http_tls.get", fake):
         first = audit_engine.run_full_audit(DOMAIN, dkim_selector="s1", scope="complete")
         repeat = audit_engine.run_full_audit(DOMAIN, dkim_selector="s1", scope="complete")
 
@@ -122,7 +122,7 @@ def test_timeout_is_remembered_for_fifteen_minutes():
     def _must_not_call(*args, **kwargs):
         raise AssertionError("crt.sh was queried inside the timeout window")
 
-    with patch("requests.get", _must_not_call):
+    with patch("http_tls.get", _must_not_call):
         raw = audit_engine._raw_check_ct("slow.example", {})
     assert raw["unavailable_reason"] == "timeout_cached"
 
@@ -133,7 +133,7 @@ def test_timeout_is_remembered_for_fifteen_minutes():
         calls.append(url)
         raise requests.exceptions.ConnectionError("network disabled in tests")
 
-    with patch("requests.get", _fails_fast):
+    with patch("http_tls.get", _fails_fast):
         raw = audit_engine._raw_check_ct("slow.example", {})
     assert calls, "crt.sh was not asked again after the window closed"
     assert raw["unavailable_reason"] == "request_error"
@@ -145,7 +145,7 @@ def test_a_real_past_result_still_wins_over_a_cached_timeout():
     audit_engine._ct_cache["slow.example"]["timestamp"] -= audit_engine.CT_CACHE_TTL + 10
     audit_engine._set_cached_ct_timeout("slow.example", {"status": "warning", "unavailable_reason": "timeout"})
 
-    with patch("requests.get", lambda *a, **k: pytest.fail("crt.sh was queried")):
+    with patch("http_tls.get", lambda *a, **k: pytest.fail("crt.sh was queried")):
         assert audit_engine._raw_check_ct("slow.example", {}) == past
 
 
@@ -157,7 +157,7 @@ def test_a_timeout_does_not_replace_a_real_past_result():
     def _times_out(*args, **kwargs):
         raise requests.exceptions.ReadTimeout("crt.sh did not answer")
 
-    with patch("requests.get", _times_out):
+    with patch("http_tls.get", _times_out):
         assert audit_engine._raw_check_ct("slow.example", {}) == past
     assert audit_engine._get_stale_ct("slow.example") == past
 

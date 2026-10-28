@@ -4256,6 +4256,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
       - Certificate sprawl (too many CAs)
     """
     import requests
+    import http_tls
 
     result = {
         "check": "Certificate Transparency",
@@ -4290,7 +4291,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         """The same certificates from SSLMate's Cert Spotter, in crt.sh's
         field names, or None when it does not answer (429 included)."""
         try:
-            r = requests.get(
+            r = http_tls.get(
                 "https://api.certspotter.com/v1/issuances",
                 params=[("domain", domain), ("include_subdomains", "true"),
                         ("expand", "dns_names"), ("expand", "issuer")],
@@ -4331,7 +4332,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
     # Query crt.sh, then Cert Spotter when crt.sh does not answer.
     crt_failure = None
     try:
-        resp = requests.get(
+        resp = http_tls.get(
             "https://crt.sh/",
             # exclude=expired keeps a domain with a long certificate history
             # from burying every currently-valid cert under thousands of

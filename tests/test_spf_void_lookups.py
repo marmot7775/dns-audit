@@ -11,10 +11,13 @@ an error.
 Test asserts on the transformed SPF card (transform_spf output), not on
 the raw check dict.
 
-The broken includes here are NXDOMAIN, which is what RFC 7208 section 4.6.4
-actually calls a void lookup. An include target that resolves and publishes
-no SPF record is a different thing -- RFC 7208 section 5.2 makes it an
-immediate PermError -- and is covered by
+The broken includes here are NXDOMAIN. Each is a void lookup under RFC 7208
+section 4.6.4, and each is also a PermError on its own: a name that does not
+exist evaluates to "none" (section 4.3), and an include that gets "none" is a
+PermError (section 5.2). So one dead include fails the card, and the two
+void lookup budget matters only for a:, mx: and exists: targets, covered by
+tests/test_spf_mechanism_void_lookups.py. An include target that resolves
+and publishes no SPF record is covered by
 tests/test_spf_include_none_is_permerror.py.
 """
 import os
@@ -75,9 +78,9 @@ def test_four_void_lookups_fails_the_card():
     )
 
 
-def test_void_lookup_count_at_limit_does_not_fail():
-    """Two void lookups is within the RFC limit -- must not fail the card
-    on void-lookup grounds alone."""
+def test_two_includes_that_do_not_exist_fail_the_card():
+    """Two void lookups is within the 4.6.4 budget, but each include of a name
+    that does not exist is a PermError (4.3, 5.2), so the card fails."""
     record = "v=spf1 include:gone1.com include:gone2.com ip4:1.2.3.4 -all"
     records = {DOMAIN: record}
 
@@ -89,7 +92,11 @@ def test_void_lookup_count_at_limit_does_not_fail():
 
     assert raw["void_lookup_count"] == 2
     card = result_transformer.transform_spf(raw, has_mx=True)
-    assert card["status"] != "fail", (
-        f"Exactly 2 void lookups is within the RFC 7208 limit and must not "
-        f"fail the card; got status={card['status']!r}"
+    assert card["status"] == "fail", (
+        f"An include of a name that does not exist is a PermError; "
+        f"got status={card['status']!r}"
     )
+    issues = raw["spf_recursive"]["issues"]
+    broken = [i for i in issues if i["issue"].startswith("Broken include")]
+    assert {i["severity"] for i in broken} == {"error"}
+    assert not any("allows only two" in i["plain_english"] for i in broken)

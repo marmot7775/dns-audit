@@ -540,7 +540,9 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         "indeterminate": bool(indeterminate_domains),
         "indeterminate_domains": indeterminate_domains,
         "band": spf_lookup_band(total, bool(indeterminate_domains)),
-        "permerror_domains": permerror_domains,
+        # An include of a name that does not exist evaluates to "none" (RFC
+        # 7208 section 4.3), so it is the same 5.2 permerror as no record.
+        "permerror_domains": permerror_domains + nxdomain_domains,
         "multiple_spf_domains": multiple_spf_domains,
         "loop_domains": loop_domains,
         "macro_terms": [{"domain": d, "term": t} for d, t in macro_terms],
@@ -659,14 +661,15 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
 
     for target in nxdomain_domains:
         result["issues"].append({
-            "severity": "warning",
+            "severity": "error",
             "issue": f"Broken include: {target} does not exist",
             "plain_english": (
                 f"Your SPF chain includes {target}, but that name does not "
-                f"exist (NXDOMAIN). RFC 7208 section 4.6.4 counts this as a "
-                f"void lookup and allows only two."
+                f"exist (NXDOMAIN). RFC 7208 sections 4.3 and 5.2 make that an "
+                f"immediate PermError for the including record, not a 'void "
+                f"lookup' you are allowed two of. SPF fails entirely."
             ),
-            "impact": "Wasted lookup slot and potential PermError.",
+            "impact": "SPF returns PermError. Authentication fails for every message.",
             "fix": f"Remove the include for {target}.",
         })
 
