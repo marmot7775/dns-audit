@@ -2785,6 +2785,8 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     # The lookup count is then a floor, not a total, so the card must not
     # certify the record as clean.
     result["spf_indeterminate"] = bool(spf_recursive_result.get("indeterminate"))
+    # The walk spent its query budget, so lookup_count is a floor.
+    result["lookup_truncated"] = bool(spf_recursive_result.get("truncated"))
 
     # Merge in findings from the recursive resolution (e.g. broken includes /
     # void lookups) that would otherwise be silently discarded.
@@ -2826,7 +2828,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             f"enforcing the limit return PermError, which is not a pass, so SPF "
             f"cannot satisfy DMARC for any message from this domain.",
             "Remove or correct the a:, mx: and exists: mechanisms whose targets do "
-            "not resolve.",
+            "not resolve, and give every MX host an mx mechanism names an address.",
             business_risk_key="SPF_PERMERROR",
         )
 

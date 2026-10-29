@@ -25,7 +25,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from audit_engine import SCOPE_CHECKS, SCOPE_LABELS, ALL_SCOPE_CHECK_KEYS
-from spf_recursive import spf_lookup_band
+from spf_recursive import lookup_ratio_text, spf_lookup_band
 from result_transformer import PILL_NOT_APPLICABLE, PILL_NULL_MX
 
 # The pills that say a check does not apply to this domain. The tally counts
@@ -2031,7 +2031,7 @@ def _spf_deep_section(spf_deep, S):
         lc_clr = {"ok": PASS_CLR, "over": FAIL_CLR}.get(
             spf_deep.get("lookup_band") or spf_lookup_band(lookup_count), WARN_CLR)
         els.append(Paragraph(
-            f'DNS lookups: <font color="{lc_clr.hexval()}"><b>{lookup_count}/10</b></font>',
+            f'DNS lookups: <font color="{lc_clr.hexval()}"><b>{lookup_ratio_text(lookup_count, spf_deep.get("lookup_truncated"))}</b></font>',
             S["body"]
         ))
 

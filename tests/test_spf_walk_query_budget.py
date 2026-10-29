@@ -31,7 +31,7 @@ def _fan_out(monkeypatch, width=30, levels=3):
         return {"record": f"v=spf1 {kids} -all",
                 "status": spf_recursive.SPF_FOUND, "error": None}
 
-    def fake_mech(mtype, target):
+    def fake_mech(mtype, target, *_):
         calls["n"] += 1
         return "ok"
 
@@ -74,3 +74,20 @@ def test_ordinary_record_is_not_truncated(monkeypatch):
     # 3 includes, each with one a: term.
     assert result["total_lookups"] == 6
     assert calls["n"] == 1 + 3 + 3
+
+
+def test_every_surface_words_a_truncated_count_as_a_floor(monkeypatch):
+    import audit_engine
+    import result_transformer
+    from unittest.mock import patch
+
+    _fan_out(monkeypatch)
+    root = spf_recursive._lookup_spf("x.test")["record"]
+    with patch.object(audit_engine, "_lookup_txt", return_value=[root]), \
+         patch.object(audit_engine, "_lookup_ttl", return_value=None):
+        raw = audit_engine._raw_check_spf("x.test")
+    assert raw["lookup_truncated"] is True
+    card = result_transformer.transform_spf(raw, has_mx=True)
+    n = raw["lookup_count"]
+    assert f"({n}+/10 lookups, PermError)" in card["verdict"]
+    assert f"at least {n} DNS lookups" in card["explanation"]

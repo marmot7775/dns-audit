@@ -224,6 +224,8 @@ def build_spf_execution_trace(spf_recursive_result: Dict, spf_record: Optional[s
         "total_lookups": total_lookups,
         "limit": limit,
         "over_limit": total_lookups > limit,
+        # The walk spent its query budget, so total_lookups is a floor.
+        "truncated": bool(spf_recursive_result.get("truncated")),
         "flat_steps": flat_steps,
     }
 
@@ -533,6 +535,7 @@ def build_spf_tree_viz(spf_recursive_result: Dict) -> Optional[Dict]:
         "limit": limit,
         "over_limit": total_lookups > limit,
         "band": spf_recursive_result.get("band") or spf_lookup_band(total_lookups),
+        "truncated": bool(spf_recursive_result.get("truncated")),
         "root": root,
     }
 

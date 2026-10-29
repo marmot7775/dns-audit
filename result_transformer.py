@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from html import escape as _e
 
 from dkim_formatter import analyze_dkim_key_strength, dkim_record_problems, parse_dkim_tags
-from spf_recursive import spf_lookup_band
+from spf_recursive import lookup_count_text, lookup_ratio_text, spf_lookup_band
 import plan_records
 from plan_records import dkim_selector_records
 from dmarc_tree_walk import _psl_org_domain, _tld_extract
@@ -2123,7 +2123,10 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     _spf_band = _spf_card_band(spf)
     if _spf_band == "over":
         items.append({"priority": "critical", "protocol": "SPF", "_kind": "spf_lookups",
-                      "action": f"Reduce SPF lookups ({spf_deep['lookup_count']}/10)",
+                      "action": ("Reduce SPF lookups ("
+                                 + lookup_ratio_text(spf_deep['lookup_count'],
+                                                     spf_deep.get('lookup_truncated'))
+                                 + ")"),
                       "plain_head": ("Your approved sender list needs more DNS lookups than "
                                      "receiving servers allow, so some or all of your mail fails "
                                      "this check. Mail signed with DKIM for your own domain can still pass."),
@@ -6225,7 +6228,8 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         if all_mech == "+all":
             verdict = "Authorizes the entire internet to send as you"
         elif lookups > 10:
-            verdict = f"SPF is invalid ({lookups}/10 lookups, PermError)"
+            verdict = (f"SPF is invalid ({lookup_ratio_text(lookups, raw.get('lookup_truncated'))}"
+                       " lookups, PermError)")
         elif not all_mech and raw.get("has_redirect"):
             verdict = "SPF configured (via redirect)"
         elif not all_mech:
@@ -6310,7 +6314,8 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         if lookups and lookups > 10:
             explanation += (
                 f" <strong>Critical:</strong> This SPF record has a PermError because it requires "
-                f"{lookups} DNS lookups, exceeding the 10-lookup limit "
+                f"{lookup_count_text(lookups, raw.get('lookup_truncated'))} DNS lookups, "
+                f"exceeding the 10-lookup limit "
                 f"(<a href=\"https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4\" target=\"_blank\" rel=\"noopener\">RFC 7208 section 4.6.4</a>). "
                 f"Receivers must return PermError once the limit is exceeded. "
                 f"A PermError is not a pass, so SPF cannot "
@@ -6516,7 +6521,8 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             )
         elif _lookups and _lookups > 10:
             _deliverability = (
-                f"Your SPF record requires {_lookups} DNS lookups, exceeding the 10-lookup limit. "
+                f"Your SPF record requires {lookup_count_text(_lookups, raw.get('lookup_truncated'))} "
+                f"DNS lookups, exceeding the 10-lookup limit. "
                 f"Receivers return PermError. Some or all of your mail fails SPF, depending on "
                 f"the order of the record. For that mail, DMARC relies on DKIM alone. "
                 f"Every email platform you add (Mailchimp, Salesforce, "
@@ -6760,6 +6766,7 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
         "all_explanation": all_explanation,
         "all_severity": all_severity,
         "lookup_count": lookups,
+        "lookup_truncated": bool(raw.get("lookup_truncated")),
         "lookup_band": lookup_band,
         "misconfigs": misconfigs,
         "optimizations": optimizations,
