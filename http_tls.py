@@ -55,12 +55,19 @@ class SharedContextAdapter(HTTPAdapter):
         super().init_poolmanager(*args, **kwargs)
 
     def cert_verify(self, conn, url, verify, cert):
-        if url.lower().startswith("https") and verify is True and not cert:
-            conn.cert_reqs = "CERT_REQUIRED"
-            conn.ca_certs = None
-            conn.ca_cert_dir = None
+        if not url.lower().startswith("https"):
+            super().cert_verify(conn, url, verify, cert)
             return
-        super().cert_verify(conn, url, verify, cert)
+        # urllib3 applies verify=False or a CA bundle path to the context it
+        # is given, and that context is shared: one such fetch would change
+        # verification for every later fetch in the process. Refuse instead.
+        if verify is not True or cert:
+            raise ValueError("http_tls shares one SSLContext and verifies with the "
+                             "default bundle only; use requests directly for "
+                             "verify=False, a custom CA bundle or a client cert")
+        conn.cert_reqs = "CERT_REQUIRED"
+        conn.ca_certs = None
+        conn.ca_cert_dir = None
 
 
 def session(adapter: HTTPAdapter = None) -> requests.Session:

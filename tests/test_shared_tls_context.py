@@ -71,12 +71,16 @@ def test_cert_verify_does_not_hand_urllib3_a_bundle_path():
     assert conn.ca_cert_dir is None
 
 
-def test_cert_verify_falls_through_for_custom_bundle():
+@pytest.mark.parametrize("verify,cert", [("/tmp/ca.pem", None), (False, None),
+                                         (True, "/tmp/client.pem")])
+def test_cert_verify_refuses_anything_that_would_change_the_shared_context(verify, cert):
+    """urllib3 would load a custom bundle into, or turn verification off on,
+    the shared context, and every later fetch would inherit it (CodeRabbit
+    on #251)."""
     adapter = http_tls.SharedContextAdapter()
-    conn = mock.Mock()
-    with mock.patch.object(http_tls.HTTPAdapter, "cert_verify") as base:
-        adapter.cert_verify(conn, "https://example.com/", "/tmp/ca.pem", None)
-    base.assert_called_once()
+    with pytest.raises(ValueError):
+        adapter.cert_verify(mock.Mock(), "https://example.com/", verify, cert)
+    assert http_tls.shared_context().verify_mode == ssl.CERT_REQUIRED
 
 
 def test_pinned_adapter_requires_host_header():

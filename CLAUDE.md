@@ -173,10 +173,10 @@ Cloudflare drops has to be removed by hand (`sudo ufw status numbered`, then
 request with `--resolve dns-audit.com:443:DROPLET_HOST` times out.
 
 ## Cache-busting
-After any change to `static/style.css`, `static/app.js`, `static/articles.js` or `static/theme.js`, run this command before committing, OR include it as the final step of your commit. It handles any alphanumeric version string and rewrites both CSS and JS references across every static HTML page:
+After any change to `static/style.css`, `static/app.js`, `static/articles.js` or `static/theme.js`, run this command before committing. The version is the first ten hex characters of the SHA-256 of the four assets in that order, so it changes only when an asset does and survives squash and rebase merges (a commit SHA did not). It rewrites both CSS and JS references across every static HTML page:
 
 ```bash
-NEW=$(git rev-parse --short HEAD) && for f in static/*.html static/articles/*.html; do
+NEW=$(cat static/style.css static/app.js static/theme.js static/articles.js | sha256sum | cut -c1-10) && for f in static/*.html static/articles/*.html; do
   sed -i -E "s|(style\.css\|app\.js\|articles\.js\|theme\.js)\?v=[a-zA-Z0-9]+|\1?v=$NEW|g" "$f"
 done
 ```
