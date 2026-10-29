@@ -1299,7 +1299,22 @@ def _roadmap_fix_text(card: Dict) -> str:
     fix = card.get("fix") or ""
     if not isinstance(fix, str):
         return ""
-    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", "", fix))).strip()
+    # Stripping tags alone ran the paragraphs together: "Detected services:
+    # ZendeskSuggested SPF record:v=spf1 ... ?allChange ?all to ~all". A
+    # paragraph break ends a sentence, except after a record in <code>,
+    # where a period would be copied with it.
+    out: List[str] = []
+    ended_in_code = False
+    for para in re.split(r"(?:<br\s*/?>\s*){2,}", fix):
+        text = re.sub(r"<br\s*/?>", " ", para)
+        text = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", "", text))).strip()
+        if not text:
+            continue
+        if out and not ended_in_code and not out[-1].endswith((".", "!", "?", ":")):
+            out[-1] += "."
+        out.append(text)
+        ended_in_code = bool(re.search(r"</code>\s*$", para))
+    return " ".join(out)
 
 
 def _edit_dmarc_record(record: Optional[str], set_tags: Optional[Dict[str, str]] = None,
