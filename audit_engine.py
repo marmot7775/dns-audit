@@ -2784,7 +2784,10 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     # True when some lookup in the chain never answered (SERVFAIL, timeout).
     # The lookup count is then a floor, not a total, so the card must not
     # certify the record as clean.
-    result["spf_indeterminate"] = bool(spf_recursive_result.get("indeterminate"))
+    # A walk that stopped at its query cap under 10 lookups is the same: the
+    # count is a floor and some mx hosts were never checked.
+    result["spf_indeterminate"] = bool(spf_recursive_result.get("indeterminate")
+                                       or spf_recursive_result.get("incomplete"))
     # The walk spent its query budget, so lookup_count is a floor.
     result["lookup_truncated"] = bool(spf_recursive_result.get("truncated"))
 
