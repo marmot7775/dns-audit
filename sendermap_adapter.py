@@ -148,11 +148,32 @@ def map_senders(domain: str, budget_seconds: float) -> Optional[SenderMap]:
     except Exception:
         log.debug("Sender map failed", exc_info=True)
     finally:
-        for pending in asyncio.all_tasks(loop):
-            pending.cancel()
-        loop.run_until_complete(asyncio.sleep(0))
+        _drain(loop)
         loop.close()
     return None
+
+
+def _drain(loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel every task on `loop` and run it until they have all ended.
+
+    One step of the loop after the cancel used to be the whole of this. It
+    reached the outermost tasks only, so the loop closed with tasks nested in
+    gathers and task groups still pending, and asyncio logged "Task was
+    destroyed but it is pending!" for the losing map on nearly every audit.
+    A cancelled task waits on nothing slow: a question in flight runs on in
+    _MAP_EXECUTOR, but the future the task awaits is cancelled at once. The
+    rounds and the timeout only bound a task that suppresses its cancel.
+    """
+    for _ in range(5):
+        pending = asyncio.all_tasks(loop)
+        if not pending:
+            return
+        for task in pending:
+            task.cancel()
+        loop.run_until_complete(asyncio.wait(pending, timeout=1.0))
+        for task in pending:
+            if task.done() and not task.cancelled():
+                task.exception()
 
 
 @cache
