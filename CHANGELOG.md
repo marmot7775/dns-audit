@@ -32,6 +32,10 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   services listed and no missing records claimed.
 
 ### Changed
+- The shared TLS adapter refuses verify=False, a custom CA bundle or a client
+  cert. urllib3 would have applied any of them to the process-wide SSLContext,
+  so one such fetch changed verification for every later one (CodeRabbit on
+  #251). No caller passes them today.
 - The sender map's losing run is cancelled and drained before its event loop
   closes. It was closed one step after the cancel, so asyncio logged "Task was
   destroyed but it is pending!" on nearly every audit, 17 Sentry issues.
