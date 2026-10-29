@@ -18,7 +18,7 @@ Usage:
 import dns.resolver
 import dns.exception
 import re
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from dns_tools import is_spf_record
 
@@ -90,6 +90,16 @@ SPF_INDETERMINATE = "indeterminate"
 
 # RFC 7208 section 4.6.4 caps the terms that cause a DNS query at 10.
 SPF_LOOKUP_LIMIT = 10
+
+# DNS queries one count_spf_lookups walk may send. Receivers stop at 10
+# lookups; this walk keeps going so it can report the true total, and
+# without a cap a record tree the audited domain controls decides how much
+# DNS one audit sends. Three levels of 30 includes each cost 27,931 queries,
+# and the thread kept running long after the audit's timeout gave up on it.
+# Every query past the root's own costs a counted lookup, so a walk that
+# spends the budget has already counted 99 or more: the over-limit verdict
+# stands, and the total is reported as a floor.
+SPF_WALK_QUERY_BUDGET = 100
 
 
 def spf_lookup_band(lookups, indeterminate: bool = False) -> str:
@@ -171,8 +181,16 @@ def _lookup_spf(domain: str) -> Dict[str, Any]:
     return {"record": None, "status": SPF_NO_RECORD, "error": None}
 
 
+# RFC 7208 section 4.6.4: an mx mechanism may not look up the addresses of
+# more than 10 MX hosts. A target with more MX records than that makes the
+# mechanism a PermError.
+SPF_MX_HOST_LIMIT = 10
+MX_OVER_LIMIT = "too_many_mx"
+
+
 def _query_answer_status(domain: str, rdtype: str) -> str:
-    """Resolve one name and report "ok", "void" or "error".
+    """Resolve one name and report "ok", "void" or "error", or
+    MX_OVER_LIMIT for an MX query with more than SPF_MX_HOST_LIMIT answers.
 
     RFC 7208 section 4.6.4 defines a void lookup as a query that returns
     NXDOMAIN or zero answer records.
@@ -180,6 +198,8 @@ def _query_answer_status(domain: str, rdtype: str) -> str:
     try:
         resolver = _get_resolver()
         answers = resolver.resolve(domain, rdtype)
+        if rdtype == "MX" and len(answers) > SPF_MX_HOST_LIMIT:
+            return MX_OVER_LIMIT
         return "ok" if len(answers) > 0 else "void"
     except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return "void"
@@ -196,7 +216,8 @@ def _mechanism_target(mech: Dict[str, str], current_domain: str) -> str:
 
 
 def _mechanism_lookup_status(mtype: str, target: str) -> str:
-    """Resolve an a:/mx:/exists: target. Returns "ok", "void" or "error"."""
+    """Resolve an a:/mx:/exists: target. Returns "ok", "void", "error" or
+    MX_OVER_LIMIT."""
     if not target or "%" in target:
         # A macro-expanded target depends on the connecting client, so it
         # cannot be evaluated from the record alone.
@@ -307,10 +328,23 @@ def _parse_spf_mechanisms(spf_record: str) -> List[Dict[str, str]]:
 
 
 def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
-                     max_depth: int = 10) -> Dict[str, Any]:
+                     max_depth: int = 10,
+                     budget: Optional[List[int]] = None) -> Dict[str, Any]:
     """
     Recursively count DNS lookups in an SPF record chain.
+
+    budget is a one-element list of queries left, shared by the whole walk.
+    Once it runs out, lookup terms are still counted but not resolved.
     """
+    if budget is None:
+        budget = [SPF_WALK_QUERY_BUDGET]
+
+    def _spend() -> bool:
+        if budget[0] <= 0:
+            return False
+        budget[0] -= 1
+        return True
+
     node = {
         "domain": domain,
         "record": None,
@@ -324,6 +358,8 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
         "void_lookups": 0,
         "indeterminate": False,
         "macro_targets": [],
+        "truncated": False,
+        "mx_over_limit": [],
     }
 
     domain_lower = domain.lower().rstrip(".")
@@ -337,6 +373,7 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
         node["error"] = f"Max recursion depth ({max_depth}) exceeded"
         return node
 
+    _spend()
     lookup = _lookup_spf(domain)
     spf_record = lookup.get("record")
     node["lookup_status"] = lookup.get("status") or (
@@ -389,7 +426,9 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
             # ptr: is deliberately excluded: its query is a PTR of the
             # connecting client's IP, which cannot be evaluated from the
             # record alone.
-            if mtype != "ptr":
+            if mtype != "ptr" and not _spend():
+                node["truncated"] = True
+            elif mtype != "ptr":
                 mech_status = _mechanism_lookup_status(
                     mtype, _mechanism_target(mech, domain)
                 )
@@ -398,6 +437,8 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
                     mech["void"] = True
                 elif mech_status == "error":
                     node["indeterminate"] = True
+                elif mech_status == MX_OVER_LIMIT:
+                    node["mx_over_limit"].append(mech.get("raw") or "mx")
 
         elif mtype in ("include", "redirect"):
             # RFC 7208 §6.1: a redirect with 'all' present is never reached,
@@ -418,7 +459,12 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
                 local_macros.append(mech.get("raw") or mech["value"])
                 continue
 
-            child = _count_recursive(mech["value"], set(visited), depth + 1, max_depth)
+            if budget[0] <= 0:
+                node["truncated"] = True
+                continue
+
+            child = _count_recursive(mech["value"], set(visited), depth + 1,
+                                     max_depth, budget)
             node["children"].append(child)
             if child.get("lookup_status") == SPF_NXDOMAIN:
                 local_voids += 1
@@ -447,6 +493,8 @@ def _flatten_chain(node: Dict, chain: List[Dict] = None, indent: int = 0) -> Lis
         "void_lookups": node.get("void_lookups", 0),
         "indeterminate": bool(node.get("indeterminate")),
         "macro_targets": list(node.get("macro_targets") or []),
+        "truncated": bool(node.get("truncated")),
+        "mx_over_limit": list(node.get("mx_over_limit") or []),
     }
 
     lookup_details = []
@@ -489,7 +537,9 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
     tree = _count_recursive(domain, visited)
     chain = _flatten_chain(tree)
     total = tree["total"]
-    limit = 10
+    limit = SPF_LOOKUP_LIMIT
+    # The walk spent its query budget, so total is a floor (99 or more).
+    truncated = any(e.get("truncated") for e in chain)
 
     # RFC 7208 section 4.6.4 void lookups: NXDOMAIN or empty-answer results
     # from a:, mx:, exists: targets and from include/redirect targets that do
@@ -515,6 +565,10 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
     loop_domains = [
         e["domain"] for e in chain if e.get("lookup_status") == SPF_LOOP
     ]
+    # (domain, term) for every mx mechanism whose target has more than 10 MX
+    # hosts, a PermError wherever in the chain it sits.
+    mx_over_limit = [(e["domain"], t) for e in chain
+                     for t in e.get("mx_over_limit", [])]
     # (domain, term) for every include or redirect whose target is macro
     # expanded. Deduplicated, since the same term can appear more than once.
     macro_terms = []
@@ -546,26 +600,30 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         "multiple_spf_domains": multiple_spf_domains,
         "loop_domains": loop_domains,
         "macro_terms": [{"domain": d, "term": t} for d, t in macro_terms],
+        "truncated": truncated,
+        "mx_over_limit": [{"domain": d, "term": t} for d, t in mx_over_limit],
     }
 
     if total > limit:
+        at_least = "at least " if truncated else ""
         result["status"] = "fail"
         result["summary"] = (
-            f"{total} DNS lookups found (limit: 10). "
-            f"Over by {total - limit}. "
+            f"{'At least ' if truncated else ''}{total} DNS lookups found "
+            f"(limit: 10). "
+            f"Over by {at_least}{total - limit}. "
             f"Receivers must return PermError."
         )
         result["issues"].append({
             "severity": "error",
             "kind": "lookup_limit",
-            "issue": f"SPF exceeds 10-lookup limit ({total} lookups)",
+            "issue": f"SPF exceeds 10-lookup limit ({at_least}{total} lookups)",
             "plain_english": (
-                f"Your SPF record requires {total} DNS lookups when fully resolved. "
+                f"Your SPF record requires {at_least}{total} DNS lookups when fully resolved. "
                 f"Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."
             ),
             "impact": "SPF cannot satisfy DMARC for any message from this domain.",
             "fix": (
-                f"Reduce lookups by {total - limit}. Audit your includes: "
+                f"Reduce lookups by {at_least}{total - limit}. Audit your includes: "
                 "remove services you no longer use and consolidate senders where possible."
             ),
         })
@@ -709,6 +767,24 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
                 f"Merge the SPF records at {target} into a single v=spf1 "
                 f"record. If {target} is not yours, raise it with whoever "
                 f"operates it."
+            ),
+        })
+
+    for owner, term in mx_over_limit:
+        result["status"] = "fail"
+        result["issues"].append({
+            "severity": "error",
+            "issue": f"SPF mx mechanism has more than 10 MX hosts: {term}",
+            "plain_english": (
+                f"The term {term} in the SPF record for {owner} points at a "
+                f"name with more than 10 MX records. RFC 7208 section 4.6.4 "
+                f"lets an mx mechanism look up at most 10 MX hosts, so "
+                f"receivers return PermError and SPF fails for every message."
+            ),
+            "impact": "SPF returns PermError. Authentication fails for every message.",
+            "fix": (
+                f"Replace {term} with ip4: and ip6: ranges for the hosts that "
+                f"actually send mail, or an include from your provider."
             ),
         })
 
