@@ -2279,12 +2279,12 @@ function _reportChainSummary(rc) {
 
 function _spfExecutionSummary(exec) {
     if (!exec || typeof exec.total_lookups !== 'number') return '';
-    return `${_count(exec.total_lookups, 'lookup')} of 10`;
+    return `${exec.truncated ? 'At least ' : ''}${_count(exec.total_lookups, 'lookup')} of 10`;
 }
 
 function _spfTreeSummary(tree) {
     if (!tree || typeof tree.total_lookups !== 'number') return '';
-    return `${tree.total_lookups} of ${tree.limit || 10} lookups used`;
+    return `${tree.truncated ? 'At least ' : ''}${tree.total_lookups} of ${tree.limit || 10} lookups used`;
 }
 
 function _dkimDeepSummary(dk) {
@@ -4385,7 +4385,7 @@ function renderSpfExecution(exec) {
 
     // Intro
     if (exec.over_limit) {
-        html += `<div class="se-intro">This domain's SPF record requires <strong>${exec.total_lookups} DNS lookups</strong>,
+        html += `<div class="se-intro">This domain's SPF record requires <strong>${exec.truncated ? 'at least ' : ''}${exec.total_lookups} DNS lookups</strong>,
             exceeding the RFC 7208 limit of 10. RFC 7208 requires a receiver to return a permanent error (permerror) when evaluation reaches the eleventh lookup.</div>`;
     }
 
@@ -4621,7 +4621,7 @@ function renderSpfTree(tree) {
             </div>
             <div class="st-budget">
                 <div class="st-budget-label">
-                    <span><strong>${used}</strong> of <strong>${limit}</strong> DNS lookups used</span>
+                    <span>${tree.truncated ? 'At least ' : ''}<strong>${used}</strong> of <strong>${limit}</strong> DNS lookups used</span>
                     ${statusLabel ? `<span class="st-budget-status ${barClass}">${statusLabel}</span>` : ''}
                 </div>
                 <div class="st-budget-track">

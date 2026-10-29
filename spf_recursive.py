@@ -18,7 +18,7 @@ Usage:
 import dns.resolver
 import dns.exception
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from dns_tools import is_spf_record
 
@@ -126,6 +126,19 @@ def spf_lookup_band(lookups, indeterminate: bool = False) -> str:
     if indeterminate:
         return "unknown"
     return "ok"
+
+
+def lookup_count_text(lookups, truncated: bool = False) -> str:
+    """The lookup count as words: "at least N" when the walk spent its
+    query budget (SPF_WALK_QUERY_BUDGET), so N is a floor."""
+    return f"at least {lookups}" if truncated else str(lookups)
+
+
+def lookup_ratio_text(lookups, truncated: bool = False) -> str:
+    """The lookup count against the limit, "N/10", or "N+/10" for a floor."""
+    return f"{lookups}{'+' if truncated else ''}/{SPF_LOOKUP_LIMIT}"
+
+
 # More than one v=spf1 record is published at the name. RFC 7208 section 4.5
 # makes that a PermError for the whole evaluation, not just for that name.
 SPF_MULTIPLE = "multiple"
@@ -215,24 +228,57 @@ def _mechanism_target(mech: Dict[str, str], current_domain: str) -> str:
     return value or current_domain
 
 
-def _mechanism_lookup_status(mtype: str, target: str) -> str:
+def _address_status(host: str) -> str:
+    """Resolve a host's A, then AAAA. An AAAA-only host is not a void lookup."""
+    status = _query_answer_status(host, "A")
+    if status == "void":
+        status6 = _query_answer_status(host, "AAAA")
+        return "ok" if status6 == "ok" else status6
+    return status
+
+
+def _mx_hosts(target: str) -> List[str]:
+    """The exchange names of a target's MX records, without the null MX "."."""
+    try:
+        answers = _get_resolver().resolve(target, "MX")
+    except Exception:
+        return []
+    hosts = []
+    for rdata in answers:
+        host = str(rdata.exchange).rstrip(".").lower()
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
+
+
+def _mechanism_lookup_status(mtype: str, target: str,
+                             spend: Optional[Callable[[], bool]] = None,
+                             void_hosts: Optional[List[str]] = None) -> str:
     """Resolve an a:/mx:/exists: target. Returns "ok", "void", "error" or
-    MX_OVER_LIMIT."""
+    MX_OVER_LIMIT.
+
+    For mx, each MX host's addresses are resolved too, the queries a
+    receiver makes (RFC 7208 section 5.4). A host with no address is a void
+    lookup of its own (section 4.6.4), appended to void_hosts. spend is the
+    walk's query budget; a host it cannot pay for is not resolved.
+    """
     if not target or "%" in target:
         # A macro-expanded target depends on the connecting client, so it
         # cannot be evaluated from the record alone.
         return "ok"
     if mtype == "mx":
-        return _query_answer_status(target, "MX")
+        status = _query_answer_status(target, "MX")
+        if status == "ok" and void_hosts is not None:
+            for host in _mx_hosts(target):
+                if spend is not None and not spend():
+                    break
+                if _address_status(host) == "void":
+                    void_hosts.append(host)
+        return status
     if mtype == "exists":
         # RFC 7208 section 5.7: exists: always issues an A query.
         return _query_answer_status(target, "A")
-    # "a": an AAAA-only host is not a void lookup, so check both.
-    status = _query_answer_status(target, "A")
-    if status == "void":
-        status6 = _query_answer_status(target, "AAAA")
-        return "ok" if status6 == "ok" else status6
-    return status
+    return _address_status(target)
 
 
 # Mechanisms that consume a DNS lookup per RFC 7208
@@ -429,9 +475,13 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
             if mtype != "ptr" and not _spend():
                 node["truncated"] = True
             elif mtype != "ptr":
+                void_hosts: List[str] = []
                 mech_status = _mechanism_lookup_status(
-                    mtype, _mechanism_target(mech, domain)
+                    mtype, _mechanism_target(mech, domain), _spend, void_hosts
                 )
+                if void_hosts:
+                    local_voids += len(void_hosts)
+                    mech["void_hosts"] = void_hosts
                 if mech_status == "void":
                     local_voids += 1
                     mech["void"] = True
@@ -505,6 +555,10 @@ def _flatten_chain(node: Dict, chain: List[Dict] = None, indent: int = 0) -> Lis
             lookup_types.append(mech["type"])
     entry["lookup_mechanisms"] = lookup_details
     entry["lookup_mechanism_types"] = lookup_types
+    entry["mx_void_hosts"] = [
+        {"term": mech.get("raw") or "mx", "hosts": list(mech["void_hosts"])}
+        for mech in node.get("mechanisms", []) if mech.get("void_hosts")
+    ]
 
     chain.append(entry)
 
@@ -787,6 +841,28 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
                 f"actually send mail, or an include from your provider."
             ),
         })
+
+    # MX hosts with no address. Each is a void lookup, which is how they
+    # reach the two-void limit; named here so the operator can find them.
+    for entry in chain:
+        for item in entry.get("mx_void_hosts", []):
+            hosts = ", ".join(item["hosts"])
+            result["issues"].append({
+                "severity": "info",
+                "issue": f"MX host with no address in {item['term']}: {hosts}",
+                "plain_english": (
+                    f"The term {item['term']} in the SPF record for "
+                    f"{entry['domain']} names MX hosts that have no A or AAAA "
+                    f"record: {hosts}. A receiver looks each one up, and each "
+                    f"empty answer counts toward the limit of two void "
+                    f"lookups (RFC 7208 section 4.6.4)."
+                ),
+                "impact": "Each host counts as one void lookup.",
+                "fix": (
+                    "Give each MX host an address, or remove the MX record "
+                    "that names it."
+                ),
+            })
 
     # Macro expanded include and redirect targets. Reported so the lookup they
     # cost is explained, not so the operator removes a working mechanism.

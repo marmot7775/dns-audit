@@ -32,6 +32,9 @@ DEAD_ZONE = {DOMAIN: {"TXT": [DEAD_RECORD]}}
 LIVE_ZONE = {
     DOMAIN: {"TXT": [LIVE_RECORD]},
     "live.example.test": {"A": ["198.51.100.10"], "MX": [(10, "mail.example.test")]},
+    # The MX host needs an address too: a receiver resolves it, and an empty
+    # answer there is a void lookup of its own.
+    "mail.example.test": {"A": ["198.51.100.25"]},
 }
 
 

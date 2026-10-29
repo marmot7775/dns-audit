@@ -85,6 +85,13 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - An SPF mechanism whose macro uses "=" as a delimiter, such as
   exists:%{l=}.example.com, is read as a mechanism. The syntax check took any
   term with "=" for a modifier and reported an unknown one.
+- An MX host with no address is a void lookup. An mx mechanism makes a
+  receiver resolve every MX host (RFC 7208 section 5.4), and each empty answer
+  counts toward the limit of two (section 4.6.4). Only the MX query was
+  checked, so three dead MX hosts passed. The hosts are named in an info note.
+- A lookup count past the walk's query budget reads as a floor everywhere:
+  "at least N" on the card, trace and lookup budget bar, "N+/10" in the plan
+  and the PDF.
 - Cards skipped painting off screen (`content-visibility: auto`), which held
   every card below the fifth at a 302px placeholder and showed Your domain's
   DNS and Draft standards as blank boxes in a full-page screenshot. Every
