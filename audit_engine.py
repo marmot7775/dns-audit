@@ -2592,7 +2592,11 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             )
 
         # ── Identify mechanism type ─────────────────────────
-        if "=" in raw_lower:
+        # A modifier's name runs up to its "="; a mechanism's runs up to its
+        # ":". "=" is also a macro delimiter (RFC 7208 section 7.1), so
+        # exists:%{l=}.example.com is a mechanism, not a modifier.
+        _eq, _colon = raw.find("="), raw.find(":")
+        if _eq != -1 and (_colon == -1 or _eq < _colon):
             # Modifier (redirect=, exp=)
             mod_name, _, mod_value = raw.partition("=")
             mod_name_lower = mod_name.lower()

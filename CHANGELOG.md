@@ -80,6 +80,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   the budget the total is a floor, worded "at least", and still over 10.
 - An SPF mx mechanism whose target has more than 10 MX hosts is a PermError
   (RFC 7208 section 4.6.4). It was graded pass.
+- An SPF mechanism whose macro uses "=" as a delimiter, such as
+  exists:%{l=}.example.com, is read as a mechanism. The syntax check took any
+  term with "=" for a modifier and reported an unknown one.
 - Cards skipped painting off screen (`content-visibility: auto`), which held
   every card below the fifth at a 302px placeholder and showed Your domain's
   DNS and Draft standards as blank boxes in a full-page screenshot. Every
