@@ -1322,6 +1322,9 @@ main {
 .plan-record-from {
     margin: var(--space-xs) 0;
     color: var(--text-secondary);
+    /* Names a vendor host such as selector1-oregonstate-edu._domainkey.
+       oregonstateuniversity.onmicrosoft.com, one word too long for a phone. */
+    overflow-wrap: anywhere;
 }
 
 .plan-record-from-label {
