@@ -99,3 +99,6 @@ package-lock.json
 *.db-journal
 
 audit.log
+
+# Nightly fix run scratch (see .github/workflows/nightly-fix.yml)
+.nightly/
