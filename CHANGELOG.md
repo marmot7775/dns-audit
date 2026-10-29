@@ -32,6 +32,8 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   services listed and no missing records claimed.
 
 ### Changed
+- What to do, "Value:" lines: a long vendor host wraps at phone width instead
+  of running past its box and being cut off.
 - The shared TLS adapter refuses verify=False, a custom CA bundle or a client
   cert. urllib3 would have applied any of them to the process-wide SSLContext,
   so one such fetch changed verification for every later one (CodeRabbit on
