@@ -13,7 +13,7 @@
 - `static/app.js` -- frontend logic, SSE client, result rendering
 - `static/style.css` -- all styles, responsive breakpoints in one file
 - `static/index.html` -- single-page app shell
-- `comprehensive_selectors.py` -- DKIM selector list for auto-discovery
+- `generic_selectors.py` -- generic DKIM fallback sweep; the vendor selectors are Sendermap's catalog
 - `dns_tools.py` -- domain normalization, audit entry point
 
 ## Rules
@@ -34,7 +34,8 @@
   goes red only when the card fails. pass, green: published and correct. absent, grey: an optional
   protocol (MTA-STS, TLS-RPT, DNSSEC, CAA, DANE, BIMI) is not published; its
   pill says "Optional, not set up" (Doc 92; it said "Not configured"), it has
-  its own counter, and it is never counted as a warning. The other default
+  its own counter, and it is never counted as a warning. MTA-STS at mode
+  none has withdrawn its policy and is absent too, pill "Turned off". The other default
   pills (Doc 92, PILL_* in result_transformer.py): pass "Pass", warn "Could
   be stronger", fail "Needs fixing", not applicable "Does not apply", null MX
   "No mail, by design". unavailable, grey with its own icon and "Not checked": the
@@ -82,8 +83,8 @@
 - Audit log: audit.log (JSON-lines, GDPR-safe). Fields: ts, domain, scope,
   duration_s, checks, ua, bot, source, status, vid, plus error when status is
   not "ok", ref when a Referer was sent, and aprf (none, published, ignored,
-  unavailable) when the APRF check ran (complete, email_security and
-  deliverability scopes). It is
+  unavailable) when the APRF check ran (complete, email_security,
+  deliverability and senders scopes, audit_engine.APRF_SCOPES). It is
   the one per card status the log records, kept for an adoption count. Fields
   are added, never renamed or
   removed, so older entries carry fewer of them.
@@ -187,6 +188,13 @@ top-level pages and left the four article pages pinned to an older build.
 needs busting and only `static/articles/index.html` references it.
 
 The older pattern `grep -oP 'v=\K[a-f0-9]+'` is broken: it only matches hex characters, so version strings containing non-hex letters (e.g. `ds17`, `sec9`) produce a partial or empty match and sed silently no-ops. Do not use the old pattern.
+
+## Site chrome
+The header and footer on every static page are the canonical
+copy for all three apps; docs/site-chrome.html holds the
+block and the allowed per-app differences. After changing
+either, run python3 tools/check_chrome.py against the live
+sites once everything is deployed.
 
 ## Testing
 Dependencies are declared in pyproject.toml only: runtime under [project] dependencies, test-only under [project.optional-dependencies] dev, never in a workflow file. Then run `python3 tools/gen_requirements.py`; the requirements files are generated and tests/test_requirements_generated.py fails if they drift.

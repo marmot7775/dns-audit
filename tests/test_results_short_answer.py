@@ -57,8 +57,11 @@ def _tab_stops(page, limit=400):
         page.keyboard.press("Tab")
         info = page.evaluate("""() => { const e = document.activeElement;
             if (!e || e === document.body) return null;
+            // Two stops can read alike (the Copy buttons in the records block),
+            // so a stop is told apart by its element, not its text.
+            e.__tabId = e.__tabId || (window.__tabN = (window.__tabN || 0) + 1);
             return {inside: !!e.closest('#es-tech, .plan-optional-body, #services-body'),
-                    text: (e.textContent || '').trim().slice(0, 40)}; }""")
+                    text: (e.textContent || '').trim().slice(0, 40), id: e.__tabId}; }""")
         if info is None or info in seen[-1:]:
             break
         seen.append(info)
@@ -76,7 +79,7 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
             const es = document.getElementById('executive-summary');
             return {
                 list: !!es.querySelector('.es-first-label, .es-first-item, ol'),
-                buttons: [...es.querySelectorAll('button')].map(b => b.textContent.trim()),
+                buttons: [...es.querySelectorAll('button:not(.es-count)')].map(b => b.textContent.trim()),
                 riskBox: !!document.querySelector('.es-risk'),
                 tilesInTech: !!document.querySelector('#tech-summary-slot #es-tech .es-metrics'),
                 delivInTech: !!document.querySelector('#tech-summary-slot #es-tech .es-deliverability'),
@@ -85,8 +88,8 @@ def test_the_short_answer_comes_first_and_the_tiles_are_closed(browser, fixture_
         }""")
         # The plan right under the box is the list; the box does not repeat it.
         assert not m["list"]
-        # The headline box has no buttons: the plan sits directly below it,
-        # and Technical summary moved to the top of the technical layer.
+        # The headline box has no buttons but its counts, which jump to the
+        # plan rows; Technical summary moved to the top of the technical layer.
         assert m["buttons"] == []
         assert not m["riskBox"] and not m["defensiveBox"]
         assert m["tilesInTech"] and m["delivInTech"]
@@ -163,7 +166,7 @@ def test_counters_sit_on_one_line_above_the_cards_and_no_debug_details(
         m = page.evaluate("""() => {
             const top = s => document.querySelector(s).getBoundingClientRect().top + scrollY;
             return {
-                heading: document.getElementById('results-heading').textContent,
+                heading: document.getElementById('tech-toggle-label').textContent,
                 grid: top('#summary-grid'), plan: top('#priority-section'),
                 list: top('#results-list'),
                 debug: ['#cache-status-badge', '#request-id-display', '.session-audit-count',
@@ -175,7 +178,7 @@ def test_counters_sit_on_one_line_above_the_cards_and_no_debug_details(
                     document.getElementById('results-list')) & Node.DOCUMENT_POSITION_PRECEDING,
             };
         }""")
-        assert m["heading"] == "Technical details: all 12 checks"
+        assert m["heading"] == "Hide all 12 checks"
         assert m["plan"] < m["grid"] < m["list"], m
         # The cache badge, Request ID and session count told a visitor
         # nothing. request_id stays in the API response and the logs.

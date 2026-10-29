@@ -433,12 +433,21 @@ main {
     padding-bottom: 2px;
 }
 
+/* Divider between the three tools and the site pages. */
+.nav-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 0.5rem;
+    flex: 0 0 auto;
+}
+
 /* ==========================================================================
    AUDIT INPUT
    ========================================================================== */
 .audit-input-section {
     position: relative;
-    padding-top: var(--space-2xl);
+    padding-top: var(--space-xl);
     padding-bottom: var(--space-lg);
     transition: padding 0.3s ease;
 }
@@ -446,6 +455,17 @@ main {
 .audit-input-section.compact {
     padding-top: var(--space-md);
     padding-bottom: var(--space-sm);
+}
+
+.audit-foot {
+    margin: var(--space-md) 0 0;
+    text-align: center;
+    font-size: var(--font-sm);
+    color: var(--text-muted);
+}
+
+.audit-input-section.compact .audit-foot {
+    display: none;
 }
 
 .audit-input-section.compact .audit-title,
@@ -784,7 +804,7 @@ main {
     contain: layout style;
 }
 
-/* Semantic heading resets for result sections (excludes .result-title) */
+/* Semantic heading resets for result sections (card titles are h4.result-title) */
 :where(.results-section h2) {
     margin: 0;
     font-size: inherit;
@@ -792,7 +812,7 @@ main {
     line-height: inherit;
 }
 
-:where(.results-section h3:not(.result-title)) {
+:where(.results-section h3) {
     margin: 0;
     font-size: inherit;
     font-weight: 600;
@@ -1096,7 +1116,7 @@ main {
     display: grid;
     grid-template-columns: 16px 1fr auto auto;
     align-items: center;
-    column-gap: var(--space-sm);
+    column-gap: var(--space-md);
     min-height: 44px;
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius);
@@ -1110,6 +1130,19 @@ main {
 .priority-head:hover,
 .priority-head:focus-visible {
     background: var(--surface-hover);
+}
+
+.priority-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.priority-cue {
+    font-size: var(--font-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
 }
 
 .priority-chevron {
@@ -1285,6 +1318,282 @@ main {
     color: var(--text-secondary);
 }
 
+/* A record whose value DNS cannot tell us: who supplies it, in words. */
+.plan-record-from {
+    margin: var(--space-xs) 0;
+    color: var(--text-secondary);
+}
+
+.plan-record-from-label {
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+/* An MTA-STS policy file keeps its lines. */
+.record-block.record-block-file .record-text {
+    white-space: pre-wrap;
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Records to change: every record the plan asks for, numbered, open right
+   after the plan rows. Colours are the existing tokens only, so the light
+   theme needs no rules of its own. */
+.records-block {
+    margin-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-md);
+    min-width: 0;
+}
+
+.records-title {
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-xs);
+}
+
+.records-title .priority-summary {
+    display: block;
+    margin-top: var(--space-xs);
+    font-size: var(--font-xs);
+    font-weight: 400;
+}
+
+.rtc-intro,
+.rtc-foot,
+.rtc-recheck {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin: var(--space-xs) 0 var(--space-md);
+    overflow-wrap: anywhere;
+}
+
+.rtc-list {
+    list-style: none;
+    margin: 0 0 var(--space-md);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.rtc-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: var(--space-md);
+    min-width: 0;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.rtc-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.rtc-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.4rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-strong);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.rtc-op,
+.rtc-type {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: var(--font-xs);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.rtc-head .rtc-type {
+    font-family: var(--font-mono);
+}
+
+.rtc-op-delete {
+    border-color: var(--fail);
+    color: var(--fail-text);
+}
+
+.rtc-proto {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+.rtc-field {
+    margin-top: var(--space-sm);
+    min-width: 0;
+}
+
+.rtc-label {
+    display: block;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+.rtc-host {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+.rtc-row .record-block {
+    margin: var(--space-xs) 0 0;
+}
+
+.rtc-current {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    max-height: 9rem;
+    overflow: auto;
+}
+
+.rtc-current-text {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+.rtc-plain,
+.rtc-from,
+.rtc-note {
+    margin: var(--space-xs) 0 0;
+    overflow-wrap: anywhere;
+}
+
+.rtc-row .rtc-note {
+    font-size: var(--font-xs);
+    color: var(--text-tertiary);
+}
+
+/* A record that still holds an address only the owner knows. */
+.rtc-placeholder {
+    margin: var(--space-sm) 0 0;
+    padding-left: var(--space-sm);
+    border-left: 3px solid var(--warn);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.rtc-placeholder-note {
+    border-left: 3px solid var(--warn);
+    padding-left: var(--space-sm);
+    color: var(--text-secondary);
+}
+
+.rtc-actions {
+    margin-bottom: var(--space-md);
+}
+
+.rtc-copy-all {
+    font: inherit;
+    cursor: pointer;
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+    background: var(--primary-solid);
+    border: 1px solid var(--primary-solid);
+    border-radius: var(--radius);
+    color: var(--text-inverse);
+    font-weight: 500;
+}
+
+.rtc-copy-all:hover {
+    background: var(--primary-solid-hover);
+}
+
+.rtc-copy-all.copied {
+    animation: copy-flash 0.3s var(--ease);
+}
+
+/* A link in the sentence, with a target tall enough to press. */
+.rtc-rerun {
+    font: inherit;
+    cursor: pointer;
+    display: inline-block;
+    min-height: 44px;
+    padding: 0 0.25rem;
+    background: none;
+    border: 0;
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.rtc-copy-all:focus-visible,
+.rtc-rerun:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+/* Wide screens: the step, action and type sit in a column beside the
+   fields, and each field's label sits beside its value, so the block does
+   not push the cards a screen further down. */
+@media (min-width: 900px) {
+    .rtc-list {
+        gap: var(--space-sm);
+    }
+
+    .rtc-row {
+        display: grid;
+        grid-template-columns: 9rem minmax(0, 1fr);
+        column-gap: var(--space-md);
+        padding: var(--space-sm) var(--space-md);
+        align-items: start;
+    }
+
+    .rtc-head {
+        grid-column: 1;
+        grid-row: 1 / span 20;
+        flex-direction: column;
+        align-items: flex-start;
+        margin-bottom: 0;
+    }
+
+    .rtc-row > :not(.rtc-head) {
+        grid-column: 2;
+    }
+
+    .rtc-field {
+        display: grid;
+        grid-template-columns: 7rem minmax(0, 1fr);
+        column-gap: var(--space-sm);
+        margin-top: var(--space-xs);
+    }
+
+    .rtc-field:first-of-type {
+        margin-top: 0;
+    }
+
+    .rtc-field .record-block,
+    .rtc-field .rtc-current,
+    .rtc-field .rtc-plain,
+    .rtc-field .rtc-from {
+        margin-top: 0;
+    }
+}
+
 .plan-card-link {
     background: none;
     border: none;
@@ -1309,7 +1618,7 @@ main {
     }
 
     .priority-head {
-        grid-template-columns: 16px 1fr auto;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
         row-gap: var(--space-xs);
         padding-block: var(--space-sm);
     }
@@ -1318,9 +1627,15 @@ main {
         grid-column: 2 / 3;
         grid-row: 2;
         justify-self: start;
+        flex-wrap: wrap;
+        min-width: 0;
     }
 
-    .priority-head .priority-chevron {
+    .priority-meta .priority-protocol {
+        white-space: normal;
+    }
+
+    .priority-head .priority-toggle {
         grid-column: 3;
         grid-row: 1;
     }
@@ -1467,6 +1782,38 @@ a.tag { text-decoration: none; }
     margin: 0;
 }
 
+/* The technical layer: one closed section under What to do. */
+.tech-section {
+    margin-top: var(--space-xl);
+}
+
+h2.tech-heading {
+    margin: 0;
+}
+
+.tech-section .tech-toggle {
+    width: 100%;
+    justify-content: space-between;
+    padding: 0 var(--space-md);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--text-primary);
+}
+
+.tech-section .tech-toggle:hover {
+    border-color: var(--primary-border);
+}
+
+.tech-body > .results-toolbar {
+    margin-top: var(--space-md);
+    justify-content: flex-end;
+}
+
 .toggle-all-btn {
     display: inline-flex;
     align-items: center;
@@ -1561,6 +1908,13 @@ a.tag { text-decoration: none; }
     transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
+/* openCard also scrolls to panels inside a card (the attack surface and the
+   record builder, from the Technical summary and plan rows). Only the card
+   carried the offset, so those panels landed under the sticky header. */
+.result-card [id] {
+    scroll-margin-top: 4.5rem;
+}
+
 .result-card:hover {
     border-color: var(--border);
     box-shadow: var(--shadow-md);
@@ -1573,23 +1927,12 @@ a.tag { text-decoration: none; }
     }
 }
 
-/* Skip painting off-screen cards. This is a paint optimisation only, not
-   the removed DOM-lazy-loading: the card stays in the document, reachable
-   by focus, find-in-page and assistive tech. But content-visibility:auto
-   also clamps an off-screen card to contain-intrinsic-size until it is
-   near the viewport, so any accessibility sweep of this page must force
-   these cards to paint first (override content-visibility to visible)
-   before scanning. Without that override, on / with cloudflare.com at
-   1280px only four cards render their real content and the other eight
-   clamp to 302px -- a sweep run that way reports a clean result from a
-   quarter of the page, the exact mistake PR #29 made. */
-/* Doc 101: the cards sit in per-area lists now, so a :nth-child count
-   restarts in each list and never reaches 6. createResultCard marks the
-   sixth card on with .result-card-deferred instead. */
-.result-card-deferred {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 300px;
-}
+/* Cards used to skip painting off screen (content-visibility: auto from the
+   sixth card on). Closed, a card is one 69px row, so the skip saved almost
+   nothing, and it held every off-screen card at a 302px guess: the page was
+   about 1,800px taller than its content until each card was scrolled near,
+   and a full-page screenshot showed the cards in Your domain's DNS and Draft
+   standards as empty boxes. Every card paints now. */
 
 .result-card[data-status="pass"] {
     border-left-color: var(--pass);
@@ -1653,10 +1996,11 @@ a.tag { text-decoration: none; }
     padding-bottom: calc(var(--space-md) + var(--space-xs));
 }
 
-/* Check name */
-h3.result-title,
+/* Check name. An h4 under its area's h3; it keeps the h1 to h3 tracking. */
+h4.result-title,
 .result-title {
     font-weight: 600;
+    letter-spacing: -0.02em;
     font-size: var(--font-md);
     color: var(--text-primary);
     margin: 0;
@@ -2133,9 +2477,10 @@ h3.result-title,
     font-style: normal;
 }
 
-/* Card sections are h4 so a screen reader can move between them; they keep
-   the look their class gives them. */
-:where(h4.sv-title, h4.mw-title, h4.rb-title, h4.rcb-title, h4.tree-walk-header, h4.se-header) {
+/* Panel titles inside a card's Details are h6 (area h3, card h4, Details 5,
+   section 6) so a screen reader can move between them; they keep the look
+   their class gives them. */
+:where(h6.sv-title, h6.mw-title, h6.rb-title, h6.rcb-title, h6.tree-walk-header, h6.se-header) {
     font: inherit;
 }
 
@@ -3177,24 +3522,27 @@ details.st-node>summary:hover {
    ========================================================================== */
 .site-footer {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding: var(--space-xl) 0 calc(2rem + env(safe-area-inset-bottom));
-    margin-top: var(--space-3xl);
+    padding: var(--space-xl) 0 calc(var(--space-xl) + env(safe-area-inset-bottom));
+    margin-top: 0;
     flex-shrink: 0;
     background: var(--bg-raised);
 }
 
-.footer-inner {
+.footer-row {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    text-align: left;
+    align-items: center;
+    gap: 1.5rem;
 }
 
-.footer-left {
+.footer-main {
+    padding-bottom: var(--space-lg);
+}
+
+.footer-brand {
     display: flex;
     flex-direction: column;
-    flex: 0 0 18rem;
-    gap: 0.35rem;
+    gap: 0.3rem;
 }
 
 .footer-brand-name {
@@ -3210,45 +3558,10 @@ details.st-node>summary:hover {
     line-height: 1.5;
 }
 
-.footer-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.4rem;
-}
-
 .footer-nav {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-}
-
-.footer-trust {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.35rem;
-    font-size: var(--font-xs, 0.75rem);
-    color: var(--text-muted);
-}
-
-.footer-trust .footer-link {
-    font-size: inherit;
-}
-
-.footer-attribution .footer-link {
-    font-size: inherit;
-    font-weight: 500;
-}
-
-.footer-version {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-}
-
-.footer-dot {
-    color: var(--text-muted);
-    font-size: var(--font-base);
+    gap: 1.25rem;
 }
 
 .footer-link {
@@ -3264,15 +3577,42 @@ details.st-node>summary:hover {
     text-decoration: underline;
 }
 
-.footer-attribution {
-    font-size: var(--font-sm);
+.footer-meta {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-md);
+    font-size: var(--font-xs, 0.75rem);
     color: var(--text-muted);
-    /* Right-aligned like the two link rows above it in the same column.
-       Phones centre it (the max-width 640px block). */
-    text-align: right;
-    /* Doc 39: one sentence with an inline link. The flex row only existed
-       to sit the LinkedIn icon beside the text. */
-    display: block;
+    align-items: baseline;
+}
+
+.footer-meta .footer-link {
+    font-size: inherit;
+    color: var(--text-secondary);
+}
+
+/* Keep the email address from breaking at its hyphen. */
+.footer-attribution .footer-link {
+    white-space: nowrap;
+}
+
+.footer-attribution {
+    margin: 0;
+    flex: 1 1 auto;
+    text-align: left;
+    line-height: 1.5;
+}
+
+.footer-trust {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.footer-version {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
 }
 
 /* ==========================================================================
@@ -3558,22 +3898,23 @@ details.st-node>summary:hover {
         align-items: flex-start;
     }
 
-    /* Footer stacks on mobile */
-    .footer-inner {
+    /* Footer rows stack on mobile */
+    .footer-row {
         flex-direction: column;
         align-items: center;
         text-align: center;
-        gap: 1.25rem;
+        gap: 1rem;
     }
 
-    .footer-right {
+    .footer-brand {
         align-items: center;
     }
 
-    /* In a column the 18rem basis would be a height. */
-    .footer-left {
-        flex: none;
-        align-items: center;
+    .footer-nav,
+    .footer-trust {
+        flex-wrap: wrap;
+        justify-content: center;
+        white-space: normal;
     }
 
     .priority-section {
@@ -4298,6 +4639,39 @@ input[type="search"],
     margin: 0.25rem 0 0;
 }
 
+.es-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-sm);
+    vertical-align: middle;
+}
+
+.es-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--space-sm);
+    background: var(--surface-hover);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.es-count:hover {
+    border-color: var(--primary-border);
+    color: var(--primary);
+}
+
+@media (max-width: 640px) {
+    .es-count {
+        min-height: 44px;
+    }
+}
+
 .es-first:empty {
     display: none;
 }
@@ -4465,7 +4839,8 @@ h2.services-heading {
     margin: 0 0 var(--space-md);
 }
 
-.services-toggle {
+.services-toggle,
+.tech-toggle {
     display: inline-flex;
     align-items: center;
     gap: var(--space-sm);
@@ -4480,15 +4855,18 @@ h2.services-heading {
     cursor: pointer;
 }
 
-.services-toggle:hover {
+.services-toggle:hover,
+.tech-toggle:hover {
     color: var(--text-primary);
 }
 
-.services-chevron {
+.services-chevron,
+.tech-chevron {
     transition: transform var(--duration-slow) var(--ease-out);
 }
 
-.services-toggle[aria-expanded="true"] .services-chevron {
+.services-toggle[aria-expanded="true"] .services-chevron,
+.tech-toggle[aria-expanded="true"] .tech-chevron {
     transform: rotate(180deg);
 }
 
@@ -4910,6 +5288,16 @@ h3.services-sub,
 
 .sua-details[open] .sua-toggle-icon {
     transform: rotate(180deg);
+}
+
+/* The not published APRF line (Draft standards): the subdomain toggle, at
+   body text size because it is the whole of the section. */
+.draft-line-summary {
+    font-size: var(--font-sm);
+}
+
+.draft-line-body {
+    padding: 0 0 0.4rem 1.3rem;
 }
 
 .sua-table-wrap {
@@ -7578,7 +7966,7 @@ h3.services-sub,
 /* Dark/light mode toggle button */
 .theme-toggle {
     background: none;
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius);
     padding: 0.25rem;
     cursor: pointer;
@@ -7588,13 +7976,13 @@ h3.services-sub,
     justify-content: center;
     width: 36px;
     height: 36px;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color 0.15s, background 0.15s;
     margin-left: 0.35rem;
     flex: 0 0 auto;
 }
 .theme-toggle:hover {
     color: var(--text-primary);
-    border-color: var(--border-strong);
+    background: var(--surface);
 }
 
 .theme-toggle svg {
@@ -7688,10 +8076,6 @@ h3.services-sub,
         align-items: center;
         min-width: 44px;
         justify-content: center;
-    }
-
-    .footer-nav {
-        flex-wrap: wrap;
     }
 
     .footer-nav .footer-link,
@@ -7854,8 +8238,36 @@ h3.services-sub,
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.25rem 1.75rem;
+    padding: 0.75rem 1.75rem;
     margin-bottom: var(--space-xl);
+}
+
+.req-block > summary.req-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    min-height: 44px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.req-block > summary.req-head::-webkit-details-marker {
+    display: none;
+}
+
+.req-head-text {
+    min-width: 0;
+}
+
+.req-head-chevron {
+    display: inline-flex;
+    color: var(--text-tertiary);
+    transition: transform 0.2s ease;
+}
+
+.req-block[open] > summary .req-head-chevron {
+    transform: rotate(180deg);
 }
 
 .req-heading {
@@ -7866,9 +8278,9 @@ h3.services-sub,
 }
 
 .req-summary {
+    display: block;
     font-size: var(--font-sm);
     color: var(--text-secondary);
-    margin: 0 0 var(--space-md);
     line-height: 1.5;
 }
 
@@ -7982,7 +8394,7 @@ h3.services-sub,
 
 @media (max-width: 640px) {
     .req-block {
-        padding: 1rem 1.1rem;
+        padding: 0.5rem 1.1rem;
     }
 
     .req-row {
@@ -8020,6 +8432,14 @@ h3.services-sub,
     color: var(--text-secondary);
     line-height: 1.55;
     margin: 0 0 var(--space-md);
+}
+
+.smap-domain-findings {
+    margin: 0 0 var(--space-md);
+}
+
+.smap-domain-findings h3.smap-detail-sub {
+    margin-top: 0;
 }
 
 .smap-legend {
@@ -8199,6 +8619,7 @@ h3.services-sub,
     margin: var(--space-xs) 0 0;
 }
 
+h3.smap-detail-sub,
 h4.smap-detail-sub {
     font-size: var(--font-xs);
     font-weight: 600;
@@ -8218,9 +8639,12 @@ h4.smap-detail-sub {
     line-height: 1.55;
 }
 
-.smap-setup-missing,
-.smap-finding-risk {
+.smap-setup-missing {
     color: var(--text-primary);
+}
+
+.smap-finding-risk {
+    color: var(--fail-text);
 }
 
 .smap-claim-kind {
@@ -8398,4 +8822,46 @@ h4.smap-detail-sub {
 
 .audit-input-section.compact .try-examples {
     display: none;
+}
+
+/* Five nav links, the divider and the theme toggle overflow a phone, so
+   the three tool links take short labels there; aria-label keeps their
+   full names. */
+.nav-short {
+    display: none;
+}
+
+@media (max-width: 480px) {
+    .nav-long {
+        display: none;
+    }
+
+    .nav-short {
+        display: inline;
+    }
+}
+
+/* A 320 viewport leaves 296px inside the gutters. Trim the link padding
+   and the divider margin so the nav still fits on one line. Each link
+   keeps its 44px height and min-width. */
+@media (max-width: 340px) {
+    .nav-link {
+        padding: 0.25rem 0.2rem;
+    }
+
+    .nav-sep {
+        margin: 0 0.2rem;
+    }
+}
+
+/* Below about 480px the four links no longer share a row with the
+   wordmark, so the sticky header is two rows (about 114px). Anchored cards
+   and panels need the larger offset to land below it. */
+@media (max-width: 480px) {
+    .results-section,
+    .result-card,
+    .result-card [id],
+    #neil {
+        scroll-margin-top: 7.5rem;
+    }
 }

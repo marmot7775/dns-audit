@@ -7,6 +7,7 @@ block on Inbox readiness and Full audit, and the PDF follows the page.
 import json
 import os
 import sys
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -75,10 +76,12 @@ def test_the_page_shows_it_under_the_headline(browser, audit, scope, shown):  # 
         assert (page.locator(".req-block").count() == 1) is shown
         if shown:
             assert page.text_content("#req-heading") == HEADING
-            words = page.eval_on_selector_all(".req-list:not(details .req-list) .req-word",
+            words = page.eval_on_selector_all(".req-block > .req-list .req-word",
                                               "els => els.map(e => e.textContent)")
             assert words == ["Met", "Met", "Met"]
-            # The five rows DNS cannot show start folded.
+            # The block starts closed to its heading and one summary line, and
+            # the five rows DNS cannot show start folded.
+            assert page.evaluate("() => document.querySelector('.req-block').open") is False
             assert page.evaluate("() => document.querySelector('.req-more').open") is False
         assert not errors, errors
     finally:
@@ -88,10 +91,36 @@ def test_the_page_shows_it_under_the_headline(browser, audit, scope, shown):  # 
 def test_the_alignment_row_switches_to_who_sends_as_you(browser, audit):  # noqa: F811
     data = json.loads(json.dumps(_run(audit, GOOD, scope="deliverability"), default=str))
     ctx, page, errors = _page(browser, "dark", 1280)
+    requests = []
+    page.on("request", lambda r: requests.append(r.url))
+    # The rerun never answers; only the request it sends is under test.
+    page.route("**/api/**", lambda route: None)
     try:
         _render(page, data)
+        page.click(".req-block > summary")
         page.click(".req-more > summary")
         page.click("[data-req-scope='senders']")
         assert page.get_attribute(".scope-btn[data-scope='senders']", "aria-checked") == "true"
+        # The link reruns this domain under Who sends as you, not only the pill.
+        page.wait_for_timeout(300)
+        streams = [u for u in requests if "/api/audit/stream" in u]
+        assert streams, "no audit was started"
+        query = parse_qs(urlparse(streams[-1]).query)
+        assert query["domain"] == [data["domain"]]
+        assert query["scope"] == ["senders"]
     finally:
         ctx.close()
+
+
+def test_a_dkim_lookup_that_did_not_complete_says_so():
+    from result_transformer import build_sender_requirements
+    checks = [{"name": "SPF", "status": "pass", "configured": True},
+              {"name": "DKIM", "status": "unavailable"},
+              {"name": "DMARC", "status": "pass", "configured": True}]
+    row = next(r for r in build_sender_requirements(checks)["rows"] if r["key"] == "dkim")
+    assert row["status"] == "unknown"
+    assert row["note"] == "The lookup did not complete. Run the audit again."
+    # A key not found under the common names keeps its own note.
+    checks[1] = {"name": "DKIM", "status": "unavailable", "unavailable_kind": "not_enumerable"}
+    row = next(r for r in build_sender_requirements(checks)["rows"] if r["key"] == "dkim")
+    assert row["note"].startswith("No key found under common names")

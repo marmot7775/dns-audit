@@ -30,7 +30,7 @@ def _cert(serial, names, not_before, not_after):
 
 
 def _run(certs, monkeypatch):
-    monkeypatch.setattr("requests.get", lambda *a, **k: _FakeResponse(certs))
+    monkeypatch.setattr("http_tls.get", lambda *a, **k: _FakeResponse(certs))
     return audit_engine._raw_check_ct_uncached("example.com", {})
 
 
@@ -150,7 +150,7 @@ def _run_cert_spotter(response, monkeypatch):
             raise requests.exceptions.Timeout()
         return response
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("http_tls.get", fake_get)
     return audit_engine._raw_check_ct_uncached("example.com", {})
 
 

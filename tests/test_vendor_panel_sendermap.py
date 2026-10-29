@@ -9,7 +9,8 @@ required record the map shows missing, with what was asked.
 
 The map here is real: allbirds.com mapped on 2026-10-22 through the audit's
 resolver, its DNS answers recorded with sendermap.testing.RecordingResolver
-in fixtures/sendermap/allbirds.com.dns.json and replayed, so nothing here
+in fixtures/sendermap/allbirds.com.dns.json (questions later releases ask
+filled live on 2026-10-28) and replayed, so nothing here
 reaches the network.
 """
 import asyncio

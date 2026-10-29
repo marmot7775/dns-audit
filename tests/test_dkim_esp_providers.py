@@ -11,12 +11,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from comprehensive_selectors import ESP_SELECTORS
+from sendermap.selectors import build_dictionary
+
 from result_transformer import (
     _build_dkim_key_analysis,
     transform_dkim,
 )
-from sendermap_adapter import dkim_key_provider
+from sendermap_adapter import catalog, dkim_key_provider
 from test_dkim_discovery_starvation import DKIM_RECORD
 
 DOMAIN = "esp.test"
@@ -37,14 +38,15 @@ def _raw(selectors, vendors=None, method="spf_intelligent"):
     }
 
 
-def test_every_esp_selector_names_a_vendor_but_the_unproven_and_shared():
-    """The names come from Sendermap's catalog now, which credits a selector
-    only with a live proof. api is too common to credit to Elastic Email;
-    s1 and s2 are plain names many hosts use (Klaviyo earns them only where
-    SPF, MX or an NS delegation shows Klaviyo, SendGrid by its CNAME); km,
-    kt, ks and gor2 have no live proof yet."""
-    unnamed = [s for s in ESP_SELECTORS if dkim_key_provider(s) is None]
-    assert unnamed == ["s1", "s2", "km1", "km2", "kt1", "kt2", "ks1", "ks2", "api", "gor2"]
+def test_every_catalog_name_names_a_vendor_but_those_credited_by_cname():
+    """Every name the catalog does not call generic names its vendor from the
+    name alone, except four the catalog credits only by where the CNAME
+    leads: selector1 and selector2 (Microsoft 365) and s1 and s2 (SendGrid),
+    plain names many hosts use."""
+    names = [n for n in build_dictionary(catalog().rules) if not catalog().is_generic(n)]
+    unnamed = [n for n in names if dkim_key_provider(n) is None]
+    assert sorted(unnamed) == ["s1", "s2", "selector1", "selector2"]
+    assert dkim_key_provider("selector1", ["selector1-x-com._domainkey.x.onmicrosoft.com"]) == "Microsoft 365"
 
 
 def test_sendgrid_s1_s2_are_named_by_their_cname():

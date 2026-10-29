@@ -32,6 +32,15 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   services listed and no missing records claimed.
 
 ### Changed
+- Results page and PDF: an APRF record that is not published is one collapsed line under Draft standards instead of a full card. The PDF prints the line alone. The 90 day review check for the APRF note warns instead of failing the test run.
+- Results page and PDF, fixes first (2026-10-28). The headline counts are the
+  What to do counts, and each one jumps to its first row. The first row opens
+  with its fix showing, and every row says Show fix or Hide fix. The check
+  cards, tiles and Draft standards sit behind one closed "Show all 12 checks"
+  toggle under What to do. The sender requirements are a one-line summary
+  below the plan. The PDF runs verdict and counts, every fix written out,
+  sender requirements, then checks; "Do these first" and the page-one check
+  list no longer repeat what follows them.
 - The DANE card on a Microsoft 365 legacy MX says "Exchange Online can
   publish it for you" instead of repeating its pill in a sentence the
   results row cut off.
@@ -55,6 +64,10 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - README leads with a real audit result and states the floor by reference.
 
 ### Fixed
+- Cards skipped painting off screen (`content-visibility: auto`), which held
+  every card below the fifth at a 302px placeholder and showed Your domain's
+  DNS and Draft standards as blank boxes in a full-page screenshot. Every
+  card paints now.
 - The PDF button used the DKIM selector in the input box, not the one the
   results were run with (#192, #193).
 - Shared links dropped the DKIM selector; they now carry `sel=`, and the
@@ -66,6 +79,9 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - PDF: the About page's brand title drew near-black on navy; check status
   labels wrapped; long tables lost their header row on the next page;
   "Optional extras" could end a page alone (#197).
+- Result card titles were h3, the same level as the area headings above
+  them, so moving by headings showed one flat list. Cards are now h4,
+  their Details 5, the sections and panels inside 6.
 
 ### Removed
 - The vendor fingerprinter (`advanced_fingerprinting.py`), its pattern table
@@ -132,6 +148,71 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 - 2026-10-01: Keep SPF suggestions within 10 lookups; rank SPF PermError critical ([#126](https://github.com/marmot7775/dns-audit/pull/126))
 - 2026-10-01: Say what uvicorn's proxy headers actually do, and pin them ([#124](https://github.com/marmot7775/dns-audit/pull/124))
 - 2026-10-01: Privacy page: Cloudflare error reports from browsers ([#120](https://github.com/marmot7775/dns-audit/pull/120))
+
+## 2026-10-28: Google's dated DKIM keys are Sendermap's
+
+- The vendor panel maps sending subdomains (em., mail., send. and the
+  like), not just the domain itself: disneyplus.com shows 8 services, not
+  4, among them Amazon SES, Cheetah Digital and Marketing Cloud on its
+  subdomains. A domain-only map runs beside it and stands in when the
+  subdomain map runs past SENDER_MAP_BUDGET, so no panel comes back
+  emptier than before. Large domains' audits take up to about 6 s longer.
+- Who sends as you: risks and warnings that no service's records explain,
+  such as an SPF include of a name with no SPF record, show above the map
+  under Across the domain. Before, no node carried them, so they were
+  never shown.
+- Who sends as you: risks read in red, in Across the domain and in a
+  service's own Risks list.
+- sendermap 0.1.11: the map's JSON now flags an SPF include or redirect
+  whose target publishes no SPF record, or several, as a risk.
+- sendermap 0.1.10: the vendor panel names Cheetah Digital by its
+  cheetahmail.com NS delegation; Amazon SES no longer claims MX hosts
+  under mail-manager-smtp.us-east-1.on.aws, whose proof drifted.
+- sendermap 0.1.9 (was 0.1.2). Its catalog credits 20161025, 20210112,
+  20221208 and 20230601 to Google Workspace as backed only names, so
+  google.com's keys show their provider again. Doc 105 had dropped it.
+- The DKIM probe asks and credits the names a matched vendor backs
+  (Catalog.backs), as Sendermap's engine does, not only that rule's own
+  names. The four Google names left LOCAL_SELECTORS.
+- The build SHA is read in a git worktree too (#237).
+
+## 2026-10-27: Doc 105. The DKIM sweep is Sendermap's dictionary
+
+- The audit's DKIM probe sends Sendermap's selector sweep (106 names) plus
+  `LOCAL_SELECTORS` (15 names this probe found in production that the
+  catalog does not carry yet), with the vendors the domain's MX or SPF
+  points at first, by the catalog's hints. The 40-name cap and the separate
+  ESP wave are gone; the whole sweep is the priority wave, still in chunks
+  of `DKIM_WAVE_CHUNK`. The generic fallback is unchanged.
+- `comprehensive_selectors.py` is now `generic_selectors.py`: the generic
+  fallback and `LOCAL_SELECTORS`. The 1,130-name master list, the ESP list
+  and the SPF vendor map with selectors are deleted, as are
+  `detect_vendors_from_spf`, `detect_vendors_from_mx` and
+  `MX_VENDOR_PATTERNS` in `spf_intelligence.py`. `SPF_VENDOR_MAP` keeps
+  vendor and category for the SPF card, without selectors.
+- A found key's vendor tag comes from the catalog rules the domain's MX or
+  SPF matched. The raw result no longer carries `vendors_detected`.
+
+## 2026-10-28: Records to change
+
+- After What to do, an open "Records to change" block lists every record the
+  plan asks for, in the plan's order: step, add / replace / delete, type,
+  full host name, the exact value with a copy button, and for a replace the
+  value it replaces. "Copy all records" copies the list. The DNS host's click
+  path sits directly above it, and a link under it runs the audit again so
+  the "Since" panel shows what changed. The PDF has the same table, values in
+  monospace, wrapping inside their column.
+- Plan rows for SPF, DKIM, MTA-STS, TLS-RPT and BIMI carry records, as the
+  DMARC rows did: +all and ?all to ~all, merged duplicate SPF records (not
+  when they would pass 10 lookups or use redirect=), DKIM tag fixes, a new
+  MTA-STS policy file and TXT, a TLS-RPT record, a dangling DKIM CNAME to
+  delete. A DKIM key, a sender's include, a certificate URL or the move to
+  enforcement comes from the provider or the owner, and the row says so.
+- A report address nobody confirmed is no longer made up: the block shows
+  REPLACE-WITH-YOUR-ADDRESS, flagged on the row and in the count. An address
+  the domain already publishes is kept. API: `security_roadmap.change_set`
+  (`entries`, `placeholders`) and each row's `records`, with `current` and
+  `placeholder`. Replaces #221.
 
 ## 2026-10-25: The certificate card asks again
 

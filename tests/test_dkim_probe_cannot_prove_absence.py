@@ -49,8 +49,8 @@ from conftest import FakeZone
 DOMAIN = "google.com"
 
 # Verified live on 2026-09-07 with `dig +short TXT <selector>._domainkey.google.com`.
-# All four are at indices 5 to 8 of COMPREHENSIVE_DKIM_SELECTORS, so every
-# audit of this domain probes all of them. 20161025 carries no v= tag, which is
+# All four are in generic_selectors.LOCAL_SELECTORS (found in production,
+# waiting on a Sendermap catalog entry), so every audit probes all of them. 20161025 carries no v= tag, which is
 # legal: RFC 6376 section 3.6.1 makes v= RECOMMENDED in a key record, defaulting
 # to DKIM1, unlike the DMARC record where it is mandatory and must come first.
 GOOGLE_REVOKED = {

@@ -40,6 +40,7 @@ OTHER_FILES = [
     "docs/history/doc-88.md",
     "docs/history/doc-90.md",
     "docs/history/doc-99.md",
+    "docs/site-chrome.html",  # Doc 105: the canonical footer
 ]
 
 
@@ -57,7 +58,7 @@ def _tracked_files():
 
 def test_alias_is_in_every_footer():
     for rel in FOOTER_FILES:
-        block = re.search(r'<div class="footer-attribution">.*?</div>', _read(rel), re.DOTALL)
+        block = re.search(r'<p class="footer-attribution">.*?</p>', _read(rel), re.DOTALL)
         assert block, rel
         assert f'<a href="mailto:{ALIAS}" class="footer-link">Email {ALIAS}</a>' in block.group(0), rel
         assert f'href="{LINKEDIN}"' in block.group(0), rel

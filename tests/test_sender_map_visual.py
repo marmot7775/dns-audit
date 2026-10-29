@@ -176,3 +176,35 @@ def test_a_complete_service_with_a_risk_on_its_own_record_is_amber(browser, send
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_a_risk_no_service_claims_shows_above_the_map(browser, senders_data):  # noqa: F811
+    # An SPF include of a name with no SPF record cites the apex TXT, which no
+    # service claims, so no node would carry it. Notes stay out.
+    senders_data["sendermap"] = json.loads(json.dumps(MAP))
+    senders_data["sendermap"]["findings"] += [
+        {"severity": "risk", "title": "SPF at doc44.test includes ses.amazonaws.com, which publishes no SPF record",
+         "detail": "SPF fails.", "evidence": [_ev("doc44.test", "TXT", "include:ses.amazonaws.com")]},
+        {"severity": "note", "title": "Just so you know", "detail": "x",
+         "evidence": [_ev("doc44.test", "TXT", "include:ses.amazonaws.com")]},
+    ]
+    ctx, page, errors = _page(browser, "light", 375)
+    try:
+        _render(page, senders_data)
+        box = page.inner_text(".smap-domain-findings")
+        assert "includes ses.amazonaws.com" in box
+        # Claimed findings stay on their nodes; notes are not shown.
+        assert "k1 key" not in box and "apex" not in box and "Just so you know" not in box
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_no_domain_findings_box_when_every_finding_has_a_service(browser, senders_data):  # noqa: F811
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        _render(page, senders_data)
+        assert page.locator(".smap-domain-findings").count() == 0
+        assert not errors, errors
+    finally:
+        ctx.close()

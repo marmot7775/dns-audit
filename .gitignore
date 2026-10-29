@@ -12,6 +12,9 @@ eggs/
 
 # Virtual environments
 .venv/
+# Also a symlink of that name: ".venv/" matches directories only, which is
+# how a symlink to a local venv got committed (e80f131).
+.venv
 venv/
 env/
 ENV/

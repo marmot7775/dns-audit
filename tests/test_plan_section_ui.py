@@ -68,11 +68,15 @@ def test_one_row_per_roadmap_item_and_each_row_opens(browser, fixture_result, th
         })""")
         assert m["heading"] == "What to do"
         assert m["actions"] == expected
-        assert m["closed"] == len(expected), "a plan row rendered open"
-        assert all(h["aria"] == "false" and h["controls"] for h in m["heads"])
+        # The first row, the most severe, opens with its fix showing; the
+        # rest start closed.
+        assert m["closed"] == len(expected) - 1, "only the first plan row renders open"
+        assert [h["aria"] for h in m["heads"]] == ["true"] + ["false"] * (len(expected) - 1)
+        assert all(h["controls"] for h in m["heads"])
 
         opened = page.evaluate("""() => {
             const rows = [...document.querySelectorAll('.priority-row')];
+            rows[0].querySelector('.priority-head').click();
             return rows.map(r => {
                 r.querySelector('.priority-head').click();
                 return {

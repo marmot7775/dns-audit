@@ -26,7 +26,9 @@ CHECK_TIMEOUT = 15
 
 # Seconds the sender map (Sendermap) gets inside the audit's deadline, the
 # fingerprinter's 8 s before it. Measured over tools' 20 step 1 domains on a
-# warm and a cold cache: see the Sendermap step 2 commit.
+# warm and a cold cache: see the Sendermap step 2 commit. Since sending
+# subdomains are mapped too (2026-10-28) a large domain's map can need 10 to
+# 15 s; past this budget the domain-only map stands in (map_senders).
 SENDER_MAP_BUDGET = 8
 
 # CT (crt.sh) result cache -- 24-hour TTL because CT data rarely changes
@@ -760,6 +762,7 @@ def _enrich_dmarc_inheritance(
             raw_dmarc["is_subdomain"] = True
             raw_dmarc["applied_tag"] = tree_walk_result.get("applied_tag", "p")
             raw_dmarc["inheritance_method"] = "tree_walk"
+            _recover_inherited_policy(raw_dmarc)
             # news24.co.za: the only policy above it is the co.za registry's.
             # That makes the name its own organizational domain, not a
             # subdomain, so subdomain discovery and the alignment cross-check
@@ -812,6 +815,7 @@ def _enrich_dmarc_inheritance(
         raw_dmarc["is_subdomain"] = True
         raw_dmarc["applied_tag"] = "sp" if sp else "p"
         raw_dmarc["inheritance_method"] = "psl"
+        _recover_inherited_policy(raw_dmarc)
 
 
 # ============================================================
@@ -819,6 +823,30 @@ def _enrich_dmarc_inheritance(
 # ============================================================
 
 _RUA_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+_DMARC_POLICIES = ("none", "quarantine", "reject")
+
+
+def _recover_inherited_policy(raw_dmarc: Dict[str, Any]) -> None:
+    """RFC 7489 section 6.6.3 step 6: a record whose p= or sp= is not valid
+    is read as p=none when its rua= holds a valid reporting URI. The apex
+    applied this recovery to its own p= while an inherited sp=bogus reached
+    the card as the policy "bogus" and graded red. np= (RFC 9989) gets the
+    same reading. Without a valid rua the value is left alone and the card
+    still fails it."""
+    policy = raw_dmarc.get("inherited_policy")
+    if policy in _DMARC_POLICIES:
+        return
+    rua = ""
+    for part in (raw_dmarc.get("inherited_record") or "").split(";"):
+        key, _, value = part.partition("=")
+        if key.strip().lower() == "rua":
+            rua = value.strip()
+            break
+    if _is_rua_syntactically_valid(rua):
+        raw_dmarc["inherited_policy_invalid"] = policy
+        raw_dmarc["inherited_policy"] = "none"
 
 
 def _is_rua_syntactically_valid(rua_value: str) -> bool:
@@ -4228,6 +4256,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
       - Certificate sprawl (too many CAs)
     """
     import requests
+    import http_tls
 
     result = {
         "check": "Certificate Transparency",
@@ -4262,7 +4291,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         """The same certificates from SSLMate's Cert Spotter, in crt.sh's
         field names, or None when it does not answer (429 included)."""
         try:
-            r = requests.get(
+            r = http_tls.get(
                 "https://api.certspotter.com/v1/issuances",
                 params=[("domain", domain), ("include_subdomains", "true"),
                         ("expand", "dns_names"), ("expand", "issuer")],
@@ -4303,7 +4332,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
     # Query crt.sh, then Cert Spotter when crt.sh does not answer.
     crt_failure = None
     try:
-        resp = requests.get(
+        resp = http_tls.get(
             "https://crt.sh/",
             # exclude=expired keeps a domain with a long certificate history
             # from burying every currently-valid cert under thousands of
@@ -4812,9 +4841,9 @@ _probe_executor = ThreadPoolExecutor(
 # Also sized off the concurrency cap, for the same reason as _probe_executor:
 # a fixed 20 workers under 8 concurrent audits each submitting a full wave is
 # the starvation this pool exists to fix. The width is the most probes one
-# audit submits at once. Since Doc 102 both the priority wave (max_selectors
-# 40 plus ESP_SELECTORS) and the generic fallback go out in chunks of
-# DKIM_WAVE_CHUNK (52, equal to DKIM_FALLBACK_CHUNK), so
+# audit submits at once. Since Doc 102 both the priority wave (since Doc
+# 105 Sendermap's sweep plus LOCAL_SELECTORS) and the generic fallback go
+# out in chunks of DKIM_WAVE_CHUNK (52, equal to DKIM_FALLBACK_CHUNK), so
 # 52 x MAX_CONCURRENT_AUDITS (8) = 416 workers. It was 86 x 8 = 688 when the
 # priority wave went out whole. Never size it below DKIM_FALLBACK_CHUNK per
 # audit, or concurrent fallback chunks queue behind each other.

@@ -888,7 +888,7 @@ function renderResults(data, selector = '') {
     // Prompt 2: Record to recent audits in localStorage
     _recordRecentAudit(data.domain);
 
-    // -- Gmail, Yahoo and Microsoft sender requirements, under the headline --
+    // -- Gmail, Yahoo and Microsoft sender requirements, closed, under What to do --
     renderRequirements(data);
 
     // -- What changed since this browser last audited the domain --
@@ -986,12 +986,10 @@ function renderResults(data, selector = '') {
 
     // Doc 92: the card list is the technical layer, and says how many checks
     // it holds.
-    const resultsHeading = document.getElementById('results-heading');
-    if (resultsHeading) {
-        resultsHeading.textContent = checks.length === 1
-            ? 'Technical details: 1 check'
-            : `Technical details: all ${checks.length} checks`;
-    }
+    // The section starts closed on every audit, and its toggle says how many
+    // checks are behind it.
+    _techCheckCount = checks.length;
+    setTechOpen(false);
 
     // -- Authentication Resilience --
     // No longer a panel of its own at the top of the page: it restated the
@@ -1007,14 +1005,21 @@ function renderResults(data, selector = '') {
     if (rm && rm.items && rm.items.length > 0) {
         prioritySection.style.display = 'block';
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
-        priorityList.innerHTML = renderDnsHost(data.dns_host)
-            + renderPriorities(rm, checks, data.resilience, data.dns_host);
+        // With a records block, the DNS host's click path moves down to sit
+        // directly above it; with none it stays above the plan, as before.
+        const recordsBlock = renderChangeSet(rm.change_set, data.dns_host);
+        priorityList.innerHTML = (recordsBlock ? '' : renderDnsHost(data.dns_host))
+            + renderPriorities(rm, checks, data.resilience, data.dns_host)
+            + recordsBlock;
+        wireChangeSet(priorityList, data);
         // The row opens; the link into the card is a control inside it.
         priorityList.querySelectorAll('.priority-head').forEach(head => {
             const body = document.getElementById(head.getAttribute('aria-controls'));
             const toggle = () => {
                 const open = !body.classList.toggle('is-hidden');
                 head.setAttribute('aria-expanded', open ? 'true' : 'false');
+                const cue = head.querySelector('.priority-cue');
+                if (cue) cue.textContent = open ? 'Hide fix' : 'Show fix';
             };
             head.addEventListener('click', toggle);
             head.addEventListener('keydown', ev => {
@@ -1035,6 +1040,10 @@ function renderResults(data, selector = '') {
                 const block = btn.closest('.record-block');
                 _copyToClipboard(block?.querySelector('.record-text')?.textContent || '', btn, 'Copy');
             });
+        });
+        // Each count in the headline goes to its first row and opens it.
+        document.querySelectorAll('#executive-summary [data-plan-tier]').forEach(btn => {
+            btn.addEventListener('click', () => openPlanTier(btn.dataset.planTier));
         });
     } else {
         priorityList.innerHTML = '';
@@ -1171,7 +1180,8 @@ function renderResults(data, selector = '') {
     const draftList = document.getElementById('draft-standards-list');
     draftList.innerHTML = '';
     const drafts = data.draft_standards || [];
-    drafts.forEach((card, i) => draftList.appendChild(createResultCard(card, checks.length + i)));
+    drafts.forEach((card, i) => draftList.appendChild(
+        card.collapsed_line ? createDraftLine(card) : createResultCard(card, checks.length + i)));
     draftSection.classList.toggle('is-hidden', drafts.length === 0);
 
     // Every card renders collapsed, so the button offers Expand All. It has
@@ -1290,10 +1300,20 @@ const SMAP_TIER_ORDER = ['In use', 'Configured', 'Likely', 'Account only'];
 // The risk findings that cite one of this service's own records (name, type
 // and value: the apex name is shared by every service there).
 const _smapEvKey = e => `${e.name}|${e.rtype}|${e.value}`;
+const _smapOwnKeys = svcs => new Set(svcs.flatMap(s => s.claims || []).map(c => c.evidence).filter(Boolean).map(_smapEvKey));
 function serviceFindings(svc, map) {
-    const own = new Set((svc.claims || []).map(c => c.evidence).filter(Boolean).map(_smapEvKey));
+    const own = _smapOwnKeys([svc]);
     return ((map && map.findings) || []).filter(f =>
         (f.evidence || []).some(e => own.has(_smapEvKey(e))));
+}
+
+// Risks and warnings that cite no service's records, such as an SPF include
+// of a name with no SPF record. No node would show them, so they sit above
+// the map. Notes stay out: they inform, and repeat what the nodes show.
+function domainFindings(map) {
+    const own = _smapOwnKeys((map && map.services) || []);
+    return ((map && map.findings) || []).filter(f => f.severity !== 'note' &&
+        !(f.evidence || []).some(e => own.has(_smapEvKey(e))));
 }
 
 function senderMapNodes(map) {
@@ -1398,9 +1418,11 @@ function renderSenderMap(data) {
         .filter(k => counts[k])
         .map(k => `<span class="smap-legend-item smap-${k}"><span class="smap-dot"></span>${SMAP_STATE_WORD[k]} (${counts[k]})</span>`)
         .join('');
+    const domainFinds = domainFindings(map).map(f => `<li class="smap-finding-${safeClass(f.severity)}"><strong>${escapeHtml(f.title)}.</strong> ${escapeHtml(f.detail || '')}</li>`).join('');
     slot.innerHTML = `<section class="smap" aria-labelledby="smap-heading">
         <h2 class="smap-heading" id="smap-heading">Who sends as ${escapeHtml(data.domain)}</h2>
         ${map.story ? `<p class="smap-story">${escapeHtml(smapStory(map.story))}</p>` : ''}
+        ${domainFinds ? `<div class="smap-domain-findings"><h3 class="smap-detail-sub">Across the domain</h3><ul class="smap-findings">${domainFinds}</ul></div>` : ''}
         <div class="smap-legend">${legend}</div>
         <div class="smap-canvas">
             <svg class="smap-lines" aria-hidden="true" focusable="false"></svg>
@@ -1665,7 +1687,7 @@ function renderRecheck(data) {
         ${better.length ? `<h3 class="recheck-sub recheck-good">Better (${better.length})</h3>${list(better.map(moveLine), 'recheck-better')}` : ''}
         ${d.added.length ? `<h3 class="recheck-sub recheck-bad">New (${d.added.length})</h3>${list(d.added, 'recheck-new')}` : ''}
         ${worse.length ? `<h3 class="recheck-sub recheck-bad">Worse (${worse.length})</h3>${list(worse.map(moveLine), 'recheck-worse')}` : ''}
-        <p class="recheck-foot">Compared in your browser with the last audit you ran here. Nothing is stored on the server.</p>
+        <p class="recheck-foot">Compared with the last audit you ran here.</p>
     </section>`;
 }
 
@@ -1711,9 +1733,17 @@ function renderRequirements(data) {
     };
     const inDns = req.rows.filter(r => r.status !== 'outside_dns');
     const outside = req.rows.filter(r => r.status === 'outside_dns');
-    slot.innerHTML = `<section class="req-block req-state-${safeClass(req.state)}" aria-labelledby="req-heading">
-        <h2 class="req-heading" id="req-heading">Gmail, Yahoo, and Microsoft sender requirements</h2>
-        <p class="req-summary">${escapeHtml(req.summary)}</p>
+    // Closed to a heading and the one-line summary, under What to do: the
+    // fixes come first, and this is the check against the three providers'
+    // rules. Opening it lists every row.
+    slot.innerHTML = `<details class="req-block req-state-${safeClass(req.state)}">
+        <summary class="req-head">
+            <span class="req-head-text">
+                <h2 class="req-heading" id="req-heading">Gmail, Yahoo, and Microsoft sender requirements</h2>
+                <span class="req-summary">${escapeHtml(req.summary)}</span>
+            </span>
+            <span class="req-head-chevron" aria-hidden="true">${ICON.chevron}</span>
+        </summary>
         <h3 class="req-sub">What your DNS shows</h3>
         <ul class="req-list">${inDns.map(row).join('')}</ul>
         <details class="req-more">
@@ -1721,7 +1751,7 @@ function renderRequirements(data) {
             <ul class="req-list">${outside.map(row).join('')}</ul>
         </details>
         <p class="req-foot">Bulk senders send about 5,000 or more messages a day to one provider's users.</p>
-    </section>`;
+    </details>`;
     slot.querySelectorAll('[data-req-scope]').forEach(btn => {
         btn.addEventListener('click', () => {
             const pill = document.querySelector(`.scope-btn[data-scope="${btn.dataset.reqScope}"]`);
@@ -1819,6 +1849,27 @@ function setCardExpanded(card, open) {
     if (body) body.inert = !open;
 }
 
+// A draft standard that is not published (nearly every domain) is one
+// collapsed line, not a card. It reuses the subdomain table's details and
+// summary toggle; the note and the advice sit only inside the expanded body.
+function createDraftLine(card) {
+    const el = document.createElement('details');
+    el.className = 'sua-details draft-line';
+    el.id = 'draft-' + card.name.toLowerCase();
+    const found = (card.paragraphs || [])
+        .map(p => `<p class="explanation">${escapeHtml(p)}</p>`).join('');
+    el.innerHTML = `
+        <summary class="sua-toggle draft-line-summary">
+            <span class="sua-toggle-icon">${ICON.chevron}</span>
+            ${escapeHtml(card.collapsed_line)}
+        </summary>
+        <div class="draft-line-body">
+            <div class="what-this-is">${escapeHtml(card.what_this_is)}</div>
+            ${found}
+        </div>`;
+    return el;
+}
+
 function createResultCard(check, index) {
     const card = document.createElement('div');
     // Every card starts collapsed. The header carries the status pill and the
@@ -1829,8 +1880,6 @@ function createResultCard(check, index) {
     card.dataset.status = check.status;
     card.dataset.check = check.name || '';
     card.style.animationDelay = `${index * 60}ms`;
-    // Off-screen paint skip from the sixth card on (style.css).
-    if (index >= 5) card.classList.add('result-card-deferred');
 
     const statusLabel = check.pill_label || STATUS_LABELS[check.status] || 'Unknown';
 
@@ -1839,7 +1888,7 @@ function createResultCard(check, index) {
     // first line inside the opened card, from check.what_this_is.
     // Doc 92: the title leads with the plain name ("Spoofing policy (DMARC)")
     // when the backend sends one; the id above still comes from check.name.
-    const titleHtml = `<h3 class="result-title">${escapeHtml(checkTitle(check))}</h3>`;
+    const titleHtml = `<h4 class="result-title">${escapeHtml(checkTitle(check))}</h4>`;
 
     const bodyId = `body-${(check.name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     card.innerHTML = `
@@ -1914,7 +1963,7 @@ function createResultCard(check, index) {
         const body = sec.querySelector(':scope > .cd-body');
         if (!title || !body) return;
         const text = title.textContent.trim();
-        body.querySelectorAll('h4, .as-title, .sua-title, .dbis-title, .spfd-title').forEach(h => {
+        body.querySelectorAll('h6, .as-title, .sua-title, .dbis-title, .spfd-title').forEach(h => {
             if (h.textContent.trim() === text) h.classList.add('panel-title-repeat');
         });
     });
@@ -2439,7 +2488,7 @@ function renderCardDetails(sections) {
     for (const s of shown) {
         const bodyId = `cd-body-${++_cdSectionSeq}`;
         inner += `<div class="cd-section cd-subsection${s.spec ? ' ' + s.spec : ''}"${s.anchor ? ` id="${s.anchor}"` : ''}>
-            <div role="heading" aria-level="5">
+            <div role="heading" aria-level="6">
             <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${bodyId}">
                 ${s.icon ? `<span class="cd-header-icon">${s.icon}</span>` : ''}
                 <span class="cd-header-title">${escapeHtml(s.title)}</span>
@@ -2455,7 +2504,7 @@ function renderCardDetails(sections) {
     const outerId = `cd-body-${++_cdSectionSeq}`;
     return `<div class="card-details-wrap">
         <div class="cd-section card-details">
-            <div role="heading" aria-level="4">
+            <div role="heading" aria-level="5">
             <div class="cd-header" role="button" tabindex="0" aria-expanded="false" aria-controls="${outerId}">
                 <span class="cd-header-title">Details</span>
                 ${_detailsCountHtml(shown)}
@@ -2893,7 +2942,7 @@ function renderStrictValidation(sv, specLabel = 'RFC 9989') {
             <div class="sv-header">
                 <div class="sv-header-left">
                     <span class="tag">${escapeHtml(specLabel)}</span>
-                    <h4 class="sv-title">Strict Record Validation</h4>
+                    <h6 class="sv-title">Strict Record Validation</h6>
                 </div>
                 <div class="sv-header-right">
                     <span class="sv-summary ${summaryClass}">${statusIconHtml(summaryClass.slice('sv-summary-'.length))}<span>${escapeHtml(sv.summary)}</span></span>
@@ -3067,7 +3116,7 @@ function renderDmarcTagBreakdown(bd) {
         migrationHtml = `
             <div class="mw-block">
                 <div class="mw-header">
-                    <h4 class="mw-title">Path to enforcement</h4>
+                    <h6 class="mw-title">Path to enforcement</h6>
                     <span class="mw-progress">${bd.migration.total_steps} step${bd.migration.total_steps === 1 ? '' : 's'}</span>
                 </div>
                 <div class="mw-steps">${stepsHtml}</div>
@@ -3138,7 +3187,7 @@ function renderDmarcTagBreakdown(bd) {
     return `
         <div class="record-breakdown">
             <div class="rb-header">
-                <h4 class="rb-title">DMARC Record Breakdown</h4>
+                <h6 class="rb-title">DMARC Record Breakdown</h6>
             </div>
             ${verdictHtml}
             <div class="rb-kvs">${tagsHtml}</div>
@@ -3175,7 +3224,7 @@ function renderRecordBuilder(rb) {
         return `
             <div class="rcb-block rcb-ready">
                 <div class="rcb-header">
-                    <h4 class="rcb-title">Record Builder</h4>
+                    <h6 class="rcb-title">Record Builder</h6>
                     <span class="tag tag-pass">No changes needed</span>
                 </div>
                 <p class="rcb-ready-msg">Your DMARC record is RFC 9989 Ready. No modifications required.</p>
@@ -3282,7 +3331,7 @@ function renderRecordBuilder(rb) {
     return `
         <div class="rcb-block">
             <div class="rcb-header">
-                <h4 class="rcb-title">${escapeHtml(title)}</h4>
+                <h6 class="rcb-title">${escapeHtml(title)}</h6>
             </div>
             ${firstNoteHtml}
             ${diffHtml}
@@ -3357,7 +3406,7 @@ function renderTreeWalkSimple(tw) {
     return `
         <div class="tree-walk tree-walk-simple tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
+                <h6 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h6>
                 <a class="tag tag-hit" href="https://www.rfc-editor.org/rfc/rfc9989.html"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -3387,7 +3436,7 @@ function renderTreeWalkFull(tw) {
     let html = `
         <div class="tree-walk tw-animated">
             <div class="tw-header-row">
-                <h4 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h4>
+                <h6 class="tree-walk-header">DMARC Policy Discovery (DNS tree walk)</h6>
                 <a class="tag tag-hit" href="${specUrl}" target="_blank" rel="noopener">RFC 9989</a>
             </div>`;
 
@@ -3747,14 +3796,26 @@ function planCounts(rm) {
     return { n, fixes: n.critical + n.high + n.medium, optional: n.low + optional };
 }
 
+// The count at the head of What to do and the count in the headline box
+// are one list of parts, so they cannot disagree. Each part names the tier
+// its rows carry.
+function planTierParts(rm) {
+    const { n, optional } = planCounts(rm);
+    const parts = [];
+    if (n.critical) parts.push({ tier: 'critical', text: `${n.critical} to fix now` });
+    if (n.high) parts.push({ tier: 'high', text: `${n.high} important` });
+    if (n.medium) parts.push({ tier: 'medium', text: `${n.medium} recommended` });
+    if (optional) parts.push({ tier: 'low', text: `${optional} optional` });
+    return parts;
+}
+
+// "What to do: 1 important, 1 recommended, 5 optional", each count a button
+// that scrolls to its first row.
 function headlineSubline(rm) {
-    const c = planCounts(rm);
-    if (c.fixes) return c.fixes === 1 ? '1 fix needed below.' : `${c.fixes} fixes needed below.`;
-    if (c.optional) {
-        return c.optional === 1 ? '1 optional improvement below.'
-            : `${c.optional} optional improvements below.`;
-    }
-    return 'Nothing to fix.';
+    const parts = planTierParts(rm);
+    if (!parts.length) return '<span class="es-subline-text">Nothing to fix.</span>';
+    const links = parts.map(p => `<button type="button" class="es-count" data-plan-tier="${p.tier}">${escapeHtml(p.text)}</button>`);
+    return `<span class="es-subline-text">What to do:</span> <span class="es-counts">${links.join('')}</span>`;
 }
 
 function _headlineHtml(es, roadmap) {
@@ -3776,7 +3837,7 @@ function _headlineHtml(es, roadmap) {
         ${icon}
         <div class="es-head-text">
             ${headline ? `<div class="es-verdict">${escapeHtml(headline)}</div>` : ''}
-            ${sub ? `<p class="es-subline">${escapeHtml(sub)}</p>` : ''}
+            ${sub ? `<p class="es-subline">${sub}</p>` : ''}
         </div>
     </div>`;
 }
@@ -3815,13 +3876,7 @@ function _defensiveHtml(data) {
 // The count beside the heading, in the words the pills use. Optional extras
 // are counted once, as optional, whatever their tier.
 function priorityTierSummary(rm) {
-    const { n, optional } = planCounts(rm);
-    const parts = [];
-    if (n.critical) parts.push(`${n.critical} to fix now`);
-    if (n.high) parts.push(`${n.high} important`);
-    if (n.medium) parts.push(`${n.medium} recommended`);
-    if (optional) parts.push(`${optional} optional`);
-    return parts.join(', ');
+    return planTierParts(rm).map(p => p.text).join(', ');
 }
 
 // One row per roadmap item, in the roadmap's order, with the optional
@@ -3838,23 +3893,44 @@ function renderPriorities(rm, checks, resilience, dnsHost) {
     const main = items.filter(i => !isOptionalPlanItem(i));
     const extras = items.filter(i => isOptionalPlanItem(i));
 
-    let html = main.map(item => _priorityRow(item, cards, resilience, false, dnsHost)).join('');
+    // The first row, the most severe, opens with its fix on show: the reader
+    // should not have to find a chevron to learn what to paste. When nothing
+    // but optional extras remain, the group opens to show its first row.
+    const openFirstExtra = main.length === 0;
+    let html = main.map((item, i) => _priorityRow(item, cards, resilience, false, dnsHost, i === 0)).join('');
     if (extras.length > 0) {
         const groupId = `plan-optional-${++_planSeq}`;
         html += `<div class="plan-optional">
-            <button type="button" class="plan-optional-toggle" aria-expanded="false" aria-controls="${groupId}">
+            <button type="button" class="plan-optional-toggle" aria-expanded="${openFirstExtra}" aria-controls="${groupId}">
                 <span>Optional extras (${extras.length})</span>
                 <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
             </button>
-            <div class="plan-optional-body is-hidden" id="${groupId}">
-                ${extras.map(item => _priorityRow(item, cards, resilience, true, dnsHost)).join('')}
+            <div class="plan-optional-body${openFirstExtra ? '' : ' is-hidden'}" id="${groupId}">
+                ${extras.map((item, i) => _priorityRow(item, cards, resilience, true, dnsHost, openFirstExtra && i === 0)).join('')}
             </div>
         </div>`;
     }
     return html;
 }
 
-function _priorityRow(item, cards, resilience, optional, dnsHost) {
+// The first row of a tier, opened and scrolled to. A row in the closed
+// optional group opens the group first.
+function openPlanTier(tier) {
+    const row = document.querySelector(`#priority-list .priority-row[data-tier="${tier}"]`);
+    if (!row) return;
+    const group = row.closest('.plan-optional-body');
+    if (group && group.classList.contains('is-hidden')) {
+        const toggle = document.querySelector(`[aria-controls="${group.id}"]`);
+        if (toggle) toggle.click();
+    }
+    const head = row.querySelector('.priority-head');
+    if (head && head.getAttribute('aria-expanded') !== 'true') head.click();
+    const headerH = document.querySelector('.site-header')?.offsetHeight || 0;
+    const y = row.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+}
+
+function _priorityRow(item, cards, resilience, optional, dnsHost, open) {
     const st = ['fail', 'warn', 'absent'].includes(item.status) ? item.status : 'info';
     const anchor = `check-${(item.protocol || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     const card = cards[item.protocol];
@@ -3874,9 +3950,11 @@ function _priorityRow(item, cards, resilience, optional, dnsHost) {
         <div class="plan-part-body">${body}</div>
     </div>`;
 
-    return `<div class="priority-row">
+    // Every row says what a click does, in words: the chevron alone gave no
+    // cue that the fix was inside.
+    return `<div class="priority-row" data-tier="${safeClass(tier)}">
         <div class="priority-head" role="button" tabindex="0"
-             aria-expanded="false" aria-controls="${bodyId}">
+             aria-expanded="${open ? 'true' : 'false'}" aria-controls="${bodyId}">
             <span class="status-icon ${st}">${ICON[st]}</span>
             <span class="priority-text">
                 ${plain ? `<span class="priority-plain">${escapeHtml(plain)}</span>` : ''}
@@ -3886,9 +3964,12 @@ function _priorityRow(item, cards, resilience, optional, dnsHost) {
                 <span class="priority-protocol">${escapeHtml(item.protocol)}</span>
                 <span class="tag tag-${safeClass(tier)}">${escapeHtml(tierLabel)}</span>
             </span>
-            <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+            <span class="priority-toggle">
+                <span class="priority-cue" aria-hidden="true">${open ? 'Hide fix' : 'Show fix'}</span>
+                <span class="priority-chevron" aria-hidden="true">${ICON.chevron}</span>
+            </span>
         </div>
-        <div class="priority-body is-hidden" id="${bodyId}">
+        <div class="priority-body${open ? '' : ' is-hidden'}" id="${bodyId}">
             ${why ? part('Why it matters', why) : ''}
             ${part(what.hasRecord ? 'What to paste' : 'What to change', what.html)}
             ${item.who ? part('Who does this', escapeHtml(_planWho(item.who, dnsHost))) : ''}
@@ -3952,6 +4033,36 @@ function _dmarcPolicy(card) {
     return m ? m[2].toLowerCase() : '';
 }
 
+const CHANGE_OPS = {
+    add: 'Add', replace: 'Replace', delete: 'Delete', file: 'Publish',
+};
+
+// The line above a record: what to do, the type and the name. A policy
+// file is served over HTTPS, so its "name" is the URL.
+function _recordHostLine(rec) {
+    const op = CHANGE_OPS[rec.op] || 'Add';
+    if (rec.op === 'file') return `${op} the policy file at <strong>${escapeHtml(rec.host || '')}</strong>`;
+    return `${op} the ${escapeHtml(rec.type || 'TXT')} record at <strong>${escapeHtml(rec.host || '')}</strong>`;
+}
+
+// One record from the plan, inside a plan row: its exact value with a copy
+// button, or, when DNS cannot tell us the value, who supplies it.
+function _changeRecordBlock(rec, notes) {
+    const value = rec.value === null || rec.value === undefined
+        ? `<div class="plan-record-from"><span class="plan-record-from-label">Value:</span> ${escapeHtml(rec.value_from || '')}</div>`
+        : `<div class="record-block record-block-inset${rec.op === 'file' ? ' record-block-file' : ''}">
+            <span class="record-text">${escapeHtml(rec.value)}</span>
+            <button class="copy-btn" aria-label="Copy to clipboard">Copy</button>
+        </div>`;
+    const by = rec.by ? `<div class="plan-record-note">Published by ${escapeHtml(rec.by)}, not by you.</div>` : '';
+    const warn = rec.placeholder ? `<div class="plan-record-note rtc-placeholder-note">${escapeHtml(RC_PLACEHOLDER_WARNING)}</div>` : '';
+    return `<div class="plan-record">
+        <div class="plan-record-host">${_recordHostLine(rec)}</div>
+        ${value}${by}${warn}
+        ${(notes || []).map(n => `<div class="plan-record-note">${escapeHtml(n)}</div>`).join('')}
+    </div>`;
+}
+
 function _planRecordBlock(host, type, value, comment) {
     return `<div class="plan-record">
         <div class="plan-record-host">${escapeHtml(type || 'TXT')} record at <strong>${escapeHtml(host || '')}</strong></div>
@@ -3961,6 +4072,107 @@ function _planRecordBlock(host, type, value, comment) {
         </div>
         ${comment ? `<div class="fix-comment">${escapeHtml(comment)}</div>` : ''}
     </div>`;
+}
+
+const RC_PLACEHOLDER_WARNING = 'Replace REPLACE-WITH-YOUR-ADDRESS with a mailbox or report service you read before you publish. This audit does not know your address.';
+
+const RC_OPS = { add: 'Add', replace: 'Replace', delete: 'Delete', file: 'Publish' };
+
+// The text one row contributes to "Copy all records": the step, what to do
+// and where, then the value, or who supplies it.
+function _rcPlainRow(e) {
+    const what = e.op === 'file' ? `Publish the policy file at ${e.host}`
+        : `${RC_OPS[e.op] || 'Add'} ${e.type} record at ${e.host}`;
+    const lines = [`${e.step}. ${what}`];
+    if (e.op === 'delete') {
+        if (e.current) lines.push(`Current value: ${e.current}`);
+    } else if (e.value !== null && e.value !== undefined) {
+        lines.push(e.value);
+    } else {
+        lines.push(`Value from: ${e.value_from || 'your DNS host'}`);
+    }
+    return lines.join('\n');
+}
+
+function rcCopyAllText(cs) {
+    return ((cs && cs.entries) || []).map(_rcPlainRow).join('\n\n');
+}
+
+function _rcRow(e) {
+    const op = RC_OPS[e.op] || 'Add';
+    const hasValue = e.value !== null && e.value !== undefined;
+    let valueHtml;
+    if (e.op === 'delete') {
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">Delete</span>
+            <p class="rtc-plain">Remove this record. Nothing replaces it.</p></div>`;
+    } else if (hasValue) {
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">${e.op === 'replace' ? 'New value' : 'Value'}</span>
+            <div class="record-block record-block-inset${e.op === 'file' ? ' record-block-file' : ''}">
+                <span class="record-text">${escapeHtml(e.value)}</span>
+                <button class="copy-btn" aria-label="Copy value for step ${e.step}">Copy</button>
+            </div></div>`;
+    } else {
+        valueHtml = `<div class="rtc-field"><span class="rtc-label">Value</span>
+            <p class="rtc-from"><strong>Comes from someone else.</strong> ${escapeHtml(e.value_from || '')}</p></div>`;
+    }
+    const current = e.current
+        ? `<div class="rtc-field"><span class="rtc-label">${e.op === 'delete' ? 'Current value' : 'Current value, replaced'}</span>
+            <div class="rtc-current"><span class="rtc-current-text">${escapeHtml(e.current)}</span></div></div>`
+        : '';
+    const warn = e.placeholder ? `<p class="rtc-placeholder">${escapeHtml(RC_PLACEHOLDER_WARNING)}</p>` : '';
+    const by = e.by ? `<p class="rtc-note">Published by ${escapeHtml(e.by)}, not by you.</p>` : '';
+    const notes = (e.notes || []).map(n => `<p class="rtc-note">${escapeHtml(n)}</p>`).join('');
+    return `<li class="rtc-row" data-rtc-step="${e.step}">
+        <div class="rtc-head">
+            <span class="rtc-step" aria-label="Step ${e.step}">${e.step}</span>
+            <span class="rtc-op rtc-op-${escapeHtml(e.op)}">${op}</span>
+            <span class="rtc-type">${escapeHtml(e.type)}</span>
+            <span class="rtc-proto">${escapeHtml(e.protocol)}</span>
+            ${e.optional ? '<span class="tag tag-low">Optional</span>' : ''}
+        </div>
+        <div class="rtc-field"><span class="rtc-label">${e.op === 'file' ? 'URL' : 'Host name'}</span>
+            <code class="rtc-host">${escapeHtml(e.host)}</code></div>
+        ${valueHtml}${current}${warn}${by}${notes}
+    </li>`;
+}
+
+// Records to change: every record the plan asks for, in the plan's order,
+// one row each. Rows that edit one record share a row whose value carries
+// all their edits, so working down the list never undoes a step. Open, right
+// after What to do, with the DNS host's click path above it.
+function renderChangeSet(cs, host) {
+    const entries = (cs && cs.entries) || [];
+    if (entries.length === 0) return '';
+    const parts = [`${entries.length} ${entries.length === 1 ? 'record' : 'records'}`];
+    if (cs.from_provider) parts.push(`${cs.from_provider} with a value that comes from someone else`);
+    if (cs.placeholders) parts.push(`${cs.placeholders} with an address for you to fill in`);
+    const rest = cs.rows_without_records
+        ? `<p class="rtc-foot">${cs.rows_without_records} plan ${cs.rows_without_records === 1 ? 'item is' : 'items are'} not listed here: the change is not a DNS record, or this audit cannot say which record. The plan above covers ${cs.rows_without_records === 1 ? 'it' : 'them'}.</p>`
+        : '';
+    return `<section class="records-block" id="records-to-change" aria-labelledby="records-title">
+        <h3 class="records-title" id="records-title">Records to change <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></h3>
+        <p class="rtc-intro">Top to bottom, in the order of the plan above. Where two plan items change one record, it appears once with both changes in it.</p>
+        ${renderDnsHost(host)}
+        <ol class="rtc-list">${entries.map(_rcRow).join('')}</ol>
+        <div class="rtc-actions">
+            <button type="button" class="rtc-copy-all" data-rtc-copy-all>Copy all records</button>
+        </div>
+        ${rest}
+        <p class="rtc-recheck">After you publish, <button type="button" class="rtc-rerun" data-rtc-rerun>run this audit again</button>. The panel headed "Since" near the top of the page lists what changed. DNS changes can take a few minutes to reach resolvers.</p>
+    </section>`;
+}
+
+function wireChangeSet(root, data) {
+    const block = root.querySelector('#records-to-change');
+    if (!block) return;
+    const all = block.querySelector('[data-rtc-copy-all]');
+    if (all) all.addEventListener('click', () => {
+        _copyToClipboard(rcCopyAllText(data.security_roadmap.change_set), all, 'Copy all records');
+    });
+    const again = block.querySelector('[data-rtc-rerun]');
+    if (again) again.addEventListener('click', () => {
+        if (data.domain) runAudit(data.domain);
+    });
 }
 
 // What to change: a record the reader can publish, or the card's own fix
@@ -3985,7 +4197,16 @@ function _planWhat(item, card, anchor) {
         const host = item.host || `_dmarc.${(lastAuditData && lastAuditData.domain) || ''}`;
         let html = _planRecordBlock(host, 'TXT', item.record);
         if (item.host_note) html += `<div class="plan-record-note">${escapeHtml(item.host_note)}</div>`;
-        html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        // A first record has no current policy for "the next edit" to be at.
+        if (card && card.record) html += `<div class="plan-record-note">${escapeHtml(END_STATE_NOTE_PLAN)}</div>`;
+        if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
+        return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
+    }
+
+    // Every other row carries its records too: the exact value where DNS
+    // tells us it, or who supplies it.
+    if (item.records && item.records.length > 0) {
+        let html = item.records.map(r => _changeRecordBlock(r, r.note ? [r.note] : [])).join('');
         if (card && card.ttl_info) html += renderPropagationWarning(card.ttl_info, card.name);
         return { html, hasPropagation: !!(card && card.ttl_info), hasRecord: true };
     }
@@ -4269,7 +4490,7 @@ function renderDmarcEvaluation(ev) {
     return `
         <div class="dmarc-eval de-animated">
             <div class="se-header-row">
-                <h4 class="se-header">DMARC Evaluation</h4>
+                <h6 class="se-header">DMARC Evaluation</h6>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9989"
                    target="_blank" rel="noopener">RFC 9989</a>
             </div>
@@ -4321,7 +4542,7 @@ function renderReportChain(rc) {
     let html = `
         <div class="report-chain rc-animated">
             <div class="se-header-row">
-                <h4 class="se-header">DMARC Report Delivery Chain</h4>
+                <h6 class="se-header">DMARC Report Delivery Chain</h6>
                 <a class="tag tag-hit" href="https://datatracker.ietf.org/doc/html/rfc9990#section-4"
                    target="_blank" rel="noopener">RFC 9990 section 4</a>
             </div>
@@ -4519,6 +4740,7 @@ function openCard(id) {
     const target = document.getElementById(id);
     if (!target) return;
     const card = target.closest('.result-card');
+    if (target.closest('#technical-body')) setTechOpen(true);
     if (card) {
         setCardExpanded(card, true);
         // A panel inside Details is behind one or two collapsed sections,
@@ -4537,17 +4759,24 @@ function openCard(id) {
         }
         syncToggleAllLabel();
     }
-    // A card that skips painting off screen is held at a 300px guess until
-    // it renders. Any such card above the target (or holding it) would
-    // shrink to its real height mid-scroll and carry the target up under
-    // the header, so it paints for real first.
-    document.querySelectorAll('.result-card-deferred').forEach(c => {
-        if (c.contains(target) || (c.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-            c.classList.remove('result-card-deferred');
-        }
-    });
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+// The technical layer: every check card, the status tiles and Draft
+// standards, behind one closed toggle under What to do.
+let _techCheckCount = 0;
+function setTechOpen(open) {
+    const toggle = document.getElementById('tech-toggle');
+    const body = document.getElementById('technical-body');
+    if (!toggle || !body) return;
+    setDisclosure(toggle, body, open);
+    const n = _techCheckCount;
+    const what = n === 1 ? '1 check' : n ? `all ${n} checks` : 'all checks';
+    document.getElementById('tech-toggle-label').textContent = `${open ? 'Hide' : 'Show'} ${what}`;
+}
+document.getElementById('tech-toggle')?.addEventListener('click', ev => {
+    setTechOpen(ev.currentTarget.getAttribute('aria-expanded') !== 'true');
+});
 
 function majorityExpanded() {
     const cards = document.querySelectorAll('.result-card');

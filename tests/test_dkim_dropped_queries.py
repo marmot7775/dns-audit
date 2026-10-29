@@ -27,8 +27,11 @@ from conftest import FakeZone, fake_dns
 from test_dkim_discovery_starvation import DKIM_RECORD
 import audit_engine
 import spf_intelligence
-from comprehensive_selectors import COMPREHENSIVE_DKIM_SELECTORS, ESP_SELECTORS, GENERIC_SELECTORS
-from spf_intelligence import _selectors_from_vendors, detect_vendors_from_spf
+from sendermap.selectors import probe_order, rank_rules
+
+from generic_selectors import GENERIC_SELECTORS, LOCAL_SELECTORS
+from sendermap_adapter import catalog
+from spf_intelligence import parse_spf_record
 
 DOMAIN = "drops.test"
 DROP_DELAY = 0.5  # stands in for the resolver lifetime a dropped probe waits out
@@ -109,10 +112,11 @@ def test_a_zone_that_drops_queries_finishes_in_budget_and_reads_not_confirmed():
     card = _dkim_card(result)
 
     assert elapsed < 10, f"audit took {elapsed:.1f}s against a dropping zone"
-    # The priority wave (the capped 40 plus ESP_SELECTORS) runs in full,
-    # the generic fallback never starts.
+    # The priority wave (Sendermap's sweep plus LOCAL_SELECTORS) runs in
+    # full, the generic fallback never starts.
     probed = len(_dkim_queries(zone))
-    assert probed <= 40 + len(ESP_SELECTORS), f"{probed} selector probes; the sweep did not stop"
+    bound = len(catalog().probe_selectors) + len(LOCAL_SELECTORS)
+    assert probed <= bound, f"{probed} selector probes; the sweep did not stop"
     assert card["status"] == "unavailable", card["verdict"]
     assert card["pill_label"] == "Not confirmed"
     assert card["verdict"] == "DKIM discovery did not finish"
@@ -181,11 +185,19 @@ def test_a_typed_selector_is_found_while_the_zone_drops():
     assert card["status"] in ("pass", "warn")
 
 
-def test_mailchimp_selectors_lead_the_probe_order():
-    """Reachability, not membership: k2 and k3 go out in the first wave."""
-    vendors = detect_vendors_from_spf("v=spf1 include:servers.mcsv.net -all")
-    order = _selectors_from_vendors(vendors, COMPREHENSIVE_DKIM_SELECTORS)[:40]
-    assert order[:3] == ["k1", "k2", "k3"]
+def test_mailchimp_selectors_are_in_the_first_wave():
+    """Reachability, not membership: k2 and k3 go out in the first wave.
+
+    Sendermap 0.1.2 gives Mailchimp no hints, so the include ranks nothing
+    and the order is the catalog's; the whole sweep is sent, so the names
+    are probed regardless. If the catalog gains Mailchimp hints, they lead."""
+    includes = parse_spf_record("v=spf1 include:servers.mcsv.net -all")
+    ranked = rank_rules(catalog().rules, [], includes)
+    order = probe_order(ranked, (*catalog().probe_selectors, *LOCAL_SELECTORS))
+    assert {"k1", "k2", "k3"} <= set(order)
+    mx, spf = frozenset(), frozenset(includes)
+    if any(r.vendor == "Mailchimp" and r.hints.matches(mx, spf) for r in ranked):
+        assert set(order[:3]) == {"k1", "k2", "k3"}
 
 
 def test_answered_selectors_holds_only_names_that_got_an_answer():

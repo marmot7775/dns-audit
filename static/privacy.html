@@ -24,8 +24,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=597a50a">
-    <script src="/static/theme.js?v=597a50a"></script>
+    <link rel="stylesheet" href="/static/style.css?v=1eb10ac">
+    <script src="/static/theme.js?v=1eb10ac"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
@@ -34,9 +34,12 @@
             <a href="/" class="logo"><span class="logo-text">dns<span class="logo-accent">-audit</span>.com</span></a>
             <div class="header-right">
                 <nav class="site-nav" aria-label="Main navigation">
-                    <a href="/" class="nav-link">Home</a>
-                    <a href="/articles/" class="nav-link">Articles</a>
-                    <a href="/about" class="nav-link">About</a>
+                    <a href="https://dns-audit.com/" class="nav-link" aria-label="DNS Audit"><span class="nav-long">DNS Audit</span><span class="nav-short">Audit</span></a>
+                    <a href="https://headers.dns-audit.com/" class="nav-link" rel="noopener" aria-label="Header Decoder"><span class="nav-long">Header Decoder</span><span class="nav-short">Headers</span></a>
+                    <a href="https://aprf.dns-audit.com/" class="nav-link" rel="noopener" aria-label="APRF Reader"><span class="nav-long">APRF Reader</span><span class="nav-short">APRF</span></a>
+                    <span class="nav-sep" aria-hidden="true"></span>
+                    <a href="https://dns-audit.com/articles/" class="nav-link">Articles</a>
+                    <a href="https://dns-audit.com/about" class="nav-link">About</a>
                     <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
                         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
                         <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
@@ -64,6 +67,16 @@
             </ul>
             <p>The domain you type is the whole point of the tool, so it is recorded. If a domain's existence is itself something you would rather keep private, audit it from a copy you run yourself.</p>
             <p>Once a week a copy of this log is downloaded to my own computer and summarized into a private usage report that only I see. It is not published or shared.</p>
+        </section>
+
+        <section class="dbis-section">
+            <h2>The APRF Report Reader and Header Decoder</h2>
+            <p>After each use of the <a href="https://aprf.dns-audit.com/">APRF Report Reader</a> or the <a href="https://headers.dns-audit.com/">Header Decoder</a>, the page sends one short note to this server, and it goes into the same log as an audit. The reports and headers themselves are not part of it.</p>
+            <ul>
+                <li>From the APRF Report Reader: how many reports, streams, warnings and skipped files it read, and the signing domains named in the reports, as an audit records its domain. Nothing from inside the reports beyond that.</li>
+                <li>From the Header Decoder: the overall result, such as pass or fail. No header text, no addresses, and no domains.</li>
+                <li>From both: the time, the same browser and operating system label, bot flag, and daily visitor token an audit records, the hostname of the page that linked you to the tool, and whether the run used the built-in sample.</li>
+            </ul>
         </section>
 
         <section class="dbis-section">
@@ -123,33 +136,30 @@
         <section class="dbis-section">
             <h2>Changes</h2>
             <p>This page describes the tool as it works today. When the tool changes, this page changes with it.</p>
-            <p><strong>Last updated:</strong> 25 October 2026</p>
+            <p><strong>Last updated:</strong> 28 October 2026</p>
         </section>
     </main>
     <footer class="site-footer">
-        <div class="container footer-inner">
-            <div class="footer-left">
-                <div class="footer-brand-name">dns-audit.com</div>
-                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
-            </div>
-            <div class="footer-right">
-                <div class="footer-nav">
-                    <a href="/articles/" class="footer-link">Articles</a>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="/about" class="footer-link">About</a>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="/privacy" class="footer-link">Privacy</a>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+        <div class="container">
+            <div class="footer-row footer-main">
+                <div class="footer-brand">
+                    <div class="footer-brand-name">dns-audit.com</div>
+                    <div class="footer-brand-desc">Free, open source DNS and email security auditing</div>
                 </div>
+                <nav class="footer-nav" aria-label="Footer">
+                    <a href="https://dns-audit.com/articles/" class="footer-link">Articles</a>
+                    <a href="https://dns-audit.com/about" class="footer-link">About</a>
+                    <a href="https://dns-audit.com/privacy" class="footer-link">Privacy</a>
+                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+                </nav>
+            </div>
+            <div class="footer-row footer-meta">
+                <p class="footer-attribution">Built by Neil Anuskiewicz. <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</p>
                 <div class="footer-trust">
                     <span class="footer-version">v2.0.0</span>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security Policy</a>
-                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security policy</a>
                     <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
                 </div>
-                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
             </div>
         </div>
     </footer>

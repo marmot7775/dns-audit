@@ -48,7 +48,7 @@ def test_footer_reaches_the_bottom_of_a_short_page(browser, path):  # noqa: F811
         ctx.close()
 
 
-@pytest.mark.parametrize("width,align", [(1280, "right"), (390, "center")])
+@pytest.mark.parametrize("width,align", [(1280, "left"), (390, "center")])
 def test_footer_note_follows_its_column(browser, width, align):  # noqa: F811
     ctx, page, _ = _page(browser, "light", width)
     try:

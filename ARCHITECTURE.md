@@ -38,6 +38,7 @@ server.py                  FastAPI app, SSE, rate limiting, caching
 config.py                  Settings from the environment
 audit_engine.py            Raw checks for DMARC, SPF, DNSSEC, CAA, NS, DANE, CT, APRF; orchestration and timeouts
 result_transformer.py      Raw results to cards, summary, roadmap
+plan_records.py            The records each plan row asks for, and the change set
 pdf_report.py              PDF report
 dns_tools.py               Domain normalization, resolvers
 dns_hosts.py               DNS host from nameservers, steps to add a record
@@ -45,11 +46,12 @@ dns_snapshots.py           DNS record history for change detection
 dmarc_tree_walk.py         RFC 9989 tree walk
 spf_recursive.py           SPF lookup counter
 spf_execution_engine.py    SPF trace, DMARC evaluation summary
-spf_intelligence.py        DKIM selector discovery from SPF vendors
+spf_intelligence.py        DKIM selector discovery on Sendermap's catalog
 checks_extra.py            MTA-STS, TLS-RPT, BIMI
+http_tls.py                Shared TLS contexts for outbound HTTPS, built once per process
 mx_check.py                MX analysis
 dkim_formatter.py          DKIM key analysis
-comprehensive_selectors.py Known DKIM selectors
+generic_selectors.py       Generic DKIM fallback sweep, LOCAL_SELECTORS
 sendermap_adapter.py       Sendermap on the audit's resolver: the sender map behind the vendor panel, catalog lookups
 anomaly_detector.py        Cross-check anomalies
 ua_classify.py             Browser and bot labels for the audit log

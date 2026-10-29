@@ -213,6 +213,41 @@ def test_cards_sort_inside_their_area(browser, audit):  # noqa: F811
         ctx.close()
 
 
+OUTLINE_JS = """() => [...document.querySelectorAll(
+        '#results-list :is(h1, h2, h3, h4, h5, h6, [role="heading"])')].map(h => ({
+    level: Number(h.getAttribute('aria-level') || h.tagName.slice(1)),
+    kind: h.classList.contains('check-area-heading') ? 'area'
+        : h.classList.contains('result-title') ? 'card' : 'inner',
+    text: h.textContent.trim().replace(/\\s+/g, ' ').slice(0, 60),
+    repeat: h.classList.contains('panel-title-repeat'),
+}))"""
+
+
+@pytest.mark.parametrize("scope", ["complete", "dmarc"])
+def test_heading_outline_nests_cards_under_their_area(browser, audit, scope):  # noqa: F811
+    """Area h3, card title h4, Details 5, its sections and panels 6.
+
+    A card title at the area's level hides the grouping from anyone moving
+    by headings, and a skipped level breaks the outline the same way.
+    """
+    data = _data(audit, f"v=DMARC1; p=none; {RUA}", scope=scope)
+    ctx, page, errors = _page(browser, "dark", 1280)
+    try:
+        _render(page, data)
+        outline = page.evaluate(OUTLINE_JS)
+        assert outline and outline[0]["kind"] == "area", outline[:1]
+        for h in outline:
+            want = {"area": [3], "card": [4], "inner": [5, 6]}[h["kind"]]
+            assert h["level"] in want, h
+        for prev, h in zip(outline, outline[1:]):
+            assert h["level"] <= prev["level"] + 1, (prev, h)
+        # The Doc 92 repeat check finds panel titles by tag; it still has to.
+        assert any(h["repeat"] for h in outline), "no repeated panel title was hidden"
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_status_line_words(browser):  # noqa: F811
     ctx, page, errors = _page(browser, "dark", 1280)
     try:

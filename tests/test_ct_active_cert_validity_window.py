@@ -54,7 +54,7 @@ class _FakeResponse:
 
 def _run(certs, monkeypatch):
     # _raw_check_ct_uncached imports requests inside the function body.
-    monkeypatch.setattr("requests.get", lambda *a, **k: _FakeResponse(certs))
+    monkeypatch.setattr("http_tls.get", lambda *a, **k: _FakeResponse(certs))
     return audit_engine._raw_check_ct_uncached("example.com", {})
 
 

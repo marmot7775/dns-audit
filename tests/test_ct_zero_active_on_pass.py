@@ -56,7 +56,7 @@ def test_crt_sh_query_excludes_expired_certificates(monkeypatch):
         seen["params"] = params
         return _FakeResponse([])
 
-    monkeypatch.setattr("requests.get", _fake_get)
+    monkeypatch.setattr("http_tls.get", _fake_get)
     audit_engine._raw_check_ct_uncached("example.com", {})
     assert seen["params"].get("exclude") == "expired"
 
@@ -71,7 +71,7 @@ def test_cap_keeps_the_longest_valid_certs_over_the_soonest_issued(monkeypatch):
         _cert(1, "long-lived.example.com", now - timedelta(days=300), now + timedelta(days=300)),
         _cert(2, "about-to-expire.example.com", now - timedelta(days=1), now + timedelta(days=1)),
     ]
-    monkeypatch.setattr("requests.get", lambda *a, **k: _FakeResponse(certs))
+    monkeypatch.setattr("http_tls.get", lambda *a, **k: _FakeResponse(certs))
     result = audit_engine._raw_check_ct_uncached("example.com", {})
     # Both fit under the 200 cap here, but the ordering used for capping is
     # what item 2 asks for: expiry descending.

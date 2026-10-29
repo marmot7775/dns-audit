@@ -1,0 +1,57 @@
+<!--
+Canonical site chrome for dns-audit.com, headers.dns-audit.com and
+aprf.dns-audit.com (Doc 105). The header and footer below are copied
+verbatim into email-header-decoder and aprf-reader.
+
+The only per-app differences allowed:
+  - which nav link carries nav-link-active (none in this copy)
+  - the aria-current="page" attribute on that link
+  - the GitHub, Security policy and MIT License hrefs in the footer, which
+    point at each app's own repo
+
+tools/check_chrome.py compares the three live sites against this rule.
+-->
+    <header class="site-header">
+        <div class="container header-inner">
+            <a href="/" class="logo"><span class="logo-text">dns<span class="logo-accent">-audit</span>.com</span></a>
+            <div class="header-right">
+                <nav class="site-nav" aria-label="Main navigation">
+                    <a href="https://dns-audit.com/" class="nav-link" aria-label="DNS Audit"><span class="nav-long">DNS Audit</span><span class="nav-short">Audit</span></a>
+                    <a href="https://headers.dns-audit.com/" class="nav-link" rel="noopener" aria-label="Header Decoder"><span class="nav-long">Header Decoder</span><span class="nav-short">Headers</span></a>
+                    <a href="https://aprf.dns-audit.com/" class="nav-link" rel="noopener" aria-label="APRF Reader"><span class="nav-long">APRF Reader</span><span class="nav-short">APRF</span></a>
+                    <span class="nav-sep" aria-hidden="true"></span>
+                    <a href="https://dns-audit.com/articles/" class="nav-link">Articles</a>
+                    <a href="https://dns-audit.com/about" class="nav-link">About</a>
+                    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
+                        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-row footer-main">
+                <div class="footer-brand">
+                    <div class="footer-brand-name">dns-audit.com</div>
+                    <div class="footer-brand-desc">Free, open source DNS and email security auditing</div>
+                </div>
+                <nav class="footer-nav" aria-label="Footer">
+                    <a href="https://dns-audit.com/articles/" class="footer-link">Articles</a>
+                    <a href="https://dns-audit.com/about" class="footer-link">About</a>
+                    <a href="https://dns-audit.com/privacy" class="footer-link">Privacy</a>
+                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+                </nav>
+            </div>
+            <div class="footer-row footer-meta">
+                <p class="footer-attribution">Built by Neil Anuskiewicz. <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</p>
+                <div class="footer-trust">
+                    <span class="footer-version">v2.0.0</span>
+                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security policy</a>
+                    <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
+                </div>
+            </div>
+        </div>
+    </footer>

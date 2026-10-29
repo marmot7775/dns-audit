@@ -26,8 +26,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=597a50a">
-    <script src="/static/theme.js?v=597a50a"></script>
+    <link rel="stylesheet" href="/static/style.css?v=1eb10ac">
+    <script src="/static/theme.js?v=1eb10ac"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -139,9 +139,12 @@
             <a href="/" class="logo"><span class="logo-text">dns<span class="logo-accent">-audit</span>.com</span></a>
             <div class="header-right">
                 <nav class="site-nav" aria-label="Main navigation">
-                    <a href="/" class="nav-link nav-link-active">Home</a>
-                    <a href="/articles/" class="nav-link">Articles</a>
-                    <a href="/about" class="nav-link">About</a>
+                    <a href="https://dns-audit.com/" class="nav-link nav-link-active" aria-current="page" aria-label="DNS Audit"><span class="nav-long">DNS Audit</span><span class="nav-short">Audit</span></a>
+                    <a href="https://headers.dns-audit.com/" class="nav-link" rel="noopener" aria-label="Header Decoder"><span class="nav-long">Header Decoder</span><span class="nav-short">Headers</span></a>
+                    <a href="https://aprf.dns-audit.com/" class="nav-link" rel="noopener" aria-label="APRF Reader"><span class="nav-long">APRF Reader</span><span class="nav-short">APRF</span></a>
+                    <span class="nav-sep" aria-hidden="true"></span>
+                    <a href="https://dns-audit.com/articles/" class="nav-link">Articles</a>
+                    <a href="https://dns-audit.com/about" class="nav-link">About</a>
                     <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
                         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
                         <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
@@ -207,6 +210,7 @@
                     <button type="button" class="try-example" data-example="disney.com">disney.com</button>
                 </p>
             </div>
+            <p class="audit-foot">Free, no account, open source. The audit only reads DNS; nothing on your domain changes.</p>
         </section>
 
         <div id="loading-section" class="loading-section">
@@ -248,7 +252,6 @@
             </div>
             <div id="executive-summary-slot"></div>
             <div id="recheck-slot"></div>
-            <div id="requirements-slot"></div>
             <div id="sender-map-slot"></div>
             <div class="priority-section" id="priority-section">
                 <h2 class="priority-header">
@@ -258,8 +261,25 @@
                 <div class="priority-list" id="priority-list"></div>
             </div>
             <p class="results-contact-note is-hidden" id="results-contact-note"></p>
+            <div id="requirements-slot"></div>
+            <div class="anomalies-section is-hidden" id="anomalies-section">
+                <h3 class="anomalies-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>What's unusual</span>
+                </h3>
+                <div class="anomalies-list" id="anomalies-list"></div>
+            </div>
+            <section class="tech-section" id="technical-section" aria-labelledby="results-heading">
+            <h2 class="results-label tech-heading" id="results-heading">
+                <button type="button" class="tech-toggle" id="tech-toggle" aria-expanded="false" aria-controls="technical-body">
+                    <span id="tech-toggle-label">Show all checks</span>
+                    <svg class="icon tech-chevron" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+                </button>
+            </h2>
+            <div class="tech-body is-hidden" id="technical-body">
             <div class="results-toolbar">
-                <h2 class="results-label" id="results-heading">Technical details</h2>
                 <div class="results-toolbar-actions">
                     <button type="button" class="copy-all-btn" id="copy-all-btn" title="Copy all DNS records to clipboard" aria-label="Copy all DNS records to clipboard">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true">
@@ -274,15 +294,6 @@
                         <span>Expand All</span>
                     </button>
                 </div>
-            </div>
-            <div class="anomalies-section is-hidden" id="anomalies-section">
-                <h3 class="anomalies-header">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    <span>What's unusual</span>
-                </h3>
-                <div class="anomalies-list" id="anomalies-list"></div>
             </div>
             <div class="summary-grid" id="summary-grid" role="group" aria-label="Checks by status">
                 <div class="summary-card pass-card">
@@ -316,6 +327,8 @@
                 <h2 class="results-label">Draft standards</h2>
                 <div class="results-list" id="draft-standards-list"></div>
             </div>
+            </div>
+            </section>
             <div class="services-section is-hidden" id="services-section">
                 <h2 class="results-label services-heading">
                     <button type="button" class="services-toggle" id="services-toggle" aria-expanded="false" aria-controls="services-body">
@@ -338,32 +351,29 @@
     </main>
 
     <footer class="site-footer">
-        <div class="container footer-inner">
-            <div class="footer-left">
-                <div class="footer-brand-name">dns-audit.com</div>
-                <div class="footer-brand-desc">Free, open-source DNS &amp; email security auditing</div>
-            </div>
-            <div class="footer-right">
-                <div class="footer-nav">
-                    <a href="/articles/" class="footer-link">Articles</a>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="/about" class="footer-link">About</a>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="/privacy" class="footer-link">Privacy</a>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+        <div class="container">
+            <div class="footer-row footer-main">
+                <div class="footer-brand">
+                    <div class="footer-brand-name">dns-audit.com</div>
+                    <div class="footer-brand-desc">Free, open source DNS and email security auditing</div>
                 </div>
+                <nav class="footer-nav" aria-label="Footer">
+                    <a href="https://dns-audit.com/articles/" class="footer-link">Articles</a>
+                    <a href="https://dns-audit.com/about" class="footer-link">About</a>
+                    <a href="https://dns-audit.com/privacy" class="footer-link">Privacy</a>
+                    <a href="https://github.com/marmot7775/dns-audit" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+                </nav>
+            </div>
+            <div class="footer-row footer-meta">
+                <p class="footer-attribution">Built by Neil Anuskiewicz. <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</p>
                 <div class="footer-trust">
                     <span class="footer-version">v2.0.0</span>
-                    <span class="footer-dot">&middot;</span>
-                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security Policy</a>
-                    <span class="footer-dot">&middot;</span>
+                    <a href="https://github.com/marmot7775/dns-audit/security/policy" target="_blank" rel="noopener" class="footer-link">Security policy</a>
                     <a href="https://github.com/marmot7775/dns-audit/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">MIT License</a>
                 </div>
-                <div class="footer-attribution">Built by Neil Anuskiewicz. Need help with email deliverability, email security, or DNS? <a href="mailto:dns@dns-audit.com" class="footer-link">Email dns@dns-audit.com</a> or <a href="https://www.linkedin.com/in/neilanuskiewicz/" target="_blank" rel="noopener" class="footer-link">message me on LinkedIn</a>.</div>
             </div>
         </div>
     </footer>
-    <script defer src="/static/app.js?v=597a50a"></script>
+    <script defer src="/static/app.js?v=1eb10ac"></script>
 </body>
 </html>

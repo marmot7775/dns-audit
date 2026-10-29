@@ -1,9 +1,9 @@
-"""Page 1 lists every check, and the plan still starts on page 2.
+"""The Checks section opens with every check on one line, and the plan
+follows the verdict instead of waiting for page 2.
 
-Page 1 held the headline and up to three "Do these first" items, and on most
-reports half the page was blank. It now ends with every check on one line:
-plain name, status (the card's own pill when it has one), verdict. The table
-is sized to fit beside three long items, so "What to do" stays on page 2.
+Page 1 is the verdict and its counts, then What to do. The one-line list of
+every check (plain name, status, verdict) is the PDF's "all checks" list, so
+it leads the Checks section, after the plan and the sender requirements.
 """
 import copy
 import io
@@ -33,16 +33,23 @@ def _pages(result):
     return [" ".join((p.extract_text() or "").split()) for p in reader.pages]
 
 
-def test_page_one_lists_every_check_with_its_status(result):
-    first = _pages(result)[0]
+def _checks_text(result):
+    pages = _pages(result)
+    start = next(i for i, p in enumerate(pages) if "3 Checks" in p)
+    return pages[0], " ".join(pages[start:])
+
+
+def test_checks_section_lists_every_check_with_its_status(result):
+    first, checks = _checks_text(result)
     shown = [c for c in (pdf_report._get_check(result, n) for n in pdf_report.PROTOCOL_SECTION_ORDER) if c]
-    assert f"Every check ({len(shown)})" in first
+    assert f"Every check ({len(shown)})" in checks
+    assert "Every check (" not in first, "the list is not on page 1 any more"
     for card in shown:
-        assert (card.get("plain_name") or card["name"]) in first
-        assert pdf_report._card_status(card)[1] in first
+        assert (card.get("plain_name") or card["name"]) in checks
+        assert pdf_report._card_status(card)[1] in checks
 
 
-def test_plan_starts_on_page_two_with_three_long_items(result):
+def test_plan_follows_the_verdict_on_page_one_with_three_long_items(result):
     stressed = copy.deepcopy(result)
     long_item = {"priority": "critical", "protocol": "DMARC",
                  "action": "Publish a DMARC record with an enforcing policy and a reporting address",
@@ -52,9 +59,9 @@ def test_plan_starts_on_page_two_with_three_long_items(result):
     es["do_first"] = [dict(long_item) for _ in range(3)]
     es["biggest_risk_severity"] = "critical"
     pages = _pages(stressed)
-    assert "Every check (" in pages[0]
-    # The section heading, "2 What to do"; page 1 names it in its pointer line.
-    assert "2 What to do" in pages[1] and "2 What to do" not in pages[0]
+    # The section heading, "2 What to do", starts on page 1 under the verdict.
+    assert "2 What to do" in pages[0]
+    assert "Every check (" not in pages[0]
 
 
 def test_cards_and_page_one_share_one_status_rule():
