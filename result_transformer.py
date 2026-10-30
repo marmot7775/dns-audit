@@ -3592,7 +3592,11 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         elif inherited_policy == "quarantine":
             status = "pass"
         elif inherited_policy == "none":
-            status = "pass" if _p_none_for_delivery else "warn"
+            # The same reporting condition as a published p=none: the parent's
+            # rua must hold a mailto: address, or the card stays amber.
+            _parent_rua = _inherited_record_tags(raw.get("inherited_record")).get("rua", "")
+            _parent_reports = any(u.strip().startswith("mailto:") for u in _parent_rua.split(","))
+            status = "pass" if _p_none_for_delivery and (_parent_reports or is_no_mail) else "warn"
         # The parent's pct and t apply here too. pct below 100 is a warn rule
         # at the parent, and t=y asks receivers for one level less (RFC 9989
         # section 4.7); the inherited card graded both pass.
@@ -3699,7 +3703,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         # missing rua both under warn, and the details say what is missing.
         # Under Email Deliverability p=none meets the requirement (Doc 104),
         # and only a missing rua keeps it amber, as at an enforcing policy.
-        if _p_none_for_delivery and (raw.get("rua") or is_no_mail):
+        if _p_none_for_delivery and (
+                (raw.get("rua") and not _report_uri_unusable(raw)) or is_no_mail):
             status = "pass"
         else:
             status = "warn"
