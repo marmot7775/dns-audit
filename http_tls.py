@@ -23,7 +23,7 @@ import requests
 from requests.adapters import HTTPAdapter
 
 _lock = threading.Lock()
-_contexts = {}
+_contexts: dict[str, ssl.SSLContext] = {}
 
 
 def shared_context(name: str = "default") -> ssl.SSLContext:
@@ -70,7 +70,7 @@ class SharedContextAdapter(HTTPAdapter):
         conn.ca_cert_dir = None
 
 
-def session(adapter: HTTPAdapter = None) -> requests.Session:
+def session(adapter: HTTPAdapter | None = None) -> requests.Session:
     """A fresh Session (callers close it) with the shared context mounted.
 
     A Session per call is kept on purpose: urllib3 snapshots the pool

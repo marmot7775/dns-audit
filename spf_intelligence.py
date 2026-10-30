@@ -10,7 +10,7 @@ import dns.rdatatype
 import dns.resolver
 import dns.exception
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError, as_completed
-from typing import List, Dict, Optional, Callable
+from typing import Any, List, Dict, Optional, Callable
 
 from dkim_formatter import analyze_dkim_key_strength
 
@@ -42,10 +42,10 @@ DKIM_FALLBACK_CHUNK = 52
 DKIM_WAVE_CHUNK = DKIM_FALLBACK_CHUNK
 
 # _test_selector's return for a probe that got no answer at all.
-_UNANSWERED = object()
+_UNANSWERED: Any = object()
 # A probe that ended in SERVFAIL or another resolver failure: counted as
 # tested, as before, but not as answered, since nothing was learned.
-_FAILED = object()
+_FAILED: Any = object()
 
 # Map SPF includes to the vendor and category the SPF card names
 SPF_VENDOR_MAP = {
@@ -258,7 +258,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
     import sendermap_adapter
     from generic_selectors import GENERIC_SELECTORS, LOCAL_SELECTORS
 
-    result = {
+    result: Dict[str, Any] = {
         'domain': domain,
         'found_selectors': [],
         'tested_count': 0,
@@ -294,7 +294,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
     # dated keys are outside the sweep and asked only here.
     mx_set = frozenset(h.lower().rstrip(".") for h in mx_hosts or [])
     spf_set = frozenset(i.lower().rstrip(".") for i in includes)
-    backed = {}
+    backed: Dict[str, str] = {}
     for rule in ranked:
         if rule.hints.matches(mx_set, spf_set):
             for name in sorted(cat.backs(rule.vendor)):
@@ -314,9 +314,11 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
     # now when the priority list, Sendermap's whole sweep, finds nothing, which is
     # the common case for self-hosted mail publishing "default" and the rare
     # case for everyone else.
-    fallback_selectors = [
-        s for s in GENERIC_SELECTORS if not (s in _seen_priority or _seen_priority.add(s))
-    ]
+    fallback_selectors = []
+    for s in GENERIC_SELECTORS:
+        if s not in _seen_priority:
+            _seen_priority.add(s)
+            fallback_selectors.append(s)
 
     # Wildcard detection: query a random nonsense selector. If it returns
     # a TXT record, the domain has wildcard DNS and DKIM discovery is unreliable.

@@ -24,7 +24,7 @@ Each card looks like:
 
 from sendermap_adapter import dkim_key_provider
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from html import escape as _e
 
@@ -1455,7 +1455,7 @@ def _fallback_head(protocol: str, status: Optional[str]) -> str:
     return "Something here could be stronger."
 
 
-def _ns_serial_only(card: Dict) -> bool:
+def _ns_serial_only(card: Optional[Dict]) -> bool:
     """The Nameservers card's only finding is an SOA serial mismatch, which is
     usually a zone change still propagating."""
     bad = [d.get("text", "") for d in (card or {}).get("details", [])
@@ -1469,7 +1469,7 @@ def _ns_serial_head(card: Dict) -> str:
     return _NS_TRANSIENT_HEAD
 
 
-def _ns_serial_transient(card: Dict) -> bool:
+def _ns_serial_transient(card: Optional[Dict]) -> bool:
     """The card's only finding is a serial mismatch that may still be
     propagating. Such a row is kept in the plan and never put first."""
     return _ns_serial_only(card) and not (card or {}).get("soa_mismatch", {}).get("persistent")
@@ -1545,7 +1545,7 @@ def _dkim_row_records(item: Dict, dkim: Dict, domain: str) -> List[Dict]:
                     f"{info['cname_target']}. Ask it to fix the key; your zone holds only "
                     "the CNAME, which stays as it is.")))
             continue
-        edit = None
+        edit: Optional[Dict[str, Any]] = None
         if kind == "dkim_version":
             edit = {"set": {"v": "DKIM1"}, "first": "v"}
         elif kind == "dkim_vorder":
@@ -1891,7 +1891,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                 # record lives at (the parent, for an inherited record).
                 _rua_home = dmarc.get("inherited_from") or domain
                 _rua_addr = f"dmarc-reports@{_rua_home}" if _rua_home else None
-                _rua_row = {"priority": "high", "protocol": "DMARC",
+                _rua_row: Dict[str, Any] = {"priority": "high", "protocol": "DMARC",
                             "action": "Add aggregate reporting (rua=)",
                             "plain_head": "You get no reports on who sends mail as you.",
                             "who": WHO_DNS_HOST,
@@ -2637,7 +2637,7 @@ _RECORD_TYPE_LABELS = {
 def _classify_change(record_type: str, old_value: str, new_value: str) -> Dict:
     """Analyze what specifically changed between two record values and whether
     the change is an improvement or regression."""
-    change = {
+    change: Dict[str, Any] = {
         "description": f"{_RECORD_TYPE_LABELS.get(record_type, record_type)} record changed",
         "is_improvement": None,  # True = green, False = red, None = neutral
     }
@@ -3136,7 +3136,7 @@ def _build_dmarcbis_card_data(readiness: Optional[Dict], record: Optional[str]) 
     deprecated = readiness.get("deprecated_tags", [])
     new_tags = readiness.get("new_tags", {})
 
-    checklist = []
+    checklist: List[Dict[str, Any]] = []
 
     # 1. Valid DMARC record
     record_valid = readiness.get("record_valid", True)
@@ -3862,7 +3862,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         )
 
     # Details
-    details = []
+    details: List[Dict[str, Any]] = []
     _unauth_reports = []
     if inherited:
         applied_tag = tw.get("applied_tag", "p")
@@ -4093,7 +4093,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
 
     # Build tag-by-tag breakdown + combo warnings + health verdict
     breakdown_record = display_record or record
-    tag_breakdown = None
+    tag_breakdown: Optional[Dict[str, Any]] = None
     if breakdown_record:
         tags_list = _build_dmarc_tag_breakdown(breakdown_record, raw)
         # Parse tags for combo detection
@@ -5109,7 +5109,7 @@ def _build_tag_entry(tag: str, value: str, present: bool, tags: Dict, policy: st
 
 def _entry(tag: str, value, is_default: bool, is_absent: bool,
            label: str, explanation: str, dmarcbis: str,
-           dmarcbis_note: str = None) -> Dict:
+           dmarcbis_note: Optional[str] = None) -> Dict:
     """Helper to build a tag breakdown entry."""
     entry = {
         "tag": tag,
@@ -5603,7 +5603,7 @@ def _calculate_dmarcbis_health(tags: Dict[str, str], policy: str, config_warning
 def _build_why_dmarcbis(tags: Dict[str, str], policy: str, health_status: str, domain: str = "") -> Dict:
     """Build the 'Why RFC 9989?' education section, personalized to this domain's record."""
 
-    sections = []
+    sections: List[Dict[str, Any]] = []
 
     # Section 1: What is RFC 9989 (always shown)
     sections.append({
@@ -6130,7 +6130,7 @@ def _deploy_instructions(domain: str, record: Optional[str]) -> Dict:
 # SPF
 # ============================================================
 
-def _is_null_spf(record: str) -> bool:
+def _is_null_spf(record: Optional[str]) -> bool:
     """Detect a null SPF record: v=spf1 -all with no senders.
     Only ``v=spf1 -all`` is the conventional declaration that a domain sends no
     mail, so ``v=spf1 ~all`` is not treated as null SPF."""
@@ -6825,7 +6825,8 @@ def _split_dkim_selectors(found: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
     Called before anything counts or grades keys, so "3 selectors found"
     cannot turn out to mean three retired ones.
     """
-    live, revoked = [], []
+    live: List[Dict] = []
+    revoked: List[Dict] = []
     for sel in found or []:
         analysis = analyze_dkim_key_strength(sel.get("record", "") or "")
         (revoked if analysis.get("reason") == "revoked" else live).append(sel)
@@ -7171,7 +7172,7 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
     # are listed for the reader and count toward nothing.
     details = []
     vendor_names = set()
-    weak_keys = []
+    weak_keys: List[Tuple[str, int]] = []
     # Every key that failed to yield a size, whatever the reason. The three
     # reasons are distinguished in the detail line and the callout below.
     invalid_keys = []
@@ -7218,7 +7219,7 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
 
         _strength_at = len(details)
         if strength == "invalid":
-            invalid_detail = {
+            invalid_detail: Dict[str, Any] = {
                 "type": "error",
                 "text": f"{selector}: {key_analysis.get('warning') or 'invalid key'}{vendor_str}",
             }
@@ -7239,7 +7240,7 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
             details.append(invalid_detail)
             invalid_keys.append(selector)
         elif strength == "weak":
-            weak_detail = {
+            weak_detail: Dict[str, Any] = {
                 "type": "warning",
                 "text": f"{selector}: {bits}-bit {key_analysis.get('key_type', 'RSA')} key ({f'{vendor}, ' if vendor else ''}upgrade recommended)",
             }
@@ -7650,7 +7651,7 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
         dkim_tags = []
         key_revoked = False
         for k, v in parse_dkim_tags(sel_record):
-            tag_info = {"tag": k, "value": v}
+            tag_info: Dict[str, Any] = {"tag": k, "value": v}
             if k == "v":
                 tag_info["label"] = "Version"
             elif k == "k":
@@ -8893,7 +8894,7 @@ def _transform_dane_card(raw: Dict, domain: str) -> Dict:
                 "host's zone, so senders ignore these records and fall back to opportunistic "
                 "TLS for those hosts."
             )
-            fix = (
+            fix: Optional[str] = (
                 f"Sign the DNS zone that holds {', '.join(unvalidated)} with DNSSEC and publish "
                 "its DS record, or ask the operator of that host to. The TLSA records already "
                 "published take effect once they validate."

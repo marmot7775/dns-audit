@@ -23,7 +23,7 @@ def _dmarc_tag(record: Optional[str], tag: str) -> str:
     return ""
 
 
-def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False, tree_walk: dict = None) -> list:
+def detect_anomalies(raw_results: dict, has_mx: bool, is_defensive: bool = False, tree_walk: Optional[dict] = None) -> list:
     """
     Detect cross-check anomalies from raw audit results.
 

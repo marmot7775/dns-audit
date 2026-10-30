@@ -29,7 +29,7 @@ except ImportError:
 _CGNAT = ipaddress.ip_network('100.64.0.0/10')
 
 
-def _is_blocked_ip(ip: ipaddress._BaseAddress) -> bool:
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Reject anything that isn't a routable, non-special public address."""
     if (ip.is_private or ip.is_loopback or ip.is_link_local
             or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
@@ -82,7 +82,7 @@ def _resolve_and_validate(hostname: str) -> str:
         ip_str = res[4][0]
         if _is_blocked_ip(ipaddress.ip_address(ip_str)):
             raise ValueError(f"Resolved IP {ip_str} is not a public address")
-    return results[0][4][0]
+    return str(results[0][4][0])
 
 
 if REQUESTS_AVAILABLE:
@@ -344,7 +344,7 @@ def _validate_mta_sts_txt(record: str) -> Tuple[Dict[str, str], List[Dict]]:
 
 def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, Any], List[Dict]]:
     issues = []
-    policy = {
+    policy: Dict[str, Any] = {
         "version": None, "mode": None,
         "mx_patterns": [], "max_age": None, "raw": policy_text,
     }
@@ -529,7 +529,7 @@ MTA_STS_POLICY_MAX_BYTES = 64 * 1024
 
 
 def check_mta_sts(domain: str) -> Dict[str, Any]:
-    result = {
+    result: Dict[str, Any] = {
         "check": "MTA-STS", "domain": domain,
         "txt_record": None, "txt_tags": {},
         "policy_url": None, "policy": None,
@@ -566,9 +566,8 @@ def check_mta_sts(domain: str) -> Dict[str, Any]:
         # V=STSV1 at _mta-sts meant to turn MTA-STS on, and "no record found"
         # sends them looking for a record that is already there.
         near_misses = [
-            (r, mta_sts_version_deviations(r)) for r in all_txt
+            (r, d) for r in all_txt if (d := mta_sts_version_deviations(r))
         ]
-        near_misses = [(r, d) for r, d in near_misses if d]
         if near_misses:
             record, reasons = near_misses[0]
             result["status"] = "error"
@@ -817,7 +816,7 @@ def _validate_tls_rpt_record(record: str, domain: str = "") -> Tuple[Dict[str, s
 
 
 def check_tls_rpt(domain: str) -> Dict[str, Any]:
-    result = {
+    result: Dict[str, Any] = {
         "check": "TLS-RPT", "domain": domain,
         "record": None, "records_found": 0, "tags": {},
         "report_destinations": [],
@@ -852,8 +851,9 @@ def check_tls_rpt(domain: str) -> Dict[str, Any]:
     if not rpt_records:
         # A near miss is not the same as nothing published. Say why it is
         # inert rather than reporting an absence the operator can see is wrong.
-        near_misses = [(r, tls_rpt_version_deviations(r)) for r in all_txt]
-        near_misses = [(r, d) for r, d in near_misses if d]
+        near_misses = [
+            (r, d) for r in all_txt if (d := tls_rpt_version_deviations(r))
+        ]
         if near_misses:
             record, reasons = near_misses[0]
             result["status"] = "error"
@@ -1018,9 +1018,11 @@ def _parse_dmarc_tag(record: str, tag: str) -> Optional[str]:
     return None
 
 
-def check_bimi(domain: str, dmarc_enforcing_override: bool = None, dmarc_found_override: bool = None,
-                dmarc_pct_override: int = None, dmarc_policy_override: str = None) -> Dict[str, Any]:
-    result = {
+def check_bimi(domain: str, dmarc_enforcing_override: Optional[bool] = None,
+                dmarc_found_override: Optional[bool] = None,
+                dmarc_pct_override: Optional[int] = None,
+                dmarc_policy_override: Optional[str] = None) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
         "check": "BIMI", "domain": domain,
         "record": None, "records_found": 0, "tags": {},
         "logo_url": None, "vmc_url": None, "selector": "default",

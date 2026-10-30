@@ -23,6 +23,7 @@ import re
 import tempfile
 from collections import Counter
 from datetime import datetime, timezone
+from typing import Any, Callable
 
 from audit_engine import SCOPE_CHECKS, SCOPE_LABELS, ALL_SCOPE_CHECK_KEYS
 from spf_recursive import lookup_ratio_text, spf_lookup_band
@@ -2584,7 +2585,7 @@ def _build_sections(audit_result: dict, S, appendix: bool = True):
     appendix_toc = []
     appendix_titles = []
     appendix_els = []
-    pointers = {}
+    pointers: dict[str, list[str]] = {}
     used = 0
     for title, build, covered in appendix_specs:
         letter = letters[used]
@@ -2606,7 +2607,7 @@ def _build_sections(audit_result: dict, S, appendix: bool = True):
     # Section 1 is the short answer on page 1, which generate_pdf builds
     # ahead of everything else; it is numbered here so the contents and
     # the section badges agree.
-    part1_specs = [
+    part1_specs: list[tuple[str, Callable[..., Any]]] = [
         ("What to do", _roadmap_page),
         (f"Checks ({_protocols})" if _protocols else "Checks",
          lambda d, st, n: _protocol_details(d, st, n, appendix=pointer_lines)),
