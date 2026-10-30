@@ -18,6 +18,9 @@ Writes:
 Environment:
   GH_TOKEN            required by gh
   GITHUB_REPOSITORY   owner/name, set by GitHub Actions
+  NIGHTLY_ONLY_ALERTS set to 1 to look only at GitHub alerts (used on the
+                      run that follows each CodeQL scan)
+  NIGHTLY_MAX         review threads per run, default 12
   SENTRY_AUTH_TOKEN   optional
   SENTRY_ORG          default dns-audit
   SENTRY_PROJECT      optional, limits the Sentry query to one project
@@ -367,8 +370,13 @@ def main() -> int:
         print("GITHUB_REPOSITORY must be owner/name", file=sys.stderr)
         return 2
     owner, name = repo.split("/", 1)
-    threads, total_threads = collect_threads(owner, name)
-    sentry, sentry_note = collect_sentry()
+    only_alerts = os.environ.get("NIGHTLY_ONLY_ALERTS", "0") == "1"
+    if only_alerts:
+        threads, total_threads = [], 0
+        sentry, sentry_note = [], "Alerts-only run, Sentry not consulted."
+    else:
+        threads, total_threads = collect_threads(owner, name)
+        sentry, sentry_note = collect_sentry()
     alerts, alerts_note = collect_alerts(repo)
     write_findings(threads, total_threads, sentry, sentry_note, alerts, alerts_note)
     print(f"review threads: {len(threads)} of {total_threads}")

@@ -26,9 +26,13 @@ name: Nightly fix
 on:
   schedule:
     - cron: "17 11 * * *" # 11:17 UTC, early morning Pacific
-  # A new security finding does not wait for the night.
-  code_scanning_alert:
-    types: [created, reopened]
+  # A new security finding does not wait for the night: after each CodeQL
+  # scan of main, run again looking only at code scanning and Dependabot
+  # alerts (NIGHTLY_ONLY_ALERTS below), and stop at once when there are none.
+  workflow_run:
+    workflows: ["CodeQL"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -76,6 +80,7 @@ jobs:
           GH_TOKEN: ${{ secrets.NIGHTLY_PAT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: dns-audit
+          NIGHTLY_ONLY_ALERTS: ${{ github.event_name == 'workflow_run' && '1' || '0' }}
         run: python tools/nightly/collect.py
 
       - name: Nothing to do
