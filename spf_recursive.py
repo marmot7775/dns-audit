@@ -228,57 +228,81 @@ def _mechanism_target(mech: Dict[str, str], current_domain: str) -> str:
     return value or current_domain
 
 
-def _address_status(host: str) -> str:
-    """Resolve a host's A, then AAAA. An AAAA-only host is not a void lookup."""
+# The walk's query budget ran out before a host could be resolved.
+QUERY_BUDGET_SPENT = "budget_spent"
+
+
+def _address_status(host: str, spend: Optional[Callable[[], bool]] = None,
+                    a_paid: bool = False) -> str:
+    """Resolve a host's A, then AAAA. An AAAA-only host is not a void lookup.
+
+    spend is charged before each query, so the AAAA fallback costs one too.
+    a_paid means the caller already charged the A query. Returns
+    QUERY_BUDGET_SPENT when a query cannot be paid for.
+    """
+    if spend is not None and not a_paid and not spend():
+        return QUERY_BUDGET_SPENT
     status = _query_answer_status(host, "A")
     if status == "void":
+        if spend is not None and not spend():
+            return QUERY_BUDGET_SPENT
         status6 = _query_answer_status(host, "AAAA")
         return "ok" if status6 == "ok" else status6
     return status
 
 
-def _mx_hosts(target: str) -> List[str]:
-    """The exchange names of a target's MX records, without the null MX "."."""
+def _mx_answer(target: str):
+    """One MX query for a target: its status as _query_answer_status reports
+    it, and the exchange names without the null MX "."."""
     try:
         answers = _get_resolver().resolve(target, "MX")
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return "void", []
     except Exception:
-        return []
+        return "error", []
+    if len(answers) > SPF_MX_HOST_LIMIT:
+        return MX_OVER_LIMIT, []
+    if len(answers) == 0:
+        return "void", []
     hosts = []
     for rdata in answers:
         host = str(rdata.exchange).rstrip(".").lower()
         if host and host not in hosts:
             hosts.append(host)
-    return hosts
+    return "ok", hosts
 
 
 def _mechanism_lookup_status(mtype: str, target: str,
                              spend: Optional[Callable[[], bool]] = None,
                              void_hosts: Optional[List[str]] = None) -> str:
-    """Resolve an a:/mx:/exists: target. Returns "ok", "void", "error" or
-    MX_OVER_LIMIT.
+    """Resolve an a:/mx:/exists: target. Returns "ok", "void", "error",
+    MX_OVER_LIMIT, or QUERY_BUDGET_SPENT when the budget ran out first.
 
-    For mx, each MX host's addresses are resolved too, the queries a
-    receiver makes (RFC 7208 section 5.4). A host with no address is a void
-    lookup of its own (section 4.6.4), appended to void_hosts. spend is the
-    walk's query budget; a host it cannot pay for is not resolved.
+    The caller has already paid for the target's first query. For mx, each
+    MX host's addresses are resolved too, the queries a receiver makes (RFC
+    7208 section 5.4). A host with no address is a void lookup of its own
+    (section 4.6.4), appended to void_hosts. spend is the walk's query
+    budget, charged per query; once it runs out the remaining hosts are not
+    resolved and the result is QUERY_BUDGET_SPENT.
     """
     if not target or "%" in target:
         # A macro-expanded target depends on the connecting client, so it
         # cannot be evaluated from the record alone.
         return "ok"
     if mtype == "mx":
-        status = _query_answer_status(target, "MX")
+        status, hosts = _mx_answer(target)
         if status == "ok" and void_hosts is not None:
-            for host in _mx_hosts(target):
-                if spend is not None and not spend():
-                    break
-                if _address_status(host) == "void":
+            for host in hosts:
+                host_status = _address_status(host, spend)
+                if host_status == QUERY_BUDGET_SPENT:
+                    return QUERY_BUDGET_SPENT
+                if host_status == "void":
                     void_hosts.append(host)
         return status
     if mtype == "exists":
         # RFC 7208 section 5.7: exists: always issues an A query.
         return _query_answer_status(target, "A")
-    return _address_status(target)
+    return _address_status(target, spend, a_paid=True)
 
 
 # Mechanisms that consume a DNS lookup per RFC 7208
@@ -489,6 +513,8 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
                     node["indeterminate"] = True
                 elif mech_status == MX_OVER_LIMIT:
                     node["mx_over_limit"].append(mech.get("raw") or "mx")
+                elif mech_status == QUERY_BUDGET_SPENT:
+                    node["truncated"] = True
 
         elif mtype in ("include", "redirect"):
             # RFC 7208 §6.1: a redirect with 'all' present is never reached,
@@ -524,6 +550,9 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
     node["macro_targets"] = local_macros
     child_total = sum(c["total"] for c in node["children"])
     node["total"] = local_lookups + child_total
+    # A subtree the budget cut short leaves every node above it incomplete.
+    if any(c.get("truncated") for c in node["children"]):
+        node["truncated"] = True
 
     return node
 
@@ -592,8 +621,12 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
     chain = _flatten_chain(tree)
     total = tree["total"]
     limit = SPF_LOOKUP_LIMIT
-    # The walk spent its query budget, so total is a floor (99 or more).
+    # The walk spent its query budget, so total is a floor. An include walk
+    # that runs out has counted 99 or more, but mx host address queries are
+    # not lookup terms, so a few mx terms with many hosts can spend it while
+    # the count stays at 10 or under. That count is incomplete, not a pass.
     truncated = any(e.get("truncated") for e in chain)
+    incomplete = truncated and total <= limit
 
     # RFC 7208 section 4.6.4 void lookups: NXDOMAIN or empty-answer results
     # from a:, mx:, exists: targets and from include/redirect targets that do
@@ -647,7 +680,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         "void_lookups": void_lookups,
         "indeterminate": bool(indeterminate_domains),
         "indeterminate_domains": indeterminate_domains,
-        "band": spf_lookup_band(total, bool(indeterminate_domains)),
+        "band": spf_lookup_band(total, bool(indeterminate_domains) or incomplete),
         # An include of a name that does not exist evaluates to "none" (RFC
         # 7208 section 4.3), so it is the same 5.2 permerror as no record.
         "permerror_domains": permerror_domains + nxdomain_domains,
@@ -655,6 +688,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
         "loop_domains": loop_domains,
         "macro_terms": [{"domain": d, "term": t} for d, t in macro_terms],
         "truncated": truncated,
+        "incomplete": incomplete,
         "mx_over_limit": [{"domain": d, "term": t} for d, t in mx_over_limit],
     }
 
@@ -721,6 +755,36 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             f"{total} DNS lookup{'s' if total != 1 else ''} "
             "(well within the 10-lookup limit)."
         )
+
+    if incomplete:
+        if result["status"] == "pass":
+            result["status"] = "warn"
+        result["summary"] = (
+            f"At least {total} DNS lookup{'s' if total != 1 else ''}. The check "
+            f"stopped at its {SPF_WALK_QUERY_BUDGET} query cap, so some hosts "
+            f"were not checked."
+        )
+        result["issues"].append({
+            "severity": "warning",
+            # lookup_limit, so the card shows this in place of its own
+            # lookup count line rather than beside it.
+            "kind": "lookup_limit",
+            "issue": "SPF check incomplete: stopped at the DNS query cap",
+            "plain_english": (
+                f"The audit stopped after {SPF_WALK_QUERY_BUDGET} DNS queries "
+                f"while resolving this SPF record, so some hosts were not "
+                f"checked. It counted at least {total} lookup"
+                f"{'s' if total != 1 else ''}, but cannot say whether the "
+                f"record passes: unchecked mx hosts may have no address, and "
+                f"each one is a void lookup (RFC 7208 section 4.6.4)."
+            ),
+            "impact": "Lookup count and void lookups for the unchecked hosts are unknown.",
+            "fix": (
+                "Check that every host named by the mx mechanisms in this "
+                "record resolves to an address, and remove mx mechanisms for "
+                "domains that do not send mail."
+            ),
+        })
 
     # A DNS failure we could not resolve one way or the other. Say so, and do
     # not hand out removal advice or a clean bill of health on the strength of
