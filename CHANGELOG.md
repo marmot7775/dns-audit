@@ -122,12 +122,12 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   audit_engine, dmarc_tree_walk, mx_check, pdf_report and result_transformer.
 
 ### Type checking
-- mypy 2.4.0 reports **128 errors in 3 files** (`mypy`, config in
+- mypy 2.4.0 reports **131 errors in 3 files** in CI, 128 locally (`mypy`, config in
   pyproject.toml), down from 438 in 15. That is the number to drive to zero,
   after which the CI step stops being report only. Under `--strict` it was
   1,330 in 17 files. Most of the cut is annotations on dict and list
   literals whose value type mypy inferred too narrowly, and parameters that
-  default to None now say Optional. The rest are in audit_engine.py (84),
+  default to None now say Optional. Locally the rest are in audit_engine.py (84),
   spf_recursive.py (16) and result_transformer.py (28); nearly all are a
   value mypy cannot see was already checked for None. None of the fixes
   changes behaviour.
