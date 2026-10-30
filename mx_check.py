@@ -146,7 +146,7 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
     executor, when given, runs the hosts' A and AAAA lookups side by side;
     run_full_audit passes its probe pool. Without one they run in order.
     """
-    result = {
+    result: Dict[str, Any] = {
         "check": "MX Records", "domain": domain,
         "records": [], "record_count": 0, "providers": [],
         "status": "ok", "issues": [], "warnings": [],

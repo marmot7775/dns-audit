@@ -501,6 +501,8 @@ def _dmarc_tree_walk_impl(domain: str) -> Dict[str, Any]:
     # timeout) treat the domain as existing, which keeps np from being
     # applied to merely-unreachable domains.
     # ------------------------------------------------------------------
+    # stop_record is only ever psd=n or psd=y, so every branch above set it.
+    assert policy_record is not None
     tags = policy_record.get("tags", {})
     sp = tags.get("sp")
     np_tag = tags.get("np")

@@ -7,7 +7,7 @@ spf_intelligence; dkim_record_problems() reads the tags that change what a
 receiver does with the key.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import base64
 import re
 
@@ -188,11 +188,11 @@ def dkim_record_problems(dkim_record: str) -> Dict:
     """
     tags = parse_dkim_tags(dkim_record)
     names = [k for k, _ in tags]
-    first = {}
+    first: Dict[str, str] = {}
     for k, v in tags:
         first.setdefault(k, v)
 
-    problems = {
+    problems: Dict[str, Any] = {
         "duplicate_tags": sorted({k for k in names if names.count(k) > 1}, key=names.index),
         "bad_version": None,
         "version_not_first": False,

@@ -60,14 +60,14 @@ def rua_placeholder(domain: str) -> str:
 
 
 def has_placeholder(value: Optional[str]) -> bool:
-    return bool(value) and RUA_PLACEHOLDER in value
+    return bool(value and RUA_PLACEHOLDER in value)
 
 
 def record(op: str, rtype: str, host: str, value: Optional[str] = None,
            value_from: Optional[str] = None, note: Optional[str] = None,
            by: Optional[str] = None, edit: Optional[Dict] = None,
            current: Optional[str] = None) -> Dict:
-    out = {"op": op, "type": rtype, "host": host, "value": value,
+    out: Dict[str, object] = {"op": op, "type": rtype, "host": host, "value": value,
            "value_from": value_from if value is None else None, "note": note}
     if by:
         out["by"] = by
@@ -151,7 +151,8 @@ def spf_replace_all(rec: str, qualifier: str = "~") -> Optional[str]:
 def spf_merge(records: List[str]) -> Optional[str]:
     """One record carrying every mechanism of ``records``, or None when a
     modifier (redirect=, exp=) makes the merge a judgment call."""
-    terms, all_term = [], None
+    terms: List[str] = []
+    all_term: Optional[str] = None
     for rec in records:
         parts = rec.split()
         if not parts or parts[0].lower() != "v=spf1":

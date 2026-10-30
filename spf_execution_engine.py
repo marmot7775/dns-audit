@@ -213,7 +213,7 @@ def build_spf_execution_trace(spf_recursive_result: Dict, spf_record: Optional[s
 
     total_lookups = spf_recursive_result.get("total_lookups", 0)
     limit = 10
-    flat_steps = []
+    flat_steps: List[Dict] = []
     exceeded_flagged = [False]
 
     _walk_tree(tree, flat_steps, 0, 0, limit, exceeded_flagged)

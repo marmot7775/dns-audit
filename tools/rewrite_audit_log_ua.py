@@ -76,7 +76,7 @@ def _rewrite_line(line: str):
     bot = is_bot(raw)
     summary = ua_summary(raw)
 
-    rebuilt = {}
+    rebuilt: dict[str, object] = {}
     for key, value in entry.items():
         if key == "ua":
             rebuilt["ua"] = summary

@@ -59,7 +59,7 @@ from ua_classify import is_bot, ua_summary
 try:
     from pdf_report import generate_pdf
 except ImportError:
-    generate_pdf = None
+    generate_pdf = None  # type: ignore[assignment]
 
 
 # ============================================================
@@ -321,7 +321,7 @@ def _aprf_log_state(result) -> Optional[str]:
     return None
 
 
-def _log_audit(request: Request, domain: str, scope: str,
+def _log_audit(request: Request, domain: str, scope: Optional[str],
                duration: float, checks: int, source: str = "web",
                status: str = "ok", error: Optional[str] = None,
                aprf: Optional[str] = None):
