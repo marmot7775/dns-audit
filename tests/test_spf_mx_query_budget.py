@@ -78,6 +78,21 @@ def test_a_few_hosts_are_not_truncated():
     assert result["band"] == "ok"
 
 
+def test_ten_terms_with_unchecked_hosts_are_incomplete_not_passing():
+    import audit_engine
+    import result_transformer
+    with fake_dns(_zone(terms=10)):
+        result = spf_recursive.count_spf_lookups("example.com")
+        raw = audit_engine._raw_check_spf("example.com")
+    assert result["total_lookups"] == 10
+    assert result["truncated"] is True
+    assert result["incomplete"] is True
+    assert result["status"] == "warn"
+    assert any("query cap" in i["issue"] for i in result["issues"])
+    card = result_transformer.transform_spf(raw, has_mx=True)
+    assert card["status"] == "warn"
+
+
 def test_card_does_not_pass_an_incomplete_walk():
     import audit_engine
     import result_transformer

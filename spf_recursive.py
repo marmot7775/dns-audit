@@ -624,9 +624,9 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
     # The walk spent its query budget, so total is a floor. An include walk
     # that runs out has counted 99 or more, but mx host address queries are
     # not lookup terms, so a few mx terms with many hosts can spend it while
-    # the count stays under 10. That count is incomplete, not a pass.
+    # the count stays at 10 or under. That count is incomplete, not a pass.
     truncated = any(e.get("truncated") for e in chain)
-    incomplete = truncated and total < limit
+    incomplete = truncated and total <= limit
 
     # RFC 7208 section 4.6.4 void lookups: NXDOMAIN or empty-answer results
     # from a:, mx:, exists: targets and from include/redirect targets that do
