@@ -890,7 +890,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             # Doc 104: Email Deliverability asks whether the domain meets the
             # providers' DMARC requirement, and p=none does. The card says
             # when it graded the record that way; without rua it did not.
-            if scope in INBOX_SCOPES and dmarc.get("graded_for_scope") == scope:
+            if (scope in INBOX_SCOPES and dmarc.get("graded_for_scope") == scope
+                    and dmarc_status == "pass"):
                 return ("Your domain publishes the DMARC record mailbox providers ask "
                         "bulk senders for. It does not block forged mail yet.",
                         "pass", "shield-check")
@@ -899,7 +900,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         if _eff_policy not in ("reject", "quarantine"):
             return verdict, "neutral", None
         _pct = (_rec_tags.get("pct") or "").strip()
-        if _pct and not (_pct.isdigit() and int(_pct) >= 100):
+        if _pct and not (_pct.isascii() and _pct.isdigit() and int(_pct) >= 100):
             # pct below 100 covers part of the forged mail; no row says that.
             return verdict, "warn", "warning"
         if _inherited_from:
@@ -1369,7 +1370,7 @@ def _dmarc_pct_kept(record: Optional[str]) -> Optional[int]:
     keeps that value, and the row says so with _pct_kept_note."""
     raw = (_parse_record_tags(record or "").get("pct") or "").strip()
     # Digits only: "+5" or "5%" is malformed, and the validator says so.
-    if not raw.isdigit():
+    if not (raw.isascii() and raw.isdigit()):
         return None
     pct = int(raw)
     return pct if pct < 100 else None
