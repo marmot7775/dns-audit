@@ -162,10 +162,13 @@ def collect_threads(owner: str, name: str) -> tuple[list[dict], int]:
 
 
 def sentry_get(path: str, token: str, base: str) -> object:
-    req = urllib.request.Request(
-        f"{base}{path}", headers={"Authorization": f"Bearer {token}"}
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    url = f"{base}{path}"
+    if not url.startswith("https://"):
+        raise ValueError(f"Sentry base URL must be https, got {base!r}")
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    # Scheme is pinned to https above, so B310's file: and custom scheme
+    # concern does not apply.
+    with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
         return json.load(resp)
 
 
