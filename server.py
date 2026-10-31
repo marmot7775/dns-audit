@@ -1514,7 +1514,9 @@ def _negative_lookup_probe() -> Optional[str]:
         return None
     except Exception as e:
         return type(e).__name__
-    return None
+    # A resolver that invents a TXT answer for a random name did not give a
+    # negative answer, so it is not a pass.
+    return "UnexpectedPositiveAnswer"
 
 
 # ============================================================

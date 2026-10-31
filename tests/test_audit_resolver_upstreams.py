@@ -162,6 +162,17 @@ def test_health_reports_negative_lookups_ok_on_no_answer(monkeypatch):
     assert response.json()["negative_lookups"] == "ok"
 
 
+def test_negative_probe_flags_positive_answer(monkeypatch):
+    class _Answering:
+        lifetime = 0
+
+        def resolve(self, name, rdtype, *args, **kwargs):
+            return object()
+
+    monkeypatch.setattr(server_module, "get_uncached_resolver", lambda timeout: _Answering())
+    assert server_module._negative_lookup_probe() == "UnexpectedPositiveAnswer"
+
+
 def test_negative_probe_memoized(monkeypatch):
     _, fake = _health_with(monkeypatch, dns.resolver.NXDOMAIN())
     client = TestClient(server_module.app)
