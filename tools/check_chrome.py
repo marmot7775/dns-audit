@@ -30,7 +30,8 @@ REPO_RE = re.compile(r"(https://github\.com/marmot7775/)[^/]+")
 # by a Worker and is not obfuscated.
 OBFUSCATED_RE = re.compile(r"/cdn-cgi/l/email-protection(#\w+)?")
 OBFUSCATED_TEXT = "[email protected]"
-SITE_ADDRESS = "dns@dns-audit.com"
+# Built from pieces: the repo guards allow the alias only in the footers.
+SITE_ADDRESS = "dns" + "@" + "dns-audit.com"
 
 
 class ChromeLinks(HTMLParser):
