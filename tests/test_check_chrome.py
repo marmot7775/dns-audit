@@ -34,3 +34,13 @@ def test_cloudflare_obfuscated_mailto_compares_without_its_key():
     a = '<footer><a href="/cdn-cgi/l/email-protection#91f5ff">x</a></footer>'
     b = '<footer><a href="/cdn-cgi/l/email-protection#2a4e44">x</a></footer>'
     assert compare({"a": links(a), "b": links(b)}) == ([], [])
+
+
+def test_cloudflare_obfuscated_link_text_reads_as_the_address():
+    live = ('<footer><a href="/cdn-cgi/l/email-protection#91f5ff">Email '
+            '<span class="__cf_email__" data-cfemail="91f5ff">[email&#160;protected]</span>'
+            '</a></footer>')
+    plain = '<footer><a href="mailto:dns@dns-audit.com">Email dns@dns-audit.com</a></footer>'
+    assert links(live)[1] == [("Email dns@dns-audit.com", "/cdn-cgi/l/email-protection")]
+    failures, _ = compare({"a": links(live), "b": links(plain)})
+    assert not [f for f in failures if "texts differ" in f]
