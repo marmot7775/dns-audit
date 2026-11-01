@@ -99,6 +99,9 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.NIGHTLY_PAT }}
+          # CodeQL's scheduled scans run as this bot, and the runs they
+          # trigger here would otherwise stop with a non-human actor error.
+          allowed_bots: "github-advanced-security"
           claude_args: |
             --max-turns 150
             --allowedTools "Read,Glob,Grep,Edit,Write,MultiEdit,Bash(bash tools/nightly/test.sh:*),Bash(bash tools/nightly/lint.sh:*),Bash(python:*),Bash(python3:*),Bash(node:*),Bash(npm test:*),Bash(ruff:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
