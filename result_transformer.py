@@ -7647,11 +7647,12 @@ def _build_dkim_key_analysis(raw: Dict) -> Optional[Dict]:
             _unusable = "Not for email. Receivers checking mail ignore this key."
         elif _problems["hashes"] is not None:
             _unusable = "SHA-1 only. Receivers refuse SHA-1, so every signature fails."
+        if _unusable:
+            has_unusable = True
         if _unusable and strength != "invalid":
             rating = "red"
             rating_label = _unusable
             all_strong = False
-            has_unusable = True
 
         # Parse DKIM record tags
         dkim_tags = []

@@ -3825,10 +3825,15 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
     # between two nameservers of the same provider still does.
     def _ns_group(host):
         host_lower = host.lower()
+        org = _get_org_domain(host_lower) or host_lower
+        # A provider name counts only inside the registrable domain, so a
+        # vanity host such as ns1.google.example-dns.net stays with
+        # example-dns.net instead of joining the Google group. A pattern with
+        # a dot in it spans labels and is read against the whole host.
         for pattern, provider in PROVIDER_PATTERNS.items():
-            if pattern in host_lower:
+            if pattern in (host_lower if "." in pattern else org):
                 return provider
-        return _get_org_domain(host_lower) or host_lower
+        return org
 
     serials_by_group = {}
     for host, serial in soa_serials.items():
