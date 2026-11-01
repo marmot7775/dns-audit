@@ -57,3 +57,13 @@ def test_sha1_only_fails_with_a_critical_row():
 def test_sha256_in_the_list_is_fine():
     assert _card(f"v=DKIM1; h=sha1:sha256; k=rsa; p={P}")["status"] == "pass"
     assert _card(f"v=DKIM1; h=sha256; k=rsa; p={P}")["status"] == "pass"
+
+
+def test_unusable_record_is_reported_even_when_the_key_data_is_invalid():
+    from result_transformer import _build_dkim_key_analysis
+    raw = {"found_selectors": [
+        {"selector": "s1", "record": "v=DKIM2; k=rsa; p=!!notbase64!!", "vendor": None}
+    ]}
+    analysis = _build_dkim_key_analysis(raw)
+    assert analysis["has_invalid"] is True
+    assert analysis["has_unusable"] is True

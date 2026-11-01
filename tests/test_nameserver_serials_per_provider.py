@@ -117,3 +117,13 @@ def test_unrecognised_hosts_group_by_their_registrable_domain():
     disagree = dict(agree, **{"192.0.32.11": 4})
     raw, _ = _check(hosts, disagree)
     assert len(_mismatch(raw)) == 1
+
+
+def test_vanity_host_with_a_provider_word_in_a_subdomain_stays_in_its_own_group():
+    hosts = {
+        "ns1.google.example-dns.net": "192.0.32.10",
+        "ns2.example-dns.net": "192.0.32.11",
+    }
+    raw, _ = _check(hosts, {"192.0.32.10": 5, "192.0.32.11": 4})
+    assert len(_mismatch(raw)) == 1
+    assert raw["soa_serials_consistent"] is False
