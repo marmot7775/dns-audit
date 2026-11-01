@@ -5,7 +5,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from check_chrome import compare, links  # noqa: E402
+from check_chrome import SITE_ADDRESS, compare, links  # noqa: E402
 
 with open(os.path.join(ROOT, "docs", "site-chrome.html"), encoding="utf-8") as f:
     CANONICAL = f.read()
@@ -34,3 +34,12 @@ def test_cloudflare_obfuscated_mailto_compares_without_its_key():
     a = '<footer><a href="/cdn-cgi/l/email-protection#91f5ff">x</a></footer>'
     b = '<footer><a href="/cdn-cgi/l/email-protection#2a4e44">x</a></footer>'
     assert compare({"a": links(a), "b": links(b)}) == ([], [])
+
+
+def test_cloudflare_obfuscated_link_text_reads_as_the_address():
+    live = ('<footer><a href="/cdn-cgi/l/email-protection#91f5ff">Email '
+            '<span class="__cf_email__" data-cfemail="91f5ff">[email&#160;protected]</span>'
+            '</a></footer>')
+    plain = f'<footer><a href="mailto:{SITE_ADDRESS}">Email {SITE_ADDRESS}</a></footer>'
+    assert links(live)[1] == [(f"Email {SITE_ADDRESS}", f"mailto:{SITE_ADDRESS}")]
+    assert compare({"a": links(live), "b": links(plain)}) == ([], [])

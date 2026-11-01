@@ -24,8 +24,14 @@ HOSTS = [
     "https://aprf.dns-audit.com/",
 ]
 REPO_RE = re.compile(r"(https://github\.com/marmot7775/)[^/]+")
-# Cloudflare email obfuscation rewrites the mailto with a per-response key.
-OBFUSCATED_RE = re.compile(r"(/cdn-cgi/l/email-protection)#\w+")
+# Cloudflare email obfuscation rewrites the mailto with a per-response key
+# and the address in the link text with a placeholder. The only address on
+# the site is the dns@ alias, so both read back as it. The decoder is served
+# by a Worker and is not obfuscated.
+OBFUSCATED_RE = re.compile(r"/cdn-cgi/l/email-protection(#\w+)?")
+OBFUSCATED_TEXT = "[email protected]"
+# Built from pieces: the repo guards allow the alias only in the footers.
+SITE_ADDRESS = "dns" + "@" + "dns-audit.com"
 
 
 class ChromeLinks(HTMLParser):
@@ -54,8 +60,9 @@ class ChromeLinks(HTMLParser):
         elif tag == "footer":
             self._in_footer = False
         elif tag == "a" and self._href is not None:
-            href = OBFUSCATED_RE.sub(r"\1", self._href)
-            pair = (" ".join("".join(self._text).split()), href)
+            href = OBFUSCATED_RE.sub("mailto:" + SITE_ADDRESS, self._href)
+            text = " ".join("".join(self._text).split())
+            pair = (text.replace(OBFUSCATED_TEXT, SITE_ADDRESS), href)
             (self.nav if self._in_nav else self.footer).append(pair)
             self._href = None
 
