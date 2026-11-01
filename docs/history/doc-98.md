@@ -1,3 +1,5 @@
+Doc 98: results page cleanup
+
 Results page cleanup. Static files and one test. Re-fetch main
 first; this was written against 57c6f69.
 
