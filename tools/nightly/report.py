@@ -5,11 +5,14 @@ Reads .nightly/results.json, which Claude Code writes in the shape
   {"threads": {"<thread_id>": {"status": "fixed|skipped|needs_neil",
                                "note": "one or two sentences"}},
    "sentry":  {"<short_id>":  {"status": "...", "note": "..."}},
-   "alerts":  {"<alert_key>": {"status": "...", "note": "..."}}}
+   "alerts":  {"<alert_key>": {"status": "...", "note": "..."}},
+   "issues":  {"<issue_key>": {"status": "...", "note": "..."}}}
 
-and replies on each review thread so the next run skips it and the thread
-itself records what happened. Replies start with "nightly:" because
-collect.py uses that prefix to recognise a handled thread.
+and replies on each review thread and each issue so the next run skips it
+and the thread or issue itself records what happened. Replies start with
+"nightly:" because collect.py uses that prefix to recognise a handled one.
+A fixed issue is closed by the PR itself (its body says Closes #N), so the
+comment here only records the outcome.
 
 Usage: report.py [--pr-url URL] [--summary FILE]
 
@@ -20,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -67,7 +71,7 @@ def main() -> int:
         print("no threads.json, nothing to report")
         return 0
     inputs = json.loads(threads_path.read_text(encoding="utf-8"))
-    results = {"threads": {}, "sentry": {}, "alerts": {}}
+    results = {"threads": {}, "sentry": {}, "alerts": {}, "issues": {}}
     if results_path.exists():
         try:
             results = json.loads(results_path.read_text(encoding="utf-8"))
@@ -108,6 +112,25 @@ def main() -> int:
             summary.append(f"Alert {a['key']}: {LABELS.get(r.get('status'), r.get('status'))}. {r.get('note', '')}".rstrip())
         else:
             summary.append(f"Alert {a['key']}: no result recorded")
+
+    for it in inputs.get("issues", []):
+        r = results.get("issues", {}).get(it["key"])
+        if not r:
+            summary.append(f"Issue #{it['number']}: no result recorded")
+            continue
+        status = r.get("status", "skipped")
+        note = (r.get("note") or "").strip()
+        label = LABELS.get(status, status)
+        body = f"nightly: {label} in {args.pr_url}" if status == "fixed" and args.pr_url else f"nightly: {label}"
+        if note:
+            body += f". {note}"
+        cmd = ["gh", "issue", "comment", str(it["number"]), "--body", body]
+        if os.environ.get("GITHUB_REPOSITORY"):
+            cmd += ["-R", os.environ["GITHUB_REPOSITORY"]]
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            print(f"issue comment failed for #{it['number']}: {proc.stderr.strip()}", file=sys.stderr)
+        summary.append(f"Issue #{it['number']}: {label}. {note}".rstrip())
 
     text = "\n".join(summary) if summary else "No findings."
     print(text)
