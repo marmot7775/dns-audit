@@ -144,9 +144,14 @@ def map_senders(domain: str, budget_seconds: float) -> Optional[SenderMap]:
             loop.run_until_complete(asyncio.wait({task}, timeout=max(0.0, end - loop.time())))
             if task.done() and not task.cancelled() and task.exception() is None:
                 return task.result()
-        log.warning("Sender map for %s exceeded its %gs budget", domain, budget_seconds)
+        failed = [t.exception() for t in (full, apex)
+                  if t.done() and not t.cancelled() and t.exception() is not None]
+        if failed:
+            log.warning("Sender map for %s failed: %r", domain, failed[0])
+        if not all(t.done() for t in (full, apex)):
+            log.warning("Sender map for %s exceeded its %gs budget", domain, budget_seconds)
     except Exception:
-        log.debug("Sender map failed", exc_info=True)
+        log.warning("Sender map for %s failed", domain, exc_info=True)
     finally:
         _drain(loop)
         loop.close()

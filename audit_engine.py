@@ -4464,6 +4464,12 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
         # the first SAN names the certificate instead.
         common_name = cert.get("common_name") or next(
             (n.strip() for n in (cert.get("name_value") or "").split("\n") if n.strip()), "")
+        if not common_name.startswith("*."):
+            # A wildcard can be any name on the certificate, not only the
+            # first one (Cert Spotter lists dns_names in no set order).
+            common_name = next(
+                (n.strip() for n in (cert.get("name_value") or "").split("\n")
+                 if n.strip().startswith("*.")), common_name)
         if common_name.startswith("*."):
             wildcards.append({
                 "common_name": common_name,
@@ -5854,6 +5860,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 log.warning("Sender map for %s exceeded its %gs budget", domain, _map_budget)
             except Exception:
                 log.debug("Sender map failed", exc_info=True)
+    if _map_in_scope:
+        # The step is counted in total_checks, so a skipped map (dropping
+        # zone, no time left) still completes it.
         _notify("Vendor Fingerprinting")
     if sender_map is not None:
         raw_results["sendermap"] = sender_map.to_dict()
@@ -6174,6 +6183,9 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                             new = _XC_RANK.get(_xc_downgrade, 0)
                             if new > cur:
                                 card["status"] = _xc_downgrade
+                                # No longer a pass, so no longer graded
+                                # for the scope's question.
+                                card["graded_for_scope"] = None
                         break
 
     # --- Vendor list for frontend ---
