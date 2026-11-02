@@ -72,9 +72,14 @@ class AuditResolver:
 
     def _query(self, name: str, rtype: str) -> Answer:
         try:
-            result = dns_tools.get_resolver(self._timeout).resolve(
-                name, rtype, raise_on_no_answer=False
-            )
+            resolver = dns_tools.get_resolver(self._timeout)
+            if rtype == "TXT" and "._domainkey." in name:
+                # A selector probe. The audit's own DKIM probe asks many of
+                # the same names; whichever asks first, the other reuses the
+                # answer (dns_tools.resolve_probe).
+                result = dns_tools.resolve_probe(resolver, name, rtype, raise_on_no_answer=False)
+            else:
+                result = resolver.resolve(name, rtype, raise_on_no_answer=False)
         except dns.resolver.NXDOMAIN as e:
             return Answer(name, rtype, Status.NXDOMAIN, chain=_nx_chain_of(e, name))
         except dns.resolver.NoAnswer:  # a stub that ignores raise_on_no_answer

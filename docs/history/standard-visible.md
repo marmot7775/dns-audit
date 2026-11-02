@@ -51,7 +51,8 @@ whether it touches any verdict path. Stop and wait.
 ## Phase 2: apply what Neil approves
 
 Each item below is one commit. The suite is green after every
-commit. ruff and mypy strict are clean at the end of each.
+commit. ruff and mypy strict are the target at the end of each; if mypy
+is not clean today, use report only mode and record the error count.
 
 ARCHITECTURE.md. One screen. The pipeline from request to
 result to report. A table of modules and what each owns. The
@@ -66,8 +67,8 @@ made and argued: correctness before refactoring; failed lookups
 are stated as such; Blocklist removed because it is not a
 configuration check; rua missing on an enforcing policy is an
 amber warning, not a failure; BIMI is branding, not security;
-no scoring model, because the weightings described in the old
-About page were never implemented; DANE at hosted providers.
+no scoring model (the reason is in
+docs/decisions/2026-04-26-no-score-or-grade.md); DANE at hosted providers.
 Each one cites the RFC section where one applies.
 
 README. Lead with one real audit result and its evidence, then

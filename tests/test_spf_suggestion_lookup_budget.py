@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from audit_engine import _build_suggested_spf  # noqa: E402
+from test_spf_suggestion_vendor_footprints import DKIM_KEY  # noqa: E402
 
 GOOGLE_MX = [(1, "aspmx.l.google.com"), (5, "alt1.aspmx.l.google.com")]
 MIMECAST_MX = [(10, "us-smtp-inbound-1.mimecast.com"), (10, "us-smtp-inbound-2.mimecast.com")]
@@ -46,6 +47,11 @@ def _zone(domain, spf, mx, extra=None, a_hosts=0):
     }
     for i in range(a_hosts):
         zone[f"h{i}.{domain}"] = {"A": ["203.0.113.3"]}
+    if mx is GOOGLE_MX:
+        # An MX alone only shows Google Workspace receives mail (issue 270).
+        # These tests are about the include the card suggests for a service
+        # that sends, so the domain also publishes Google's DKIM selector.
+        zone[f"google._domainkey.{domain}"] = {"TXT": [DKIM_KEY]}
     zone.update(extra or {})
     return zone
 

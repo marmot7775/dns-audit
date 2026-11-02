@@ -28,6 +28,8 @@ import sys
 import dns.exception
 import dns.resolver
 import pytest
+
+import dns_tools
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
 
@@ -102,6 +104,7 @@ def discover(monkeypatch):
             # The wildcard canary lookup must miss, or discovery bails out.
             raise dns.exception.DNSException("no such name")
 
+        dns_tools.clear_probe_memo()  # one fqdn, a new record on each call
         monkeypatch.setattr(dns.resolver, "Resolver", _FakeResolver)
         monkeypatch.setattr(dns.resolver, "resolve", _no_answer)
         return smart_dkim_check(DOMAIN, SPF)

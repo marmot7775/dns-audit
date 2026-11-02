@@ -106,3 +106,74 @@ def test_the_card_no_longer_claims_every_certificate():
     assert "record of all certificates" not in text
     assert "except names hidden behind a wildcard" in text
     assert "private certificate authority never appear" in text
+
+
+# Issue 273: crt.sh timing out and Cert Spotter failing another way is not a
+# double timeout.
+@pytest.mark.parametrize("spotter", [_Resp(429, {}), _Resp(200, {"no": "list"})])
+def test_crt_timeout_then_other_cert_spotter_failure_is_not_a_double_timeout(spotter):
+    raw = _raw(requests.exceptions.Timeout(), spotter)
+    assert raw["unavailable_reason"] == "request_error"
+    text = result_transformer.transform_ct(raw, D)["explanation"]
+    assert "answered in time" not in text
+    assert "neither returned a result" in text
+
+
+def test_a_double_timeout_is_still_a_timeout():
+    raw = _raw(requests.exceptions.Timeout(), requests.exceptions.Timeout())
+    assert raw["unavailable_reason"] == "timeout"
+
+
+# Issue 274: Cert Spotter pages oldest first with an `after` cursor.
+class _Paged(_Resp):
+    def __init__(self, payload, next_page):
+        super().__init__(200, payload)
+        self.links = {"next": {"url": "https://api.certspotter.com/next"}} if next_page else {}
+
+
+def _page(first_id, n):
+    return [{"id": str(first_id + i), "cert_sha256": f"h{first_id + i}", "dns_names": [f"h{first_id + i}.{D}"],
+             "issuer": {"name": "O=Let's Encrypt, CN=R11"},
+             "not_before": "2026-09-01T00:00:00Z", "not_after": "2099-12-01T00:00:00Z"} for i in range(n)]
+
+
+def _paged_get(pages):
+    calls = []
+
+    def get(url, *a, params=None, **kw):
+        if "crt.sh" in url:
+            raise requests.exceptions.Timeout()
+        calls.append(dict((k, v) for k, v in params if k == "after"))
+        return pages[len(calls) - 1]
+    return get, calls
+
+
+def test_cert_spotter_follows_pages_with_the_after_cursor():
+    get, calls = _paged_get([_Paged(_page(1, 2), True), _Paged(_page(3, 2), False)])
+    with patch("http_tls.get", get):
+        raw = audit_engine._raw_check_ct_uncached(D, {})
+    assert raw["total_certs"] == 4
+    assert calls == [{}, {"after": "2"}]
+    assert raw["partial"] is False
+
+
+def test_cert_spotter_stops_at_three_pages_and_says_so():
+    get, calls = _paged_get([_Paged(_page(1, 2), True), _Paged(_page(3, 2), True),
+                             _Paged(_page(5, 2), True), _Paged(_page(7, 2), False)])
+    with patch("http_tls.get", get):
+        raw = audit_engine._raw_check_ct_uncached(D, {})
+    assert len(calls) == 3
+    assert raw["total_certs"] == 6
+    assert raw["partial"] is True
+    card = result_transformer.transform_ct(raw, D)
+    assert any("first 6 certificates found" in d["text"] for d in card["details"])
+    assert card["pill_label"].endswith("+ certs")
+
+
+def test_a_failed_later_page_keeps_the_first_and_marks_partial():
+    get, calls = _paged_get([_Paged(_page(1, 2), True), _Resp(429, {})])
+    with patch("http_tls.get", get):
+        raw = audit_engine._raw_check_ct_uncached(D, {})
+    assert raw["total_certs"] == 2
+    assert raw["partial"] is True
+    assert raw["source"] == "Cert Spotter"

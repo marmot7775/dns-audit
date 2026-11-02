@@ -23,7 +23,7 @@ from result_transformer import _lookup_unavailable_card
 
 OLD_SENTENCE = "returned a failure or stopped"
 NEW_SENTENCE = (
-    "This audit did not get an answer in time. That can be the domain's "
+    "This audit did not get a usable DNS answer. That can be the domain's "
     "nameservers or the audit's own resolver, and the audit cannot tell which "
     "from here."
 )
@@ -103,10 +103,10 @@ def test_audit_resolvers_use_the_upstream_list():
     assert not any(dns_tools._is_loopback(ns) for ns in dns_tools.AUDIT_UPSTREAMS)
 
 
-def test_timeout_and_lifetime_unchanged():
+def test_lifetime_unchanged_and_timeout_never_above_the_requested_one():
     resolver = dns_tools.get_resolver(4.0)
-    assert resolver.timeout == 4.0
     assert resolver.lifetime == 8.0
+    assert resolver.timeout == min(4.0, 8.0 / len(resolver.nameservers))
 
 
 # -- /api/health negative lookup probe ---------------------------------------
@@ -124,7 +124,12 @@ class _RaisingResolver:
 
 def _health_with(monkeypatch, exc):
     fake = _RaisingResolver(exc)
-    monkeypatch.setattr(server_module, "get_uncached_resolver", lambda timeout: fake)
+
+    def _factory(timeout, lifetime=None):
+        fake.lifetime = lifetime  # the probe asks for its three second cap here
+        return fake
+
+    monkeypatch.setattr(server_module, "get_uncached_resolver", _factory)
     monkeypatch.setattr(server_module.dns.resolver, "resolve", lambda *a, **k: None)
     monkeypatch.setitem(server_module._health_cache, "expires", 0.0)
     monkeypatch.setitem(server_module._negative_probe_cache, "expires", 0.0)
@@ -169,7 +174,7 @@ def test_negative_probe_flags_positive_answer(monkeypatch):
         def resolve(self, name, rdtype, *args, **kwargs):
             return object()
 
-    monkeypatch.setattr(server_module, "get_uncached_resolver", lambda timeout: _Answering())
+    monkeypatch.setattr(server_module, "get_uncached_resolver", lambda timeout, lifetime=None: _Answering())
     assert server_module._negative_lookup_probe() == "UnexpectedPositiveAnswer"
 
 
