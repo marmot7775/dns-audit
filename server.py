@@ -1530,8 +1530,17 @@ def _negative_lookup_probe() -> Optional[str]:
 # the visitor read: no report contents and no header text. The APRF note may
 # name the signing domains in the reports, as an audit names its domain.
 _USAGE_TOOLS = {"aprf-reader", "header-decoder"}
-_USAGE_COUNTS = ("reports", "streams", "warnings", "skipped", "copies")
+_USAGE_COUNTS = ("reports", "streams", "warnings")
 _HEADER_STATUSES = {"pass", "fail", "forwarded", "none", "error", "unknown"}
+# How a read of one or more report files ended. "none" means the files held no
+# report; "error" means the read threw. Both used to send no note at all, so a
+# failure looked exactly like a page nobody opened.
+_APRF_STATUSES = {"ok", "partial", "none", "error"}
+# Why a file was not read, as a closed set of codes. The reader's own reason
+# strings name the file and can quote the parse error; neither is sent here.
+# "unreadable" is a parse failure, the one code that can mean a reader bug.
+_SKIP_CODES = {"nested_archive", "encrypted", "too_large", "unpack_failed",
+               "no_report_attached", "zip_too_many", "unreadable"}
 _USAGE_MAX_BODY = 4096
 _USAGE_MAX_DOMAINS = 20
 # Per IP and hour; a note past this is dropped, and audits are not affected
@@ -1573,6 +1582,30 @@ def _usage_entry(note: dict) -> Optional[dict]:
             if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 10_000_000:
                 return None
             entry[k] = v
+        status = note.get("status")
+        if status is not None:
+            if status not in _APRF_STATUSES:
+                return None
+            entry["status"] = status
+        skips = note.get("skips")
+        if isinstance(skips, dict):
+            # Walk the closed set, not the submitted keys: an unknown code is
+            # ignored rather than written, and the loop is bounded either way.
+            counts = {}
+            for code in sorted(_SKIP_CODES):
+                n = skips.get(code)
+                if isinstance(n, bool) or not isinstance(n, int) or not 0 < n <= 10_000_000:
+                    continue
+                counts[code] = n
+            if counts:
+                entry["skips"] = counts
+        else:
+            # The reader deployed before skips and statuses existed sends a bare
+            # total and no status. Drop this arm, and make status required above,
+            # once that page is replaced.
+            legacy = note.get("skipped")
+            if not isinstance(legacy, bool) and isinstance(legacy, int) and 0 <= legacy <= 10_000_000:
+                entry["skipped"] = legacy
         domains = note.get("domains", [])
         if not isinstance(domains, list):
             return None
