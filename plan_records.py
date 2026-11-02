@@ -25,6 +25,8 @@ Each record is a dict:
     current     the value published now, for a replace or a delete
     placeholder True when the value holds RUA_PLACEHOLDER, an address the
                 owner must replace before publishing
+    enforcing   True when publishing it makes receivers act on mail that
+                fails DMARC (a stricter p=, sp= or np=)
 
 and, while the plan is being built, an ``edit`` that says how the value
 was derived from the published record, so that two rows editing one
@@ -66,7 +68,7 @@ def has_placeholder(value: Optional[str]) -> bool:
 def record(op: str, rtype: str, host: str, value: Optional[str] = None,
            value_from: Optional[str] = None, note: Optional[str] = None,
            by: Optional[str] = None, edit: Optional[Dict] = None,
-           current: Optional[str] = None) -> Dict:
+           current: Optional[str] = None, enforcing: bool = False) -> Dict:
     out: Dict[str, object] = {"op": op, "type": rtype, "host": host, "value": value,
            "value_from": value_from if value is None else None, "note": note}
     if by:
@@ -75,6 +77,8 @@ def record(op: str, rtype: str, host: str, value: Optional[str] = None,
         out["current"] = current
     if has_placeholder(value):
         out["placeholder"] = True
+    if enforcing:
+        out["enforcing"] = True
     if edit:
         out["edit"] = edit
     return out
@@ -262,16 +266,87 @@ def mta_sts_enforce(domain: str, card: Dict, mx_hosts: List[str],
 
 
 # ------------------------------------------------------------------
+# Enforcement and the order of the change set
+# ------------------------------------------------------------------
+
+_POLICY_RANK = {"none": 0, "quarantine": 1, "reject": 2}
+
+# The protocols whose records say who may send as the domain. An enforcing
+# DMARC policy comes after every one of them (see build_change_set).
+SENDER_PROTOCOLS = ("SPF", "DKIM")
+
+ENFORCE_HOLD = (
+    "This step makes receivers act on mail that fails DMARC. Publish it only after the "
+    "steps above, and only once your DMARC reports show every service that sends as you "
+    "passing. This site never sees those reports, so it cannot tell you that."
+)
+
+# Record types the step check can read back with a fresh lookup.
+CHECK_TYPES = ("TXT", "CNAME", "A or CNAME")
+
+
+def policy_levels(rec: Optional[str]) -> tuple:
+    """(p, sp, np) as ranks 0 to 2, each falling back the way RFC 9989
+    section 4.7 has it: np to sp, sp to p."""
+    tags = {}
+    for k, v in parse_tags(rec):
+        tags.setdefault(k, v.lower())
+    p = _POLICY_RANK.get(tags.get("p", ""), 0)
+    sp = _POLICY_RANK.get(tags["sp"], p) if "sp" in tags else p
+    np_ = _POLICY_RANK.get(tags["np"], sp) if "np" in tags else sp
+    return (p, sp, np_)
+
+
+def makes_enforcing(current: Optional[str], new: Optional[str]) -> bool:
+    """True when publishing ``new`` over ``current`` asks receivers to act on
+    failing mail where the published record asks for less."""
+    if not new:
+        return False
+    before = policy_levels(current) if current else (0, 0, 0)
+    return any(n > c and n >= 1 for n, c in zip(policy_levels(new), before))
+
+
+def is_under(host: str, domain: str) -> bool:
+    """True when ``host`` is ``domain`` or a name under it."""
+    h = (host or "").lower().rstrip(".")
+    d = (domain or "").lower().rstrip(".")
+    return bool(d) and (h == d or h.endswith("." + d))
+
+
+def is_checkable(entry: Dict, domain: str) -> bool:
+    """True when the step check can read this record back: a DNS record the
+    audited domain publishes, with a value to compare (or a delete, or a name
+    that only has to resolve). A policy file is a web page and a record in
+    someone else's zone is not ours to look up, so both are confirmed by
+    hand."""
+    if entry.get("type") not in CHECK_TYPES or entry.get("op") not in ("add", "replace", "delete"):
+        return False
+    if not is_under(entry.get("host", ""), domain):
+        return False
+    if entry["op"] == "delete":
+        return bool(entry.get("current"))
+    if entry["type"] == "A or CNAME":
+        return True
+    return entry.get("value") is not None
+
+
+# ------------------------------------------------------------------
 # The change set
 # ------------------------------------------------------------------
 
-def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
+def build_change_set(items: List[Dict], editors: Dict[str, Callable],
+                     domain: str = "") -> Dict:
     """Every record the plan asks for, in plan order, one entry per record.
 
     Rows that edit the same published record (DMARC rua, sp and np rows; a
     DKIM key in test mode with v= out of place) become one entry whose
     value carries every edit, so publishing the list in order never undoes
     an earlier step. Optional rows come after the rest, as in the plan.
+
+    A step that makes the DMARC policy enforce (a stricter p=, sp= or np=) is
+    marked ``enforcing`` and carries a ``hold`` that says why it waits. It
+    never comes before an SPF or DKIM step: the records that cover the
+    senders are published first, whatever order the plan listed the rows in.
     """
     ordered = ([i for i in items if not i.get("optional")]
                + [i for i in items if i.get("optional")])
@@ -298,6 +373,7 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
                 merged["first"] = merged.get("first") or edit.get("first")
                 entry["value"] = _apply_edit(merged, editors)
                 entry["placeholder"] = has_placeholder(entry["value"])
+                entry["enforcing"] = entry["enforcing"] or bool(rec.get("enforcing"))
                 _add_reason(entry, item, rec)
                 continue
             entry = {
@@ -313,6 +389,7 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
                 "value_from": rec.get("value_from"),
                 "current": rec.get("current"),
                 "placeholder": bool(rec.get("placeholder")),
+                "enforcing": bool(rec.get("enforcing")),
                 "notes": [],
             }
             if rec.get("by"):
@@ -325,6 +402,10 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
                                   "first": edit.get("first")}
                 by_key[key] = entry
             entries.append(entry)
+    for e in entries:
+        if e["protocol"] == "DMARC" and e["type"] == "TXT" and e["value"] is not None:
+            base = (e.get("_edit") or {}).get("base")
+            e["enforcing"] = e["enforcing"] or makes_enforcing(base, e["value"])
     # A step whose value is the owner's call (move to enforcement) comes after
     # the exact edits to the same record, so it starts from the edited one.
     for e in [e for e in entries if e["value"] is None and e["op"] == "replace"]:
@@ -342,9 +423,22 @@ def build_change_set(items: List[Dict], editors: Dict[str, Callable]) -> Dict:
         if _rpt:
             rest = [e for e in entries[_first_sts:] if e["protocol"] != "TLS-RPT"]
             entries = entries[:_first_sts] + _rpt + rest
+    # An enforcing policy never comes before the steps that cover the senders.
+    _last_sender = max((n for n, e in enumerate(entries) if e["protocol"] in SENDER_PROTOCOLS),
+                       default=-1)
+    if _last_sender >= 0:
+        _head = entries[:_last_sender + 1]
+        if any(e["enforcing"] for e in _head):
+            entries = ([e for e in _head if not e["enforcing"]]
+                       + [e for e in _head if e["enforcing"]] + entries[_last_sender + 1:])
     for n, e in enumerate(entries, 1):
         e["step"] = n
         e.pop("_edit", None)
+        if e["enforcing"]:
+            e["hold"] = ENFORCE_HOLD
+        else:
+            e.pop("enforcing")
+        e["checkable"] = is_checkable(e, domain)
     for item in items:
         for rec in item.get("records") or []:
             rec.pop("edit", None)

@@ -1017,7 +1017,41 @@ def _rc_value_cell(e, S):
         cell.append(Paragraph(f"Published by {_safe(e['by'])}, not by you.", S["body_tiny"]))
     for n in e.get("notes") or []:
         cell.append(Paragraph(_safe(n), S["body_tiny"]))
+    if e.get("hold"):
+        # The same hold the page puts above the step's Check button.
+        cell.append(Paragraph(f"<b>Wait:</b> {_safe(e['hold'])}", S["body_tiny"]))
     return cell
+
+
+def _staged_path_block(data, S):
+    """The staged DMARC path: the next stage only, with the same fields the
+    page prints (renderStagedPath in app.js)."""
+    sp = (data.get("security_roadmap") or {}).get("staged_path")
+    if not sp:
+        return []
+    els = [Paragraph(_safe(sp["title"]), S["subheading"]),
+           Paragraph(_safe(sp["do"]), S["body"]),
+           Paragraph(f"<b>Before this step:</b> {_safe(sp['condition'])}", S["body"])]
+    senders = sp.get("senders") or []
+    if senders:
+        els.append(Paragraph("<b>Services that send as you</b>", S["body_small"]))
+        for v in senders:
+            bits = [f"<b>{_safe(v['name'])}</b>"]
+            if v.get("detected_via"):
+                bits.append(f"seen in {_safe(v['detected_via'])}")
+            line = ", ".join(bits) + ". "
+            if v.get("spf_include"):
+                line += f"SPF include: {_safe(v['spf_include'])}. "
+            if v.get("state") == "covered":
+                line += "Its setup looks complete in DNS."
+            else:
+                line += "Setup incomplete. " + _safe(" ".join(v.get("missing") or []))
+            els.append(Paragraph(line, S["body_small"]))
+    elif sp.get("senders_note"):
+        els.append(Paragraph(_safe(sp["senders_note"]), S["body_small"]))
+    els.extend([Paragraph(f"<b>{_safe(sp['reports_notice'])}</b>", S["body_small"]),
+                Spacer(1, SP_MD)])
+    return els
 
 
 def _change_set_block(data, S):
@@ -1032,10 +1066,13 @@ def _change_set_block(data, S):
         bits.append(f"{cs['from_provider']} with a value that comes from someone else")
     if cs.get("placeholders"):
         bits.append(f"{cs['placeholders']} with an address for you to fill in")
-    els = [Paragraph("Records to change", S["subheading"]),
+    els = _staged_path_block(data, S)
+    els += [Paragraph("Records to change", S["subheading"]),
            Paragraph(_safe(", ".join(bits)) + ".", S["body_small"]),
-           Paragraph("Top to bottom, in the order of the plan above. Where two plan items "
-                     "change one record, it appears once with both changes in it.", S["body"]),
+           Paragraph("One record at a time, in the order of the plan above. A step that makes "
+                     "your policy enforce always comes after the steps that cover your senders. "
+                     "Where two plan items change one record, it appears once with both changes "
+                     "in it.", S["body"]),
            Spacer(1, SP_SM)]
     els.extend(_dns_host_block(data, S))
     head = [Paragraph(f"<b>{t}</b>", S["body_tiny"]) for t in
@@ -1070,9 +1107,11 @@ def _change_set_block(data, S):
             "not a DNS record, or this audit cannot say which record. The plan above covers "
             f"{'it' if n == 1 else 'them'}.", S["body_small"])])
     els.extend([Spacer(1, SP_SM), Paragraph(
-        "After you publish, run the audit again at dns-audit.com. The panel headed "
-        "\"Since\" at the top of the results lists what changed. DNS changes can take a few "
-        "minutes to reach resolvers.", S["body_small"]), Spacer(1, SP_MD)])
+        "On the results page, each step has a button that checks that one record with a fresh "
+        "lookup and says live or not yet. After you publish, you can also run the audit again "
+        "at dns-audit.com. The panel headed \"Since\" at the top of the results lists what "
+        "changed. DNS changes can take a few minutes to reach resolvers.", S["body_small"]),
+        Spacer(1, SP_MD)])
     return els
 
 
