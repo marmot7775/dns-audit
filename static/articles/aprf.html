@@ -9,7 +9,7 @@
     <meta name="author" content="Neil Anuskiewicz">
     <meta property="og:type" content="article">
     <meta property="article:published_time" content="2026-10-09">
-    <meta property="article:modified_time" content="2026-10-09">
+    <meta property="article:modified_time" content="2026-11-01">
     <meta property="article:author" content="https://dns-audit.com/about#neil">
     <meta property="og:site_name" content="dns-audit.com">
     <meta property="og:url" content="https://dns-audit.com/articles/aprf">
@@ -44,7 +44,7 @@
         "image": "https://dns-audit.com/static/og-card-aprf.png?v=1",
         "isPartOf": { "@id": "https://dns-audit.com/#website" },
         "datePublished": "2026-10-09",
-        "dateModified": "2026-10-09"
+        "dateModified": "2026-11-01"
     }
     </script>
     <script type="application/ld+json">
@@ -119,7 +119,7 @@
                 <pre tabindex="0"><code>[
   {
     "header": {
-      "version": 4,
+      "version": "2026v4",
       "source": "Receiver MBP, Inc.",
       "dkim_domain": "example.com",
       "dkim_selector": "sel1",
@@ -135,7 +135,7 @@
     ]
   }
 ]</code></pre>
-                <p>The header says who reported, which signing domain and selector the report covers, and the day as Unix timestamps. The <code>version</code> is the provider's own format number. It changes when the provider adds or drops something it counts, so numbers on either side of a change don't compare. <code>sdi_used</code> reads <code>N/F</code> when your record has no <code>sdi</code> tag and <code>N/A</code> when it has one the provider ignored. In the body, <code>inbox</code> and <code>unwanted</code> count messages received that day, and the three engagement figures count actions taken that day on mail from any day. Each figure is the top of its bucket. With <code>sdi</code> in use, the body holds one block like this per segment.</p>
+                <p>The header says who reported, which signing domain and selector the report covers, and the day as Unix timestamps. The <code>version</code> is a string the provider sets for its own format. It marks a difference, not an order, and it changes when the provider adds or drops something it counts, so numbers on either side of a change don't compare. <code>sdi_used</code> reads <code>N/F</code> when your record has no <code>sdi</code> tag and <code>N/A</code> when it has one the provider ignored. In the body, <code>inbox</code> and <code>unwanted</code> count messages received that day, and the three engagement figures count actions taken that day on mail from any day. Each figure is the top of its bucket. With <code>sdi</code> in use, the body holds one block like this per segment.</p>
                 <p>There are two more reasons not to turn these numbers into an inbox rate. A bucket is a ceiling, so dividing one by another gives a ratio nobody measured. And the two halves of a report count different mail. Placement counts messages received that day. Engagement counts actions taken that day, on mail from any day.</p>
                 <p>Comcast's beta reports carry inbox and unwanted for placement, positive and negative for engagement, and no neutral count.</p>
             </section>
@@ -143,7 +143,7 @@
                 <h2>Where it stands</h2>
                 <p>APRF is still a draft. On September 24, Murray Kucherawy, one of the working group's two chairs, opened a call for adoption, and it closed October 8. His closing note said the responses clearly supported the draft and that the group would consider it adopted absent an objection in the final hours. The IETF's records show it adopted that day.</p>
                 <p>Adoption means the working group now owns the document and will revise it. It does not make APRF an RFC, the IETF's published standard. The formal grammar for the record is still marked TODO, and Brotman has agreed to try, inside the APRF draft, a report header that other email report types could share. Record details and report fields could change.</p>
-                <p>Two smaller things are unsettled too. The draft describes the outside destination check two ways: one section measures the report address against the signing domain, another against the From address. The working group posted its first revision on October 9 as draft-ietf-mailmaint-aprf-00, so links to the earlier individual draft no longer update. That revision changed no rules. It added advice on keeping mail streams apart in the reports: an sdi header, a different signing domain for each stream, or a different selector.</p>
+                <p>The working group posted its first revision on October 9 as draft-ietf-mailmaint-aprf-00, so links to the earlier individual draft no longer update. That revision added advice on keeping mail streams apart in the reports: an sdi header, a different signing domain for each stream, or a different selector. The second, draft-ietf-mailmaint-aprf-01 on October 31, settled a few open points. The outside destination check is now measured against the signing domain only. The report <code>version</code> is a string, a segment is a list of strings, and a later report for the same day replaces an earlier one. This article follows -01.</p>
                 <p>Sending reports is voluntary. Comcast is running a beta for comcast.net mail and is the only provider known to send them. Google is represented among the authors but hasn't said it will send reports. No other provider has announced support.</p>
             </section>
             <section class="dbis-section">
@@ -165,11 +165,11 @@
                 <pre tabindex="0"><code>&lt;selector&gt;._aprf._domainkey.&lt;signing domain&gt;</code></pre>
                 <p>where the selector and signing domain are the <code>s=</code> and <code>d=</code> values in your DKIM signature. A minimal record reads</p>
                 <pre tabindex="0"><code>v=APRFv1; rua=mailto:aprf@example.org</code></pre>
-                <p>The <code>v</code> tag must be exactly <code>APRFv1</code> and <code>rua</code> must be present, or the provider ignores the record. <code>rua</code> takes one or more <code>mailto:</code> addresses separated by commas. A record at <code>_aprf._domainkey.&lt;signing domain&gt;</code>, or a DNS wildcard at <code>*._aprf._domainkey.&lt;signing domain&gt;</code>, covers every selector. A record for a specific selector takes precedence over either.</p>
+                <p>The <code>v</code> tag must be exactly <code>APRFv1</code> and <code>rua</code> must be present, or the provider ignores the record. <code>rua</code> takes one or more <code>mailto:</code> addresses separated by commas. Two other names cover every selector. One is a DNS wildcard in the selector position, <code>*._aprf._domainkey.&lt;signing domain&gt;</code>. Draft -01 defines a wildcard there and nowhere else, so a wildcard in place of the signing domain is not part of discovery. The other is the bare name with no selector, <code>_aprf._domainkey.&lt;signing domain&gt;</code>. Draft -01 keeps both. A provider uses the most specific match: a record for the selector first, then the wildcard, then the bare name.</p>
                 <h3>Reports going to another domain</h3>
                 <p>If the <code>rua</code> address isn't on the signing domain, the draft says the provider should confirm that the destination domain wants the reports, as DMARC does for outside report addresses. The destination publishes a TXT record at</p>
                 <pre tabindex="0"><code>&lt;selector&gt;.&lt;signing domain&gt;._aprf.&lt;destination domain&gt;</code></pre>
-                <p>with the value <code>v=APRFv1</code>. A wildcard in the selector position accepts reports for every selector on that signing domain, and a wildcard in the signing domain position accepts them from every signing domain. Without the record, a provider that follows the draft may not send. The draft states this check against the signing domain in one place and the From domain in another. The lookup name is built from the signing domain, so that is the reading dns-audit.com follows. If your report address is on any domain other than the one that signs, publish the destination record.</p>
+                <p>with the value <code>v=APRFv1</code>. A wildcard in the selector position accepts reports for every selector on that signing domain, and a wildcard in the signing domain position accepts them from every signing domain. Without the record, a provider that follows the draft may not send. Draft -01 measures this against the signing domain. If your report address is on any domain other than the one that signs, publish the destination record.</p>
                 <h3>The optional sdi tag</h3>
                 <p>The <code>sdi</code> tag names a header you sign with DKIM, plus a one character separator, for example <code>sdi=Signer-Info,^</code>. That header can carry up to four values from broad to narrow, such as brand, stream, and campaign, and a provider may split the report by them. Those values appear in the reports, so choose names you don't mind a report recipient seeing. Comcast's beta doesn't use <code>sdi</code> yet.</p>
                 <h3>Report format and delivery</h3>
