@@ -57,7 +57,9 @@ class _NeverAnswers:
 
     def __call__(self, url, *args, timeout=None, **kwargs):
         if "crt.sh" not in str(url):
-            raise requests.exceptions.ConnectionError("network disabled in tests")
+            # Cert Spotter times out too: only a double timeout is reported
+            # as one (a Cert Spotter 429 or bad JSON is not a timeout).
+            raise requests.exceptions.ReadTimeout("Cert Spotter did not answer")
         self.crt_sh_calls += 1
         read = timeout[1] if isinstance(timeout, tuple) else timeout
         time.sleep(min(read if read is not None else 11, 11) + 0.1)
@@ -191,3 +193,19 @@ def test_too_large_keeps_its_wording():
         "The Certificate Transparency log query returned more data than could be processed."
     )
     assert card["details"][0]["text"] == "CT log response too large to analyze automatically"
+
+
+def test_crt_sh_timeout_then_cert_spotter_error_is_not_a_timeout():
+    """Issue 273: the card must not say neither service answered in time."""
+    def _get(url, *args, **kwargs):
+        if "crt.sh" in str(url):
+            raise requests.exceptions.ReadTimeout("crt.sh did not answer")
+        raise requests.exceptions.ConnectionError("Cert Spotter refused")
+
+    with patch("http_tls.get", _get):
+        raw = audit_engine._raw_check_ct("odd.example", {})
+    assert raw["unavailable_reason"] == "request_error"
+    assert "odd.example" not in audit_engine._ct_timeout_cache
+    card = result_transformer.transform_ct(raw, "odd.example")
+    assert "did not answer in time" not in card["explanation"]
+    assert "answered in time" not in card["details"][0]["text"]

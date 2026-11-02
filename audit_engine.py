@@ -50,6 +50,9 @@ CT_CACHE_MAX_SIZE = 2000
 # it never overwrites a real past result, which _get_stale_ct still serves.
 _ct_timeout_cache: Dict[Any, Any] = {}
 CT_TIMEOUT_CACHE_TTL = 900  # 15 minutes
+# Cert Spotter fallback: pages read, and the time all of them share.
+CT_SPOTTER_MAX_PAGES = 3
+CT_SPOTTER_BUDGET_S = 8.0
 
 
 def _get_cached_ct(domain):
@@ -4301,33 +4304,71 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
             "fix": fix,
         })
 
+    spotter_failure = None
+
     def _from_cert_spotter():
         """The same certificates from SSLMate's Cert Spotter, in crt.sh's
-        field names, or None when it does not answer (429 included)."""
-        try:
-            r = http_tls.get(
-                "https://api.certspotter.com/v1/issuances",
-                params=[("domain", domain), ("include_subdomains", "true"),
-                        ("expand", "dns_names"), ("expand", "issuer")],
-                # Cert Spotter usually answers in under a second; four keeps
-                # the fallback from stretching a slow audit much past crt.sh.
-                timeout=(3, 4),
-                headers={"User-Agent": "dns-audit.com/1.0"},
-                allow_redirects=False,
-            )
-            if r.status_code != 200 or len(r.content) > 10 * 1024 * 1024:
-                return None
-            rows = r.json()
-        except (requests.exceptions.RequestException, ValueError):
-            return None
-        if not isinstance(rows, list):
-            return None
-        # Cert Spotter pages its answer, oldest issuance first, and only the
-        # first page is fetched (its unauthenticated limit is a few queries a
-        # minute). A domain with a next page has its newest certificates,
-        # the renewals, on pages this check never sees.
-        if (getattr(r, "links", None) or {}).get("next"):
-            result["partial"] = True
+        field names, or None when it does not answer (429 included).
+
+        Cert Spotter pages its answer, oldest issuance first, and wants an
+        `after` cursor (the last id seen) for each later page. Up to
+        CT_SPOTTER_MAX_PAGES pages are read inside CT_SPOTTER_BUDGET_S. When
+        more pages remain the list is marked partial, so the card says how
+        many certificates were checked instead of reporting a full inventory.
+        On failure `spotter_failure` records why: "timeout" or "request_error".
+        """
+        nonlocal spotter_failure
+        deadline = time.monotonic() + CT_SPOTTER_BUDGET_S
+        rows: List[Dict[str, Any]] = []
+        after = None
+        for page in range(CT_SPOTTER_MAX_PAGES):
+            remaining = deadline - time.monotonic()
+            if page and remaining < 1:
+                result["partial"] = True
+                break
+            params = [("domain", domain), ("include_subdomains", "true"),
+                      ("expand", "dns_names"), ("expand", "issuer")]
+            if after:
+                params.append(("after", after))
+            try:
+                r = http_tls.get(
+                    "https://api.certspotter.com/v1/issuances",
+                    params=params,
+                    # Cert Spotter usually answers in under a second; four
+                    # keeps the fallback from stretching a slow audit much
+                    # past crt.sh. Later pages get what is left of the budget.
+                    timeout=(3, 4 if not page else max(1, min(4, remaining))),
+                    headers={"User-Agent": "dns-audit.com/1.0"},
+                    allow_redirects=False,
+                )
+                if r.status_code != 200 or len(r.content) > 10 * 1024 * 1024:
+                    raise ValueError("Cert Spotter gave no usable page")
+                chunk = r.json()
+                if not isinstance(chunk, list):
+                    raise ValueError("Cert Spotter gave no list")
+            except requests.exceptions.Timeout:
+                spotter_failure = "timeout"
+                chunk = None
+            except (requests.exceptions.RequestException, ValueError):
+                spotter_failure = "request_error"
+                chunk = None
+            if chunk is None:
+                if not rows:
+                    return None
+                # A later page failed: keep the certificates read so far.
+                spotter_failure = None
+                result["partial"] = True
+                break
+            rows.extend(chunk)
+            has_next = bool((getattr(r, "links", None) or {}).get("next"))
+            after = chunk[-1].get("id") if chunk and isinstance(chunk[-1], dict) else None
+            if not has_next:
+                break
+            if not after:
+                result["partial"] = True
+                break
+            if page == CT_SPOTTER_MAX_PAGES - 1:
+                result["partial"] = True
         out = []
         for row in rows:
             names = row.get("dns_names") or []
@@ -4389,7 +4430,13 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
                        "Neither certificate log service (crt.sh, Cert Spotter) answered, so "
                        "this check is incomplete. The other checks are unaffected.")
             result["status"] = "warning"
-            result["unavailable_reason"] = crt_failure
+            # "timeout" means both services timed out. When Cert Spotter failed
+            # some other way (429, bad JSON) the honest reason is the generic
+            # one, so the card does not claim neither answered in time.
+            result["unavailable_reason"] = (
+                "timeout" if crt_failure == "timeout" and spotter_failure == "timeout"
+                else "request_error"
+            )
             return result
         result["source"] = "Cert Spotter"
     else:
@@ -6955,7 +7002,7 @@ def _build_resilience_analysis(
             "exist, and nothing below should be read as a finding about the domain."
         )
         risk = (
-            "No conclusion is available. This audit did not get an answer in time. "
+            "No conclusion is available. This audit did not get a usable DNS answer. "
             "That can be the domain's nameservers or the audit's own resolver, and "
             "the audit cannot tell which from here. Confirm the domain resolves, "
             "then re-run the audit."
