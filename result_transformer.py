@@ -155,7 +155,7 @@ def attach_what_this_is(checks: List[Dict]) -> List[Dict]:
     falls back to the name itself.
     """
     for check in checks:
-        name = check.get("name")
+        name: Any = check.get("name")
         text = WHAT_THIS_IS.get(name)
         if text:
             check["what_this_is"] = text
@@ -242,7 +242,7 @@ def attach_reject_dkim_note(checks: List[Dict], raw_dkim: Optional[Dict],
     live, _ = _split_dkim_selectors(raw_dkim.get("found_selectors") or [])
     if live:
         return checks
-    dmarc = next((c for c in checks if c.get("name") == "DMARC"), None)
+    dmarc: Any = next((c for c in checks if c.get("name") == "DMARC"), None)
     tb = (dmarc or {}).get("tag_breakdown")
     if not tb or dmarc.get("effective_policy") != "reject" or dmarc.get("inherited_from"):
         return checks
@@ -1599,7 +1599,7 @@ def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
     R = plan_records.record
     for item in items:
         kind = item.get("_kind")
-        proto = item.get("protocol")
+        proto: Any = item.get("protocol")
         recs: List[Dict] = []
         if proto == "DMARC" and item.get("record"):
             host = item.get("host") or f"_dmarc.{domain}"
@@ -1668,7 +1668,7 @@ def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
                               "that should receive the reports. They arrive as JSON, one a day "
                               "from each sender that supports TLS-RPT.")))
         elif kind == "tls_rpt_fail":
-            _rua = re.search(r"rua\s*=\s*([^;\s]+(?:,[^;\s]+)*)", tls_rpt.get("record") or "", re.I)
+            _rua: Any = re.search(r"rua\s*=\s*([^;\s]+(?:,[^;\s]+)*)", tls_rpt.get("record") or "", re.I)
             _ok = _rua and all(u.strip().lower().startswith(("mailto:", "https:"))
                                for u in _rua.group(1).split(","))
             if _ok:
@@ -2439,7 +2439,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
 
     _attach_plan_records(items, check_map, domain, now)
 
-    _rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    _rank: Dict[Any, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
     # A row on a passing card is a recommendation, not a result, so it gets
     # the info icon: a green check there read as already done.
@@ -2467,8 +2467,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # On a further tie, the protocol nearest to spoofing protection leads:
     # london.gov.uk (p=quarantine; pct=0) listed a 1024-bit DKIM key, which
     # still works, ahead of a policy that applies to none of the failing mail.
-    _status_rank = {"fail": 0, "warn": 1, "info": 2, "absent": 3}
-    _protocol_rank = {"DMARC": 0, "SPF": 1, "DKIM": 2}
+    _status_rank: Dict[Any, int] = {"fail": 0, "warn": 1, "info": 2, "absent": 3}
+    _protocol_rank: Dict[Any, int] = {"DMARC": 0, "SPF": 1, "DKIM": 2}
     items.sort(key=lambda i: (_rank.get(i.get("priority"), 4), _transient_ns(i),
                               _status_rank.get(i["status"], 2),
                               _protocol_rank.get(i.get("protocol"), 3)))
@@ -3562,8 +3562,8 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     # Check if this domain inherits policy (raw_dmarc fields set by
     # _enrich_dmarc_inheritance using tree walk first, PSL fallback)
     inherited = not record and raw.get("is_subdomain") and raw.get("inherited_policy")
-    inherited_policy = raw.get("inherited_policy") if inherited else None
-    inherited_source = raw.get("inherited_from") if inherited else None
+    inherited_policy: Any = raw.get("inherited_policy") if inherited else None
+    inherited_source: Any = raw.get("inherited_from") if inherited else None
 
     # Doc 104: under Email Deliverability an effective p=none, published or
     # inherited, is graded as meeting the mailbox providers' requirement.
@@ -4152,7 +4152,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     # beside it, so the breakdown says "Needs Attention" there instead.
     _health = (tag_breakdown or {}).get("health") or {}
     if _health.get("status") == "misconfigured" and status != "fail":
-        _worst = next((w for w in (tag_breakdown.get("config_warnings") or [])
+        _worst = next((w for w in ((tag_breakdown or {}).get("config_warnings") or [])
                        if w.get("level") == "critical"), None)
         _first = (_worst["text"].split(".")[0] + ".") if _worst and _worst.get("text") else ""
         _health.update({
@@ -6094,7 +6094,7 @@ def _build_record_builder(
     # ── Build recommended record from current ──────────────────
     # One end state, shared with the Migration Path's target record.
     rec_tags: Dict[str, str] = {}
-    for part in record.split(";"):
+    for part in (record or "").split(";"):
         part = part.strip()
         if "=" in part:
             k, _, v = part.partition("=")
@@ -7201,7 +7201,7 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         vendor = _key_provider(sel, raw)
 
         # Analyze key strength
-        key_analysis = analyze_dkim_key_strength(sel_record)
+        key_analysis: Any = analyze_dkim_key_strength(sel_record)
         bits = key_analysis.get("key_bits", 0)
         strength = key_analysis.get("status", "unknown")
 
@@ -10287,7 +10287,7 @@ APRF_TITLE = "APRF (draft standard)"
 # one collapsed line instead of a full card, on the web and in the PDF.
 APRF_NONE_LINE = "APRF, a draft reporting standard, is not published for this domain."
 
-_APRF_IGNORED_REASONS = {
+_APRF_IGNORED_REASONS: Dict[Any, str] = {
     "v_tag": "its v tag is missing or is not APRFv1",
     "no_rua": "its rua tag has no mailto destination",
 }
