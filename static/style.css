@@ -1509,6 +1509,9 @@ main {
 
 .rtc-actions {
     margin-bottom: var(--space-md);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
 }
 
 .rtc-copy-all {
@@ -1548,6 +1551,182 @@ main {
 .rtc-rerun:focus-visible {
     outline: 2px solid var(--border-focus);
     outline-offset: 2px;
+}
+
+/* The stepper: one record at a time, with a check after it. */
+.rtc-row[hidden] {
+    display: none;
+}
+
+.rtc-progress {
+    margin: var(--space-sm) 0;
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.rtc-stepbar {
+    margin-top: var(--space-md);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+}
+
+.rtc-hold {
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius);
+}
+
+.rtc-hold-text {
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+}
+
+.rtc-confirm {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: 44px;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.rtc-confirm input {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex: none;
+}
+
+.rtc-result {
+    margin: 0 0 var(--space-sm);
+    min-height: 1.25rem;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+}
+
+.rtc-result.rtc-live {
+    border-left: 3px solid var(--pass);
+    padding-left: var(--space-sm);
+    color: var(--text-primary);
+}
+
+.rtc-result.rtc-notyet {
+    border-left: 3px solid var(--warn);
+    padding-left: var(--space-sm);
+    color: var(--text-primary);
+}
+
+.rtc-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.rtc-check,
+.rtc-next,
+.rtc-back,
+.rtc-skip,
+.rtc-showall {
+    font: inherit;
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+}
+
+.rtc-check:not(:disabled),
+.rtc-next:not(:disabled) {
+    background: var(--primary-solid);
+    border-color: var(--primary-solid);
+    color: var(--text-inverse);
+    font-weight: 500;
+}
+
+.rtc-check:hover:not(:disabled),
+.rtc-next:hover:not(:disabled) {
+    background: var(--primary-solid-hover);
+}
+
+.rtc-check:disabled,
+.rtc-next:disabled {
+    cursor: not-allowed;
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text-tertiary);
+}
+
+.rtc-check:focus-visible,
+.rtc-next:focus-visible,
+.rtc-back:focus-visible,
+.rtc-skip:focus-visible,
+.rtc-showall:focus-visible,
+.rtc-confirm input:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+/* The staged DMARC path: the next stage only. */
+.staged-path {
+    margin: var(--space-md) 0;
+    padding: var(--space-md);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--primary-solid);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    min-width: 0;
+}
+
+.staged-title {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--font-base);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.staged-do,
+.staged-cond,
+.staged-note {
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+}
+
+.staged-notice {
+    margin: 0 0 var(--space-sm);
+    overflow-wrap: anywhere;
+    padding-left: var(--space-sm);
+    border-left: 3px solid var(--warn);
+    color: var(--text-primary);
+}
+
+.staged-sub {
+    margin: var(--space-sm) 0 var(--space-xs);
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+}
+
+.staged-senders {
+    list-style: none;
+    margin: 0 0 var(--space-sm);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.staged-sender {
+    overflow-wrap: anywhere;
+}
+
+.staged-via {
+    color: var(--text-tertiary);
 }
 
 /* Wide screens: the step, action and type sit in a column beside the

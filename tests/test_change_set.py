@@ -335,10 +335,11 @@ def test_the_audit_carries_the_change_set(fixture_result):
     entries = fixture_result["security_roadmap"]["change_set"]["entries"]
     by = {(e["protocol"], e["type"]) for e in entries}
     assert ("MTA-STS", "Policy file") in by and ("TLS-RPT", "TXT") in by
-    # The pct edit is exact; moving to enforcement is the owner's call and
-    # comes after it on the same record.
+    # The pct edit and the next stage (p=quarantine) are one exact entry on
+    # the one record, and it carries the hold that keeps it after the senders.
     dmarc = [e for e in entries if e["protocol"] == "DMARC"]
-    assert [e["value"] is None for e in dmarc] == [False, True]
+    assert [e["value"] is None for e in dmarc] == [False]
+    assert "p=quarantine" in dmarc[0]["value"] and dmarc[0]["enforcing"] and dmarc[0]["hold"]
     policy = next(e for e in entries if e["type"] == "Policy file")
     assert f"mx: mx1.{UI_DOMAIN}\nmx: mx2.{UI_DOMAIN}" in policy["value"]
 

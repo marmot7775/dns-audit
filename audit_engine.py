@@ -6557,7 +6557,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # --- Assemble final response ---
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     _roadmap = build_security_roadmap(checks, is_no_mail=is_defensive, has_mx=has_mx,
-                                      domain=domain, scope=scope)
+                                      domain=domain, scope=scope, vendors=vendors)
 
     return {
         "domain": domain,

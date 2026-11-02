@@ -22,6 +22,8 @@ Each card looks like:
 }
 """
 
+import sendermap_adapter
+import staged_path
 from sendermap_adapter import dkim_key_provider
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -1581,7 +1583,8 @@ def _dkim_row_records(item: Dict, dkim: Dict, domain: str) -> List[Dict]:
 
 
 def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: str,
-                         now: Optional[datetime] = None) -> None:
+                         now: Optional[datetime] = None,
+                         staged: Optional[Dict] = None) -> None:
     """Give each row the records it asks for (plan_records.py). A value DNS
     cannot tell us is None, with who supplies it. Every record is named
     under the domain, so without one no row gets records."""
@@ -1618,10 +1621,23 @@ def _attach_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
             recs.append(R("replace", "TXT", item.get("host") or f"_dmarc.{domain}", value_from=(
                 "Your choice of the one to keep. Delete every other TXT record at this name; "
                 "the published records are listed in the plan row.")))
-        elif kind == "dmarc_enforce":
-            recs.append(R("replace", "TXT", item.get("host") or f"_dmarc.{domain}", value_from=(
-                "Your DMARC reports. Change p=none to p=quarantine once they show every "
-                "service that sends as you passing DMARC; the rest of the record stays.")))
+        elif kind in ("dmarc_enforce", "dmarc_reject"):
+            _host = item.get("host") or f"_dmarc.{domain}"
+            _exact = (staged_path.record_for(staged, _cur_dmarc, _edit_dmarc_record)
+                      if staged and _cur_dmarc and staged.get("set_p") else None)
+            if _exact:
+                # The next stage, as the exact record. It is an edit of the
+                # published one, so another row's edit to the same record is
+                # folded into it rather than undone.
+                staged["record"] = _exact
+                recs.append(R("replace", "TXT", _host, _exact, enforcing=True,
+                              note=staged["condition"],
+                              edit={"kind": "dmarc", "base": _cur_dmarc,
+                                    "set": {"p": staged["set_p"]}, "remove": []}))
+            else:
+                recs.append(R("replace", "TXT", _host, enforcing=True, value_from=(
+                    "Your DMARC reports. Change p=none to p=quarantine once they show every "
+                    "service that sends as you passing DMARC; the rest of the record stays.")))
         elif kind == "spf_missing" and not spf.get("fix_records"):
             recs.append(plan_records.spf_missing_record(domain, mx_card.get("providers") or []))
         elif kind == "spf_multiple":
@@ -1764,7 +1780,8 @@ def _finish_plan_records(items: List[Dict], check_map: Dict[str, Dict], domain: 
 def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                            has_mx: bool = True, domain: str = "",
                            scope: Optional[str] = None,
-                           now: Optional[datetime] = None) -> Dict:
+                           now: Optional[datetime] = None,
+                           vendors: Optional[List[Dict]] = None) -> Dict:
     """Synthesize all check results into a prioritized action plan.
 
     Takes the transformed checks list and returns a roadmap with
@@ -1952,6 +1969,12 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                    f"{_auth_host} with the value v=DMARC1 (RFC 9990 section 4). "
                                    f"Or point rua= at an address at {_own} instead."})
 
+    # The staged DMARC path (staged_path.py): the next stage only, from the
+    # DMARC card and the sender map. Rules, not a model: the same audit gives
+    # the same words every time.
+    staged = staged_path.build(domain, dmarc, scope, INBOX_SCOPES, vendors,
+                               sendermap_adapter.spf_include, _edit_dmarc_record)
+
     # p=none with rua (monitoring)
     health = tb.get("health", {}) if tb else {}
     # Doc 92: p=none without rua grades "attention", not "monitoring", and
@@ -1968,6 +1991,16 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "plain_head": "Your settings do not ask receivers to block forged mail yet.",
                       "who": WHO_DNS_HOST,
                       "impact": "Nothing is blocked yet, and every receiver is making its own call on mail that fails."})
+
+    # Stage 3 of the path: p=quarantine to p=reject. Low and optional, like
+    # the other rows on a policy that already works; the record it carries
+    # lands in the change set like any other.
+    if staged and staged["stage"] == "reject":
+        items.append({"priority": "low", "protocol": "DMARC", "_kind": "dmarc_reject",
+                      "action": "Progress from p=quarantine to p=reject",
+                      "plain_head": "Optional: your policy sends failing mail to spam, and reject would refuse it.",
+                      "who": WHO_DNS_HOST,
+                      "impact": "Quarantine already protects your domain. Reject is the last stage, and it is safe only once your reports show every legitimate sender passing."})
 
     # A DKIM selector CNAME into an unregistered domain: anyone can register
     # it and sign mail as this domain.
@@ -2437,7 +2470,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         if _note:
             i["host_note"] = f"{i['host_note']} {_note}" if i.get("host_note") else _note
 
-    _attach_plan_records(items, check_map, domain, now)
+    _attach_plan_records(items, check_map, domain, now, staged)
 
     _rank: Dict[Any, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     # Each row carries its card's status so the Priorities list can show it.
@@ -2490,7 +2523,8 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
     # Every record the plan asks for, in plan order, with edits to one
     # record folded together. The markers the rules above left are dropped.
     change_set = plan_records.build_change_set(
-        items, {"dmarc": _edit_dmarc_record, "tags": plan_records.edit_tag_list})
+        items, {"dmarc": _edit_dmarc_record, "tags": plan_records.edit_tag_list},
+        domain=domain)
     for item in items:
         for k in [k for k in item if k.startswith("_")]:
             del item[k]
@@ -2556,6 +2590,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
         "tiers": tiers,
         "summary": summary,
         "change_set": change_set,
+        "staged_path": staged,
     }
 
 

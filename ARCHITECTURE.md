@@ -39,6 +39,8 @@ config.py                  Settings from the environment
 audit_engine.py            Raw checks for DMARC, SPF, DNSSEC, CAA, NS, DANE, CT, APRF; orchestration and timeouts
 result_transformer.py      Raw results to cards, summary, roadmap
 plan_records.py            The records each plan row asks for, and the change set
+staged_path.py            The staged DMARC path: the next stage only, from rules (no model, no outside calls)
+step_check.py             The per-record check behind the stepper: one fresh lookup, no cache, nothing kept
 pdf_report.py              PDF report
 dns_tools.py               Domain normalization, resolvers
 dns_hosts.py               DNS host from nameservers, steps to add a record

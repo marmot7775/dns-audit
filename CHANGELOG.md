@@ -10,6 +10,14 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 ## [Unreleased]
 
 ### Added
+- Staged DMARC path (#286): the plan shows only the next DMARC stage, with the
+  condition for moving on in plain words, the record in the change set, vendor
+  rows from Sendermap's catalog, and a plain statement that the site never sees
+  DMARC reports. The change set is a stepper with a per-record check
+  (`/api/step-check`) that does its own fresh lookup, not the five minute
+  cache. A step that makes the policy enforce never comes before the SPF and
+  DKIM steps. No language model, nothing sent to a third party, privacy page
+  unchanged.
 - ARCHITECTURE.md: the pipeline, the module map, and the rules the code keeps.
 - docs/decisions: eight dated decision records.
 - CONTRIBUTING.md.

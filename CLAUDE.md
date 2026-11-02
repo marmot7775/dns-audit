@@ -79,6 +79,12 @@
   reads the scope, so results, cache keys and the log carry the new key.
   deliverability and senders grade p=none pass (INBOX_SCOPES, Doc 104).
 - Server-side scope filtering skips unneeded checks
+- Staged DMARC path (#286): staged_path.py picks the next stage from rules, and the
+  change set is a stepper. /api/step-check (step_check.py) rereads one record on a
+  resolver with no cache and keeps nothing, not even a log line. An enforcing step
+  is held after every SPF and DKIM step (plan_records.build_change_set). No language
+  model, nothing to a third party, and the stepper keeps its state in the page only,
+  so the privacy page stays as it is.
 - Cache key format: "domain:selector:scope" (5 min TTL)
 - Audit log: audit.log (JSON-lines, GDPR-safe). Fields: ts, domain, scope,
   duration_s, checks, ua, bot, source, status, vid, plus error when status is

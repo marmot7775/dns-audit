@@ -312,9 +312,17 @@ def test_the_block_fits_the_screen_with_44px_targets(browser, fixture_result, th
             .filter(r => r.getBoundingClientRect().right > b.right + 1).length;
     }""")
     assert over == 0
-    for btn in block.locator("button").all():
-        assert btn.bounding_box()["height"] >= 43.5, btn.inner_text()
-        assert btn.bounding_box()["width"] >= 43.5
+    # The stepper shows one record; "Show every record at once" shows the rest.
+    # Hidden rows have no box, so each view measures the buttons it shows.
+    for view in ("one", "all"):
+        if view == "all":
+            block.locator("[data-rtc-showall]").click()
+        shown = [b for b in block.locator("button").all() if b.is_visible()]
+        assert shown
+        for btn in shown:
+            assert btn.bounding_box()["height"] >= 43.5, btn.inner_text()
+            assert btn.bounding_box()["width"] >= 43.5
+        assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     assert not errors, errors
     ctx.close()
 

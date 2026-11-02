@@ -1007,7 +1007,7 @@ function renderResults(data, selector = '') {
         document.getElementById('priority-summary').textContent = priorityTierSummary(rm);
         // With a records block, the DNS host's click path moves down to sit
         // directly above it; with none it stays above the plan, as before.
-        const recordsBlock = renderChangeSet(rm.change_set, data.dns_host);
+        const recordsBlock = renderChangeSet(rm.change_set, data.dns_host, rm.staged_path);
         priorityList.innerHTML = (recordsBlock ? '' : renderDnsHost(data.dns_host))
             + renderPriorities(rm, checks, data.resilience, data.dns_host)
             + recordsBlock;
@@ -4098,7 +4098,7 @@ function rcCopyAllText(cs) {
     return ((cs && cs.entries) || []).map(_rcPlainRow).join('\n\n');
 }
 
-function _rcRow(e) {
+function _rcRow(e, last) {
     const op = RC_OPS[e.op] || 'Add';
     const hasValue = e.value !== null && e.value !== undefined;
     let valueHtml;
@@ -4132,15 +4132,37 @@ function _rcRow(e) {
         </div>
         <div class="rtc-field"><span class="rtc-label">${e.op === 'file' ? 'URL' : 'Host name'}</span>
             <code class="rtc-host">${escapeHtml(e.host)}</code></div>
-        ${valueHtml}${current}${warn}${by}${notes}
+        ${valueHtml}${current}${warn}${by}${notes}${_rcStepBar(e, last)}
     </li>`;
+}
+
+// The controls under one record: the hold on an enforcing step, the result
+// of the last check, and the buttons that move through the steps.
+function _rcStepBar(e, last) {
+    const hold = e.hold
+        ? `<div class="rtc-hold"><p class="rtc-hold-text">${escapeHtml(e.hold)}</p>
+            <label class="rtc-confirm"><input type="checkbox" data-rtc-confirm>
+            <span>My DMARC reports show every service that sends as me passing.</span></label></div>`
+        : '';
+    const publish = e.checkable
+        ? `<button type="button" class="rtc-check" data-rtc-check>Check that it is live</button>`
+        : `<button type="button" class="rtc-check" data-rtc-published>I published it</button>`;
+    return `<div class="rtc-stepbar">${hold}
+        <p class="rtc-result" role="status" aria-live="polite" data-rtc-result></p>
+        <div class="rtc-buttons">
+            <button type="button" class="rtc-back" data-rtc-back>Back</button>
+            ${publish}
+            <button type="button" class="rtc-next" data-rtc-next disabled>${last ? 'Finish' : 'Next step'}</button>
+            ${e.optional ? '<button type="button" class="rtc-skip" data-rtc-skip>Skip this optional step</button>' : ''}
+        </div>
+    </div>`;
 }
 
 // Records to change: every record the plan asks for, in the plan's order,
 // one row each. Rows that edit one record share a row whose value carries
 // all their edits, so working down the list never undoes a step. Open, right
 // after What to do, with the DNS host's click path above it.
-function renderChangeSet(cs, host) {
+function renderChangeSet(cs, host, staged) {
     const entries = (cs && cs.entries) || [];
     if (entries.length === 0) return '';
     const parts = [`${entries.length} ${entries.length === 1 ? 'record' : 'records'}`];
@@ -4151,16 +4173,61 @@ function renderChangeSet(cs, host) {
         : '';
     return `<section class="records-block" id="records-to-change" aria-labelledby="records-title">
         <h3 class="records-title" id="records-title">Records to change <span class="priority-summary">${escapeHtml(parts.join(', '))}</span></h3>
-        <p class="rtc-intro">Top to bottom, in the order of the plan above. Where two plan items change one record, it appears once with both changes in it.</p>
+        <p class="rtc-intro">One record at a time, in the order of the plan above. Publish it, then check that record. A step that makes your policy enforce always comes after the steps that cover your senders. Where two plan items change one record, it appears once with both changes in it.</p>
+        ${renderStagedPath(staged)}
         ${renderDnsHost(host)}
-        <ol class="rtc-list">${entries.map(_rcRow).join('')}</ol>
+        <p class="rtc-progress" data-rtc-progress aria-live="polite"></p>
+        <ol class="rtc-list rtc-stepper" data-rtc-list>${entries.map((e, n) => _rcRow(e, n === entries.length - 1)).join('')}</ol>
         <div class="rtc-actions">
             <button type="button" class="rtc-copy-all" data-rtc-copy-all>Copy all records</button>
+            <button type="button" class="rtc-showall" data-rtc-showall aria-pressed="false">Show every record at once</button>
         </div>
         ${rest}
         <p class="rtc-recheck">After you publish, <button type="button" class="rtc-rerun" data-rtc-rerun>run this audit again</button>. The panel headed "Since" near the top of the page lists what changed. DNS changes can take a few minutes to reach resolvers.</p>
     </section>`;
 }
+
+// The staged DMARC path: the next stage only, in plain words. The same
+// fields print in the PDF (pdf_report._staged_path_block).
+function renderStagedPath(sp) {
+    if (!sp) return '';
+    const senders = (sp.senders || []).map(v => {
+        const how = v.detected_via ? ` <span class="staged-via">seen in ${escapeHtml(v.detected_via)}</span>` : '';
+        const inc = v.spf_include ? `SPF include: <code>${escapeHtml(v.spf_include)}</code>. ` : '';
+        const state = v.state === 'covered'
+            ? 'Its setup looks complete in DNS.'
+            : `Setup incomplete. ${(v.missing || []).map(escapeHtml).join(' ')}`;
+        return `<li class="staged-sender"><strong>${escapeHtml(v.name)}</strong>${how}<br>${inc}${state}</li>`;
+    }).join('');
+    const senderBlock = senders
+        ? `<h4 class="staged-sub">Services that send as you</h4><ul class="staged-senders">${senders}</ul>`
+        : `<p class="staged-note">${escapeHtml(sp.senders_note || '')}</p>`;
+    return `<section class="staged-path" id="staged-path" aria-labelledby="staged-title">
+        <h4 class="staged-title" id="staged-title">${escapeHtml(sp.title)}</h4>
+        <p class="staged-do">${escapeHtml(sp.do)}</p>
+        <p class="staged-cond"><strong>Before this step:</strong> ${escapeHtml(sp.condition)}</p>
+        ${senderBlock}
+        <p class="staged-notice">${escapeHtml(sp.reports_notice)}</p>
+    </section>`;
+}
+
+// The step check: one record, looked up fresh on the server (no audit cache,
+// no DNS answer cache), answered live or not yet.
+async function checkStep(domain, e) {
+    const q = new URLSearchParams({ domain, host: e.host, type: e.type, op: e.op });
+    const expect = e.op === 'delete' ? e.current : e.value;
+    if (expect) q.set('expect', expect);
+    try {
+        const r = await fetch('/api/step-check?' + q.toString(), { cache: 'no-store' });
+        if (r.status === 429) return { state: 'unavailable', note: 'Too many checks in a short time. Wait a minute and try again.' };
+        if (!r.ok) return { state: 'unavailable', note: 'The check could not run. Try again in a moment.' };
+        return await r.json();
+    } catch (_) {
+        return { state: 'unavailable', note: 'The check could not run. Check your connection and try again.' };
+    }
+}
+
+const RC_SENDER_PROTOCOLS = ['SPF', 'DKIM'];
 
 function wireChangeSet(root, data) {
     const block = root.querySelector('#records-to-change');
@@ -4173,6 +4240,105 @@ function wireChangeSet(root, data) {
     if (again) again.addEventListener('click', () => {
         if (data.domain) runAudit(data.domain);
     });
+    wireStepper(block, data);
+}
+
+// The stepper over the change set. State lives in this page view only: it is
+// not written to the browser's storage, so the privacy page stays true.
+function wireStepper(block, data) {
+    const entries = (data.security_roadmap.change_set.entries) || [];
+    const rows = [...block.querySelectorAll('.rtc-row')];
+    const list = block.querySelector('[data-rtc-list]');
+    const progress = block.querySelector('[data-rtc-progress]');
+    const showAll = block.querySelector('[data-rtc-showall]');
+    if (!rows.length || !list) return;
+    // 'todo', 'live', 'published' (confirmed by hand), 'skipped', 'not_yet', 'unavailable'
+    const state = entries.map(() => 'todo');
+    const confirmed = entries.map(() => false);
+    let current = 0;
+    let all = false;
+    const done = i => ['live', 'published', 'skipped'].includes(state[i]);
+    // An enforcing step waits for the steps that cover the senders and for the
+    // owner to say the reports are clean. The server already orders it last.
+    const blocker = i => {
+        const e = entries[i];
+        if (!e.hold) return '';
+        const open = entries.findIndex((x, j) => j < i && RC_SENDER_PROTOCOLS.includes(x.protocol) && !done(j));
+        if (open >= 0) return `Finish step ${entries[open].step} first. It covers a service that sends as you.`;
+        if (!confirmed[i]) return 'Tick the box once your reports show every sender passing.';
+        return '';
+    };
+    const paint = () => {
+        rows.forEach((row, i) => {
+            row.hidden = !all && i !== current;
+            row.dataset.state = state[i];
+            const b = blocker(i);
+            const check = row.querySelector('[data-rtc-check]');
+            const pub = row.querySelector('[data-rtc-published]');
+            const next = row.querySelector('[data-rtc-next]');
+            const back = row.querySelector('[data-rtc-back]');
+            if (check) check.disabled = !!b;
+            if (pub) pub.disabled = !!b;
+            if (next) next.disabled = !done(i);
+            if (back) back.hidden = i === 0 || all;
+            if (next) next.hidden = all;
+            const result = row.querySelector('[data-rtc-result]');
+            if (result && b && state[i] === 'todo') result.textContent = b;
+        });
+        const doneCount = state.filter((_, i) => done(i)).length;
+        progress.textContent = all
+            ? `${doneCount} of ${entries.length} steps done.`
+            : `Step ${current + 1} of ${entries.length}. ${doneCount} done.`;
+    };
+    const say = (i, text, cls) => {
+        const r = rows[i].querySelector('[data-rtc-result]');
+        r.textContent = text;
+        r.className = 'rtc-result' + (cls ? ' ' + cls : '');
+    };
+    rows.forEach((row, i) => {
+        const e = entries[i];
+        const q = sel => row.querySelector(sel);
+        const confirm = q('[data-rtc-confirm]');
+        if (confirm) confirm.addEventListener('change', () => { confirmed[i] = confirm.checked; paint(); });
+        const check = q('[data-rtc-check]');
+        if (check && e.checkable) check.addEventListener('click', async () => {
+            if (blocker(i)) return;
+            check.disabled = true;
+            say(i, 'Looking it up now, with no saved answer.', '');
+            const res = await checkStep(data.domain, e);
+            state[i] = res.state === 'live' ? 'live' : res.state === 'not_yet' ? 'not_yet' : 'unavailable';
+            const found = (res.found || []).length
+                ? ` Published now: ${res.found.join(' | ')}` : '';
+            say(i, `${res.state === 'live' ? 'Live. ' : res.state === 'not_yet' ? 'Not yet. ' : 'Not checked. '}${res.note || ''}${res.state === 'live' ? '' : found}`,
+                res.state === 'live' ? 'rtc-live' : 'rtc-notyet');
+            paint();
+            check.disabled = !!blocker(i);
+        });
+        const pub = q('[data-rtc-published]');
+        if (pub) pub.addEventListener('click', () => {
+            if (blocker(i)) return;
+            state[i] = 'published';
+            say(i, 'Marked as published. This audit cannot read this record back, so run the audit again to confirm it.', 'rtc-live');
+            paint();
+        });
+        const next = q('[data-rtc-next]');
+        if (next) next.addEventListener('click', () => {
+            if (!done(i)) return;
+            if (i + 1 < rows.length) { current = i + 1; paint(); rows[current].scrollIntoView({ block: 'nearest' }); }
+            else { say(i, 'That was the last step. Run this audit again to see the whole result.', 'rtc-live'); }
+        });
+        const back = q('[data-rtc-back]');
+        if (back) back.addEventListener('click', () => { if (i > 0) { current = i - 1; paint(); } });
+        const skip = q('[data-rtc-skip]');
+        if (skip) skip.addEventListener('click', () => { state[i] = 'skipped'; paint(); if (i + 1 < rows.length) { current = i + 1; paint(); } });
+    });
+    if (showAll) showAll.addEventListener('click', () => {
+        all = !all;
+        showAll.setAttribute('aria-pressed', all ? 'true' : 'false');
+        showAll.textContent = all ? 'Show one record at a time' : 'Show every record at once';
+        paint();
+    });
+    paint();
 }
 
 // What to change: a record the reader can publish, or the card's own fix

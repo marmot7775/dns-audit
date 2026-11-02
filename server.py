@@ -55,6 +55,8 @@ from config import (
     TRUSTED_PROXY_IPS, BUILD_SHA, ENVIRONMENT,
 )
 from dns_tools import AUDIT_UPSTREAMS, normalize_domain
+import plan_records
+import step_check
 from ua_classify import is_bot, ua_summary
 try:
     from pdf_report import generate_pdf
@@ -1309,6 +1311,46 @@ async def ct_retry(request: Request, domain: str = Query(..., description="Domai
     # Bounded by the lookups' own timeouts: crt.sh (3 s + 5 s), then Cert
     # Spotter (3 s + 4 s).
     return await anyio.to_thread.run_sync(retry_ct_card, domain)
+
+
+@app.get("/api/step-check", tags=["Audit"])
+async def step_check_endpoint(
+    request: Request,
+    domain: str = Query(..., description="The audited domain"),
+    host: str = Query(..., max_length=253, description="The record's host name, the domain or a name under it"),
+    type: str = Query(..., description="TXT, CNAME or 'A or CNAME'"),
+    expect: Optional[str] = Query(None, max_length=step_check.MAX_EXPECT,
+                                  description="The value the step published (for a delete, the value that must be gone)"),
+    op: str = Query("add", description="add, replace or delete"),
+):
+    """Is the one record a change-set step published live?
+
+    The results page calls this after the owner publishes a step. It does its
+    own lookup on a resolver with no cache (not the audit cache, not the
+    shared DNS answer cache), reads one name, and keeps nothing: no cache
+    entry, no audit-log line. Rate limited with /api/audit.
+    """
+    client_ip = _get_client_ip(request)
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please wait a minute before trying again."},
+            headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
+        )
+    domain = _validate_domain(domain)
+    if type not in step_check.TYPES:
+        raise HTTPException(status_code=400, detail="type must be TXT, CNAME or 'A or CNAME'")
+    if op not in ("add", "replace", "delete"):
+        raise HTTPException(status_code=400, detail="op must be add, replace or delete")
+    if not plan_records.is_under(host, domain):
+        raise HTTPException(status_code=400, detail="host must be the domain or a name under it")
+    try:
+        result = await anyio.to_thread.run_sync(
+            lambda: step_check.check(domain, host, type, expect, op))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # A check answers for this moment only. No cache in front of it may keep it.
+    return JSONResponse(content=result, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/audit/{domain}/pdf", tags=["Audit"])
