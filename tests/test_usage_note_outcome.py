@@ -71,8 +71,8 @@ def test_outcome_may_be_absent_while_the_old_page_is_live():
 
 def test_skip_codes_are_kept_per_reason():
     entry = _usage_entry(_note(status="partial",
-                               skips={"encrypted": 2, "unreadable": 9}))
-    assert entry["skips"] == {"encrypted": 2, "unreadable": 9}
+                               skips={"encrypted": 2, "parse_failed": 9}))
+    assert entry["skips"] == {"encrypted": 2, "parse_failed": 9}
     # The total is the sum of the codes, so it is not stored a second time.
     assert "skipped" not in entry
 
@@ -115,7 +115,7 @@ def test_skips_wins_over_a_bare_count_if_a_page_sends_both():
 # ------------------------------------------------------------------
 
 def test_a_note_carries_no_filename_or_error_text():
-    entry = _usage_entry(_note(status="partial", skips={"unreadable": 1},
+    entry = _usage_entry(_note(status="partial", skips={"parse_failed": 1},
                                file="acme-corp-dmarc-oct.zip",
                                reason="line 4: unexpected token </xml>"))
     assert entry is not None

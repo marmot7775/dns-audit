@@ -1538,9 +1538,10 @@ _HEADER_STATUSES = {"pass", "fail", "forwarded", "none", "error", "unknown"}
 _APRF_STATUSES = {"ok", "partial", "none", "error"}
 # Why a file was not read, as a closed set of codes. The reader's own reason
 # strings name the file and can quote the parse error; neither is sent here.
-# "unreadable" is a parse failure, the one code that can mean a reader bug.
+# "parse_failed" is the fall-through, and the one code that can mean a bug in
+# the reader rather than a file that was wrong to begin with.
 _SKIP_CODES = {"nested_archive", "encrypted", "too_large", "unpack_failed",
-               "no_report_attached", "zip_too_many", "unreadable"}
+               "no_report_attached", "zip_too_many", "parse_failed"}
 _USAGE_MAX_BODY = 4096
 _USAGE_MAX_DOMAINS = 20
 # Per IP and hour; a note past this is dropped, and audits are not affected
