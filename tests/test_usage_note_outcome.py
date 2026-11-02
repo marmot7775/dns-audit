@@ -127,3 +127,21 @@ def test_a_note_carries_no_filename_or_error_text():
 def test_counts_are_still_required():
     assert _usage_entry({"tool": "aprf-reader", "status": "ok",
                          "domains": []}) is None
+
+
+# ------------------------------------------------------------------
+# signing domains, which the reader no longer sends
+# ------------------------------------------------------------------
+
+def test_no_domains_means_no_domains_field():
+    """An empty list would be a field on every note that says nothing."""
+    entry = _usage_entry({"tool": "aprf-reader", "status": "ok", "reports": 1,
+                          "streams": 1, "warnings": 0, "skips": {}})
+    assert entry is not None
+    assert "domains" not in entry
+
+
+def test_domains_are_still_recorded_from_a_reader_that_sends_them():
+    entry = _usage_entry(_note(status="ok", skips={},
+                               domains=["Sender.Example", "*.bigsender.example"]))
+    assert entry["domains"] == ["sender.example", "bigsender.example"]

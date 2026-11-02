@@ -1615,7 +1615,11 @@ def _usage_entry(note: dict) -> Optional[dict]:
             d = d.lower().removeprefix("*.") if isinstance(d, str) else ""
             if DOMAIN_PATTERN.match(d) and d not in kept:
                 kept.append(d)
-        entry["domains"] = kept
+        # Omitted rather than written empty: the reader stopped sending signing
+        # domains (aprf-reader CLAUDE.md), so every note would otherwise carry a
+        # "domains": [] that means nothing.
+        if kept:
+            entry["domains"] = kept
     else:
         status = note.get("status")
         if status not in _HEADER_STATUSES:
