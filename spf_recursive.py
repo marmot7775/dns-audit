@@ -399,12 +399,19 @@ def _parse_spf_mechanisms(spf_record: str) -> List[Dict[str, Any]]:
 
 def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
                      max_depth: int = 10,
-                     budget: Optional[List[int]] = None) -> Dict[str, Any]:
+                     budget: Optional[List[int]] = None,
+                     authorizing: bool = True) -> Dict[str, Any]:
     """
     Recursively count DNS lookups in an SPF record chain.
 
     budget is a one-element list of queries left, shared by the whole walk.
     Once it runs out, lookup terms are still counted but not resolved.
+
+    authorizing is False for a record reached through a "-include:",
+    "~include:" or "?include:" term, at any depth below it. RFC 7208 section
+    5.2: a match on an include takes the term's qualifier, so a negative one
+    rejects the senders the included record lists instead of authorizing
+    them. The record is still walked, because evaluating it costs lookups.
     """
     if budget is None:
         budget = [SPF_WALK_QUERY_BUDGET]
@@ -430,6 +437,7 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
         "macro_targets": [],
         "truncated": False,
         "mx_over_limit": [],
+        "authorizing": authorizing,
     }
 
     domain_lower = domain.lower().rstrip(".")
@@ -539,8 +547,9 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
                 node["truncated"] = True
                 continue
 
-            child = _count_recursive(mech["value"], set(visited), depth + 1,
-                                     max_depth, budget)
+            child = _count_recursive(
+                mech["value"], set(visited), depth + 1, max_depth, budget,
+                authorizing=authorizing and (mech.get("raw") or "")[:1] not in ("-", "~", "?"))
             node["children"].append(child)
             if child.get("lookup_status") == SPF_NXDOMAIN:
                 local_voids += 1
@@ -574,6 +583,8 @@ def _flatten_chain(node: Dict, chain: Optional[List[Dict]] = None, indent: int =
         "macro_targets": list(node.get("macro_targets") or []),
         "truncated": bool(node.get("truncated")),
         "mx_over_limit": list(node.get("mx_over_limit") or []),
+        # False below a negatively qualified include (RFC 7208 section 5.2).
+        "authorizing": bool(node.get("authorizing", True)),
     }
 
     lookup_details = []

@@ -5279,20 +5279,31 @@ def _cname_target(domain: str) -> Optional[str]:
 
 
 def _spf_tree_names(current_spf: str, spf_recursive: Optional[Dict]) -> set:
-    """Every include and redirect target in the resolved SPF tree.
+    """Every include and redirect target in the resolved SPF tree that
+    authorizes senders.
 
     The chain from spf_recursive covers names nested inside includes and
-    redirects. The top-level terms are added as well, so a target the
-    recursive walk did not reach (a macro, a term after all) still counts.
+    redirects. Not counted, because they authorize nothing (RFC 7208
+    sections 4.6.4 and 5.2): an include with a "-", "~" or "?" qualifier, at
+    any depth, whose match rejects or neutralizes instead of passing, and
+    every term after "all", which is never evaluated. The top-level terms are
+    added as well, so a target the recursive walk did not reach (a macro)
+    still counts.
     """
     names = set()
     # chain[0] is the audited domain itself, not an include target.
     for entry in ((spf_recursive or {}).get("chain") or [])[1:]:
+        if entry.get("authorizing") is False:
+            continue
         name = (entry.get("domain") or "").lower().rstrip(".")
         if name:
             names.add(name)
     for term in _spf_terms(current_spf):
         bare = term.lstrip(_SPF_QUALIFIERS).lower()
+        if bare == "all":
+            break
+        if term[:1] in "-~?":
+            continue
         for prefix in ("include:", "redirect="):
             if bare.startswith(prefix):
                 names.add(bare[len(prefix):].rstrip("."))
@@ -5313,6 +5324,14 @@ def _needs_apex_spf_include(v: Dict) -> bool:
     sources = set(v.get("sources") or [])
     return v.get("role") not in ("reporting", "account") and not (
         sources and sources <= _SUBDOMAIN_ONLY_SOURCES)
+
+
+def _receiving_only(v: Dict) -> bool:
+    """Whether every record that put this vendor in the panel is on the
+    inbound side (MX, subdomain MX, MTA-STS). Such a vendor is in use for
+    receiving; no outbound signal (a DKIM selector, a return path or tracking
+    CNAME, an SPF include or network) shows it sends as the domain."""
+    return v.get("detected_via") == "inbound"
 
 
 def _spf_signal_at(v: Dict, domain: str) -> bool:
@@ -6270,6 +6289,8 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         tree_names = _spf_tree_names(current_spf, raw_spf.get("spf_recursive"))
         missing_includes = []
         matched_vendors = []
+        receiving_only_vendors: List[str] = []
+        receiving_only_includes: List[str] = []
         for v in vendors:
             # A reporting service (found only as a DMARC or TLS-RPT report
             # address) receives reports, and a verification token alone is an
@@ -6285,9 +6306,28 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                 continue
             spf_inc = spf_include(v["name"])
             if spf_inc and not _vendor_in_spf_tree(v["name"], spf_inc, tree_names):
+                # An MX only vendor is in use for receiving. Nothing shows it
+                # sends as the domain, so its include is a conditional note,
+                # not a record to add (issue 270).
+                if _receiving_only(v):
+                    receiving_only_vendors.append(v["name"])
+                    receiving_only_includes.append(spf_inc)
+                    continue
                 missing_includes.append(spf_inc)
                 matched_vendors.append(v["name"])
         managed_by = _spf_managed_by(current_spf) if missing_includes else None
+        # What the SPF card says about vendors seen only on the receiving
+        # side. A hosted SPF service can authorize them without naming them,
+        # so a record that uses one gets no note.
+        receiving_note = ""
+        if receiving_only_vendors and not (managed_by or _spf_managed_by(current_spf)):
+            _one = len(receiving_only_vendors) == 1
+            receiving_note = (
+                f"<strong>Receiving mail at:</strong> {_e(', '.join(receiving_only_vendors))}. "
+                f"If {'this service' if _one else 'any of these services'} also sends your mail, "
+                f"{'its include' if _one else 'their includes'} ({_e(' '.join(receiving_only_includes))}) "
+                f"{'belongs' if _one else 'belong'} in your SPF record."
+            )
         if managed_by:
             for check in checks:
                 if check.get("name") != "SPF":
@@ -6371,10 +6411,18 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                             f"add {_e(' '.join(missing_includes))} to the record published "
                             f"there rather than to this one."
                         )
+                if receiving_note:
+                    vendor_hint += "<br><br>" + receiving_note
                 if check.get("fix"):
                     check["fix"] = vendor_hint + "<br><br>" + check["fix"]
                 else:
                     check["fix"] = vendor_hint
+                break
+        elif receiving_note:
+            for check in checks:
+                if check.get("name") != "SPF":
+                    continue
+                check["fix"] = receiving_note + ("<br><br>" + check["fix"] if check.get("fix") else "")
                 break
 
     raw_mx = raw_results.get("mx", {})
@@ -6608,15 +6656,29 @@ def _claim_signal(claim: Claim) -> Dict:
     return {"source": source, "where": claim.where, "record": str(claim.evidence)}
 
 
-def _setup_missing(service: Service) -> List[str]:
+def _receiving_only_spf_line(name: str, where: str) -> str:
+    """What a vendor seen only on the receiving side is told about SPF: the
+    include is conditional on the service also sending (issue 270)."""
+    return (f"{name} receives your mail. If it also sends your mail, its "
+            f"include belongs in your SPF record at {where}.")
+
+
+def _setup_missing(service: Service, receiving_only: bool = False) -> List[str]:
     """The records a service's documented setup requires that the map shows
     missing, each with what was asked. An optional record the domain does
     not publish is a choice, not a gap, and an item the map could not check
-    says nothing, so neither is listed."""
+    says nothing, so neither is listed.
+
+    receiving_only is True when the only evidence for the service is MX (or
+    another inbound record). Its SPF item is then conditional: an MX says
+    mail is delivered there, not that the service sends as the domain."""
     missing = []
     for setup in service.setups:
         for item in setup.items:
             if item.state is not State.MISSING or item.need is not Need.REQUIRED:
+                continue
+            if receiving_only and item.record == "spf":
+                missing.append(_receiving_only_spf_line(service.name, setup.where))
                 continue
             word = SETUP_WORDS.get(item.record, item.record)
             line = f"No {word} for {service.name} at {setup.where}"
@@ -6666,7 +6728,8 @@ def _format_vendors(sender_map: Optional[SenderMap]) -> List[Dict]:
             "sources": sources,
             "signals": [_claim_signal(c) for c in claims],
             "role": role,
-            "missing": _setup_missing(service) if role == "sender" else [],
+            "missing": (_setup_missing(service, receiving_only=sides == {"inbound"})
+                        if role == "sender" else []),
         })
     # Strongest tier first; reporting services last.
     return sorted(vendors, key=lambda v: (v["role"] == "reporting",
