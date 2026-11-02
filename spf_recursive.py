@@ -102,7 +102,7 @@ SPF_LOOKUP_LIMIT = 10
 SPF_WALK_QUERY_BUDGET = 100
 
 
-def spf_lookup_band(lookups, indeterminate: bool = False) -> str:
+def spf_lookup_band(lookups, indeterminate: Optional[bool] = False) -> str:
     """The one rule for judging an SPF lookup count. Every surface that
     speaks about the count (card, plan, deliverability summary, optimization
     list, PDF, lookup budget bar) reads this band rather than its own number,
@@ -128,13 +128,13 @@ def spf_lookup_band(lookups, indeterminate: bool = False) -> str:
     return "ok"
 
 
-def lookup_count_text(lookups, truncated: bool = False) -> str:
+def lookup_count_text(lookups, truncated: Optional[bool] = False) -> str:
     """The lookup count as words: "at least N" when the walk spent its
     query budget (SPF_WALK_QUERY_BUDGET), so N is a floor."""
     return f"at least {lookups}" if truncated else str(lookups)
 
 
-def lookup_ratio_text(lookups, truncated: bool = False) -> str:
+def lookup_ratio_text(lookups, truncated: Optional[bool] = False) -> str:
     """The lookup count against the limit, "N/10", or "N+/10" for a floor."""
     return f"{lookups}{'+' if truncated else ''}/{SPF_LOOKUP_LIMIT}"
 
@@ -347,9 +347,9 @@ def mechanism_recurses(mech: Dict[str, str], has_all: bool) -> bool:
     return not mechanism_is_macro(mech)
 
 
-def _parse_spf_mechanisms(spf_record: str) -> List[Dict[str, str]]:
+def _parse_spf_mechanisms(spf_record: str) -> List[Dict[str, Any]]:
     """Parse an SPF record into its mechanisms with types and values."""
-    mechanisms = []
+    mechanisms: List[Dict[str, Any]] = []
     parts = spf_record.split()
 
     for part in parts:
@@ -415,7 +415,7 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
         budget[0] -= 1
         return True
 
-    node = {
+    node: Dict[str, Any] = {
         "domain": domain,
         "record": None,
         "lookups_here": 0,
@@ -557,7 +557,7 @@ def _count_recursive(domain: str, visited: Set[str], depth: int = 0,
     return node
 
 
-def _flatten_chain(node: Dict, chain: List[Dict] = None, indent: int = 0) -> List[Dict]:
+def _flatten_chain(node: Dict, chain: Optional[List[Dict]] = None, indent: int = 0) -> List[Dict]:
     """Flatten the recursive tree into a readable chain."""
     if chain is None:
         chain = []
@@ -616,7 +616,7 @@ def count_spf_lookups(domain: str) -> Dict[str, Any]:
             "issues": [ ... ]
         }
     """
-    visited = set()
+    visited: Set[str] = set()
     tree = _count_recursive(domain, visited)
     chain = _flatten_chain(tree)
     total = tree["total"]

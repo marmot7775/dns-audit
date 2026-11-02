@@ -40,7 +40,7 @@ SENDER_MAP_BUDGET = 8
 # one grew without limit: a crawler walking a domain list, or organic
 # traffic over time, holds every distinct domain it has ever seen until
 # the process restarts.
-_ct_cache = {}
+_ct_cache: Dict[Any, Any] = {}
 _ct_cache_lock = _ct_threading.Lock()
 CT_CACHE_TTL = 86400  # 24 hours
 CT_CACHE_MAX_SIZE = 2000
@@ -48,7 +48,7 @@ CT_CACHE_MAX_SIZE = 2000
 # domain crt.sh cannot answer for does not make every audit in the next few
 # minutes wait out the same timeout again. It lives apart from _ct_cache so
 # it never overwrites a real past result, which _get_stale_ct still serves.
-_ct_timeout_cache = {}
+_ct_timeout_cache: Dict[Any, Any] = {}
 CT_TIMEOUT_CACHE_TTL = 900  # 15 minutes
 
 
@@ -922,7 +922,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # Tags from RFC 7489 that RFC 9989 removes — recognize but flag
     DEPRECATED_TAGS = set(RFC9989_RETIRED_TAGS)
 
-    result = {
+    result: Dict[str, Any] = {
         "check": "DMARC",
         "domain": domain,
         "record": None,
@@ -1090,7 +1090,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
                 "error",
                 "DMARC TXT record is malformed and will be ignored",
                 f"The TXT record at '_dmarc.{domain}' is '{record}', but "
-                + ", and ".join(reasons) + ". RFC 9989 section 4.7 defines the "
+                + ", and ".join(reasons or []) + ". RFC 9989 section 4.7 defines the "
                 "version tag value as case sensitive, so receivers discard "
                 "this record and treat the domain as having no DMARC "
                 "protection, exactly as if nothing were published.",
@@ -1402,7 +1402,7 @@ def _raw_check_dmarc(domain: str) -> Dict[str, Any]:
     # fallback. We surface the interop split so users don't assume the
     # broken record is universally honored. Per-tag _add_syntax above
     # is preserved — recovery is a separate, receiver-side concern.
-    recovery_trigger = None
+    recovery_trigger: Optional[Tuple[str, Optional[str], str]] = None
     if p_missing:
         recovery_trigger = ("p", None, "missing")
     elif p_invalid_value:
@@ -2425,7 +2425,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
     # e.g. a/24, mx//64, a/24//64.
     DUAL_CIDR_MECHANISM_RE = re.compile(r"^(a|mx)(/\d{1,3})?(//\d{1,3})?$")
 
-    result = {
+    result: Dict[str, Any] = {
         "check": "SPF",
         "domain": domain,
         "record": None,
@@ -2656,7 +2656,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
                 # Validate IP address
                 try:
                     if "/" in mech_value:
-                        net = ipaddress.IPv4Network(mech_value, strict=False)
+                        net: ipaddress.IPv4Network | ipaddress.IPv6Network = ipaddress.IPv4Network(mech_value, strict=False)
                         prefix = net.prefixlen
                         if prefix <= 16:
                             _add_issue(
@@ -2987,7 +2987,7 @@ def _raw_check_dnssec(domain: str) -> Dict[str, Any]:
     DEPRECATED_ALGORITHMS = {1, 3, 6}
     LEGACY_ALGORITHMS = {5, 7}
 
-    result = {
+    result: Dict[str, Any] = {
         "has_dnssec": False,
         "dnssec_state": "insecure",
         "algorithms": [],
@@ -3395,7 +3395,7 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
       - CA/Browser Forum Ballot SC-54
       - Let's Encrypt CAA documentation
     """
-    result = {
+    result: Dict[str, Any] = {
         "check": "CAA",
         "domain": domain,
         "records": [],
@@ -3595,7 +3595,7 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
     """
     import ipaddress
 
-    result = {
+    result: Dict[str, Any] = {
         "check": "Nameservers",
         "domain": domain,
         "nameservers": [],
@@ -3691,7 +3691,7 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
         Returns (ns_info, auth_entry); auth_entry is None when no SOA answer
         came back.
         """
-        ns_info = {
+        ns_info: Dict[str, Any] = {
             "hostname": ns_host,
             "ipv4": [],
             "ipv6": [],
@@ -3835,7 +3835,7 @@ def _raw_check_nameservers(domain: str) -> Dict[str, Any]:
                 return provider
         return org
 
-    serials_by_group = {}
+    serials_by_group: Dict[Any, Dict[Any, Any]] = {}
     for host, serial in soa_serials.items():
         serials_by_group.setdefault(_ns_group(host), {})[host] = serial
     mismatched = {g: hs for g, hs in serials_by_group.items()
@@ -3949,7 +3949,7 @@ def _raw_check_dane(domain: str, raw_results: Dict[str, Any]) -> Dict[str, Any]:
     SELECTOR_NAMES = {0: "Full cert", 1: "SPKI"}
     MATCHING_NAMES = {0: "Exact", 1: "SHA-256", 2: "SHA-512"}
 
-    result = {
+    result: Dict[str, Any] = {
         "check": "DANE",
         "domain": domain,
         "has_tlsa": False,
@@ -4272,7 +4272,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
     import requests
     import http_tls
 
-    result = {
+    result: Dict[str, Any] = {
         "check": "Certificate Transparency",
         "domain": domain,
         "total_certs": 0,
@@ -4420,7 +4420,7 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
     result["total_certs"] = len(unique_certs)
 
     # Analyze certs
-    issuer_counts = {}
+    issuer_counts: Dict[Any, int] = {}
     active_count = 0
     wildcards = []
     expiring_soon = []
@@ -4631,7 +4631,7 @@ def _aprf_random_label() -> str:
 
 
 def _aprf_tags(txt: str) -> Dict[str, str]:
-    tags = {}
+    tags: Dict[str, str] = {}
     for part in txt.split(";"):
         key, sep, value = part.partition("=")
         if sep:
@@ -4714,7 +4714,7 @@ def _raw_check_aprf(domain: str, raw_dkim: Optional[Dict],
                        or raw_dkim.get("status") == "unavailable")
     raw_dkim = raw_dkim or {}
     live = _live_dkim_selectors(raw_dkim)
-    selectors = sorted({s.get("selector") for s in live if s.get("selector")})
+    selectors = sorted({s["selector"] for s in live if s.get("selector")})
     if dkim_incomplete:
         selectors = []
         selectors_skipped = "dkim_incomplete"
@@ -5038,7 +5038,7 @@ def _receives_no_mail(raw_mx: Optional[Dict], raw_spf: Optional[Dict]) -> bool:
     # Null SPF says nothing about receiving. Only a finished MX lookup that
     # found no working host lets it stand in for "no inbound mail"; a lookup
     # that timed out or failed leaves inbound unknown, not inapplicable.
-    mx_done = bool(raw_mx) and raw_mx.get("status") != "unavailable" and not raw_mx.get("timed_out")
+    mx_done = raw_mx is not None and bool(raw_mx) and raw_mx.get("status") != "unavailable" and not raw_mx.get("timed_out")
     return _publishes_null_spf(raw_spf) and mx_done and not _has_working_mx(raw_mx)
 
 
@@ -5424,7 +5424,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
 
     # --- DMARC Tree Walk (RFC 9989 Section 4.10) ---
     # Awaited before the DMARC card so inherited policy can inform the card
-    tree_walk_result = None
+    tree_walk_result: Any = None
     if "tree_walk" in _phase1:
         try:
             tree_walk_result = _await("tree_walk")
@@ -5589,7 +5589,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # runs on _shared_executor, and a task on that pool may not block on
     # another task in the same pool.
     _dnssec_raw = None
-    _dnssec_error = None
+    _dnssec_error: Any = None
     if "dnssec" in _phase1:
         try:
             _dnssec_raw = _await("dnssec")
@@ -5852,7 +5852,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # is not drawn, and the panel says the nameservers stopped answering.
     _zone_dropping = (raw_results.get("dkim") or {}).get("stopped_reason") == "queries_dropped"
     if _map_in_scope and not _time_up() and not _zone_dropping:
-        _map_budget = SENDER_MAP_BUDGET
+        _map_budget: float = SENDER_MAP_BUDGET
         if deadline is not None:
             _map_budget = min(_map_budget, deadline - time.monotonic())
         if _map_budget > 0:
@@ -5896,7 +5896,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     if (scope or "complete") in APRF_SCOPES:
         _aprf_bare = {"lookup_failed": True,
                       "lookup_target": f"_aprf._domainkey.{domain.lower().rstrip('.')}"}
-        _aprf_budget = CHECK_TIMEOUT
+        _aprf_budget: float = CHECK_TIMEOUT
         if deadline is not None:
             _aprf_budget = min(_aprf_budget, deadline - time.monotonic())
         if _aprf_budget <= 0:
@@ -6016,7 +6016,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
     # --- DMARC Alignment Cross-Check ---
     # Flag misconfigurations where DMARC alignment settings conflict with
     # actual SPF/DKIM deployment. Requires all three checks to have run.
-    _xc_dmarc = raw_results.get("dmarc")
+    _xc_dmarc: Any = raw_results.get("dmarc")
     _xc_inherited = (
         _xc_dmarc
         and not _xc_dmarc.get("record")
@@ -6277,7 +6277,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                     # count_spf_lookups walks a whole tree synchronously, so
                     # it runs inside the audit's remaining budget; a timeout
                     # makes the count unknown and suppresses the suggestion.
-                    budget = CHECK_TIMEOUT
+                    budget: float = CHECK_TIMEOUT
                     if deadline is not None:
                         budget = min(budget, max(deadline - time.monotonic(), 0.1))
                     try:
@@ -6350,7 +6350,7 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         resilience_result = None
 
     # --- Ensure every check has pill_label ---
-    _DEFAULT_PILLS = {"pass": PILL_PASS, "warn": PILL_WARN, "fail": PILL_FAIL,
+    _DEFAULT_PILLS: Dict[Any, str] = {"pass": PILL_PASS, "warn": PILL_WARN, "fail": PILL_FAIL,
                       "absent": PILL_ABSENT, "unavailable": "Not checked"}
     for check in checks:
         if not check.get("pill_label"):
