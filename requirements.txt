@@ -13,4 +13,4 @@ cryptography>=42.0.0
 tldextract==5.3.2
 sentry-sdk[fastapi]==2.71.0
 reportlab>=4.0.0
-sendermap==0.1.11
+sendermap @ git+https://github.com/marmot7775/sendermap@b5d8c22f96778d23ff22771572e46ff4164b6507

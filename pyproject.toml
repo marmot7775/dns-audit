@@ -41,7 +41,8 @@ dependencies = [
     # sendermap_adapter.py imports SystemResolver's rendering helpers, which
     # are private to the package, so a release has to be checked before it
     # is taken. Requires Python 3.12.
-    "sendermap==0.1.11",
+    # DO NOT MERGE: measurement pin to the sendermap dkim-evidence-first branch.
+    "sendermap @ git+https://github.com/marmot7775/sendermap@b5d8c22f96778d23ff22771572e46ff4164b6507",
 ]
 
 [project.optional-dependencies]

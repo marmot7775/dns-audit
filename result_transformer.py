@@ -7397,7 +7397,19 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
         for sel in live if sel.get("record")
     )
 
-    details.append({"type": "info", "text": f"Tested {_sel_count}"})
+    _skipped = raw.get("skipped_selectors") or []
+    if _skipped:
+        # Issue 282: the probe stopped once every sender SPF and MX name had
+        # a key. The names it left say nothing, so the card says so rather
+        # than implying the other senders have no key.
+        _n = len(_skipped)
+        details.append({"type": "info", "text": (
+            f"Tested {_sel_count}, then stopped: every sender your SPF and MX "
+            f"records name already had a key. {_n} other selector name"
+            f"{'' if _n == 1 else 's'} {'was' if _n == 1 else 'were'} not asked, "
+            "so a sender those records do not name may still sign under one.")})
+    else:
+        details.append({"type": "info", "text": f"Tested {_sel_count}"})
 
     if raw.get("timeout_note"):
         details.append({"type": "warning", "text": raw["timeout_note"]})

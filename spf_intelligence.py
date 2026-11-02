@@ -302,6 +302,24 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
     priority_selectors = list(
         probe_order(ranked, (*cat.probe_selectors, *backed, *LOCAL_SELECTORS)))
     _seen_priority = set(priority_selectors)
+
+    # Issue 282: Sendermap's plan, evidence first. The services this
+    # domain's SPF includes and MX name (Sendermap's own tables) are the
+    # evidence; their names, google, selector1, selector2, the generic names
+    # and the names of services that need no SPF include go first. The rest
+    # is asked only while one of those services has no key. LOCAL_SELECTORS
+    # stay in the first wave: they are not in the catalog yet.
+    from datetime import datetime, timezone as _tz
+    from sendermap.model import Claim, Evidence, Kind
+    from sendermap.sources.dkim import plan as _dkim_plan
+    _now = datetime.now(_tz.utc)
+    _evidence = [Claim(svc, Kind.SPF_INCLUDE, domain, Evidence(domain, "TXT", h, _now))
+                 for h in includes if (svc := cat.spf(h))]
+    _evidence += [Claim(svc, Kind.MX, domain, Evidence(domain, "MX", h, _now))
+                  for h in (mx_hosts or []) if (svc := cat.mx(h))]
+    _plan = _dkim_plan(cat, domain, priority_selectors, _evidence, backed)
+    _local = {s.lower() for s in LOCAL_SELECTORS}
+    first_wave = [s for s in priority_selectors if s in set(_plan.first) or s in _local]
     if any(rule.hints.matches(frozenset(), spf_set) for rule in ranked):
         result['discovery_method'] = 'spf_intelligent'
     elif backed:
@@ -496,10 +514,24 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
         # where a single wave would, at DKIM_MAX_FOUND (_run_wave also stops
         # on the deadline). No drop check here: the full priority wave ran
         # before, and it still does.
-        for i in range(0, len(priority_selectors), DKIM_WAVE_CHUNK):
+        for i in range(0, len(first_wave), DKIM_WAVE_CHUNK):
             if len(found) >= DKIM_MAX_FOUND:
                 break
-            _run_wave(priority_selectors[i:i + DKIM_WAVE_CHUNK])
+            _run_wave(first_wave[i:i + DKIM_WAVE_CHUNK])
+        _keyed = {
+            svc for r in found
+            if (svc := sendermap_adapter.dkim_key_provider(
+                r['selector'], r.get('cname_chain') or [], backed.get(r['selector'].lower())))
+        }
+        _then = [s for s in _plan.then(_keyed) if s not in _local]
+        for i in range(0, len(_then), DKIM_WAVE_CHUNK):
+            if len(found) >= DKIM_MAX_FOUND:
+                break
+            _run_wave(_then[i:i + DKIM_WAVE_CHUNK])
+        _asked = set(first_wave) | set(_then)
+        _skipped = [s for s in priority_selectors if s not in _asked]
+        if _skipped and not timed_out:
+            result['skipped_selectors'] = _skipped
         if not found:
             for i in range(0, len(fallback_selectors), DKIM_FALLBACK_CHUNK):
                 if _dropping():
