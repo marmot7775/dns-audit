@@ -356,8 +356,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
             # a typical audit's unique probe names are fewer still, and a
             # name that resolves once here is not one any other domain's
             # audit will ever ask again.
-            resolver = get_uncached_resolver(3)
-            resolver.lifetime = 3
+            resolver = get_uncached_resolver(3, lifetime=3)
             answers = resolver.resolve(fqdn, 'TXT')
             # Where the name led, when it is an alias. Microsoft 365 DKIM is a
             # CNAME into its own namespace, so this is the evidence that

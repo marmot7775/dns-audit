@@ -6,6 +6,7 @@ Domain normalization and audit entry point.
 
 import ipaddress
 import re
+import threading
 import time
 from typing import Dict, List, Optional
 
@@ -177,12 +178,31 @@ def _upstream_nameservers(
 AUDIT_UPSTREAMS = _upstream_nameservers()
 
 
-def _from_template(timeout: float) -> "dns.resolver.Resolver":
+def set_lifetime(resolver: "dns.resolver.Resolver", lifetime: float,
+                 timeout: Optional[float] = None) -> None:
+    """Give `resolver` a total budget and split it across its nameservers.
+
+    dnspython applies `lifetime` to the whole resolve() call, across every
+    server it tries, while `timeout` is what one server gets per attempt. A
+    per-server timeout as large as the lifetime lets one slow upstream use the
+    whole budget before the next server is asked once. Dividing the lifetime
+    by the number of servers gives each of them an attempt inside it: about
+    two seconds each over three servers for a six second lifetime. `timeout`,
+    when given, is the most one server may take; it is never raised above the
+    share.
+    """
+    servers = max(1, len(resolver.nameservers))
+    share = lifetime / servers
+    resolver.lifetime = lifetime
+    resolver.timeout = min(timeout, share) if timeout is not None else share
+
+
+def _from_template(timeout: float, lifetime: Optional[float] = None) -> "dns.resolver.Resolver":
     """A resolver carrying the configuration read from resolv.conf at import,
     querying AUDIT_UPSTREAMS rather than the file's own nameserver list.
 
     Every factory below starts here, so no resolver built during an audit
-    opens /etc/resolv.conf again.
+    opens /etc/resolv.conf again. `lifetime` defaults to twice `timeout`.
     """
     resolver = dns.resolver.Resolver(configure=False)
     t = _resolv_conf_template
@@ -194,16 +214,47 @@ def _from_template(timeout: float) -> "dns.resolver.Resolver":
     resolver.edns = t.edns
     resolver.ednsflags = t.ednsflags
     resolver.payload = t.payload
-    resolver.timeout = timeout
-    resolver.lifetime = timeout * 2
+    set_lifetime(resolver, lifetime if lifetime is not None else timeout * 2, timeout)
     return resolver
 
 
-def get_uncached_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
-    """A resolver that neither reads nor writes the shared answer cache."""
-    resolver = _from_template(timeout)
-    resolver.cache = None
+# One resolver per (kind, timeout, lifetime, upstream list), built on first use.
+#
+# get_resolver() used to build a new one for every DNS query, 2534 calls over
+# five audits. Each build assigns `nameservers`, which makes dnspython run
+# _enrich_nameservers and inet_aton for every server: about 12 percent of
+# audit CPU for nothing. A Resolver is safe to share across threads for
+# resolve() calls, which keep their per-call state in a local _Resolution, as
+# long as nobody changes its attributes after construction. No caller does:
+# a caller that wants a different budget asks for it with the `lifetime`
+# argument, which selects a different shared instance, and a one-off
+# resolve(..., lifetime=n) call overrides the budget for that call alone.
+_shared_resolvers: Dict[tuple, "dns.resolver.Resolver"] = {}
+_shared_lock = threading.Lock()
+
+
+def _shared(kind: str, timeout: float, lifetime: Optional[float], build) -> "dns.resolver.Resolver":
+    key = (kind, timeout, lifetime, tuple(AUDIT_UPSTREAMS))
+    resolver = _shared_resolvers.get(key)
+    if resolver is None:
+        with _shared_lock:
+            resolver = _shared_resolvers.get(key)
+            if resolver is None:
+                resolver = build()
+                _shared_resolvers[key] = resolver
     return resolver
+
+
+def get_uncached_resolver(timeout: float = 5.0, lifetime: Optional[float] = None) -> "dns.resolver.Resolver":
+    """A resolver that neither reads nor writes the shared answer cache.
+
+    The instance is shared; do not change its attributes.
+    """
+    def build():
+        resolver = _from_template(timeout, lifetime)
+        resolver.cache = None
+        return resolver
+    return _shared("uncached", timeout, lifetime, build)
 
 # DNSSEC-validating public resolvers. Quad9 first because its AD-bit signal is
 # the strictest: it drops bogus answers rather than returning AD=0.
@@ -211,10 +262,15 @@ _DNSSEC_NAMESERVERS = ["9.9.9.9", "1.1.1.1", "1.0.0.1", "8.8.8.8"]
 
 
 def get_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
-    """A plain resolver backed by the shared answer cache."""
-    resolver = _from_template(timeout)
-    resolver.cache = _PLAIN_CACHE
-    return resolver
+    """A plain resolver backed by the shared answer cache.
+
+    The instance is shared; do not change its attributes.
+    """
+    def build():
+        resolver = _from_template(timeout)
+        resolver.cache = _PLAIN_CACHE
+        return resolver
+    return _shared("plain", timeout, None, build)
 
 
 def get_dnssec_resolver(timeout: float = 8.0) -> "dns.resolver.Resolver":
@@ -223,12 +279,16 @@ def get_dnssec_resolver(timeout: float = 8.0) -> "dns.resolver.Resolver":
     Sets DO so DNSKEY/RRSIG/DS come back and the AD bit is meaningful, points
     at validating public resolvers instead of a possibly stub system resolver,
     and uses a 4096 byte EDNS buffer because DNSKEY responses run over 512.
+    The instance is shared; do not change its attributes.
     """
-    resolver = _from_template(timeout)
-    resolver.nameservers = list(_DNSSEC_NAMESERVERS)
-    resolver.use_edns(0, dns.flags.DO, 4096)
-    resolver.cache = _DNSSEC_CACHE
-    return resolver
+    def build():
+        resolver = _from_template(timeout)
+        resolver.nameservers = list(_DNSSEC_NAMESERVERS)
+        set_lifetime(resolver, timeout * 2, timeout)
+        resolver.use_edns(0, dns.flags.DO, 4096)
+        resolver.cache = _DNSSEC_CACHE
+        return resolver
+    return _shared("dnssec", timeout, None, build)
 
 
 def lookup_ttl(name: str, rdtype: str = "TXT") -> Optional[int]:
