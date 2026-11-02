@@ -142,9 +142,9 @@ def test_footer_attribution_says_what_neil_does():
 def test_the_only_mailto_is_the_footer_alias(path):
     html = _read(path)
     rel = os.path.relpath(path, STATIC)
-    # Doc 90 added one more on About, in "If your audit turned up something".
-    expected = 2 if rel == "about.html" else 1
-    assert html.count('href="mailto:') == expected, rel
+    # Doc 90 added one more on About, in "If your audit turned up something";
+    # removed Nov 2026 so the alias appears in the footer only.
+    assert html.count('href="mailto:') == 1, rel
     assert set(re.findall(r'href="mailto:([^"]+)"', html)) == {ALIAS}, rel
     assert f'href="mailto:{ALIAS}"' in _attribution(path), rel
 
