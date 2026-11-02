@@ -31,6 +31,8 @@ class _Counting:
         self.calls += 1
         if isinstance(self.outcome, Exception):
             raise self.outcome
+        if self.outcome.rrset is None:  # no TXT at the name: dnspython raises
+            raise dns.resolver.NoAnswer(response=self.outcome.response)
         return self.outcome
 
 

@@ -8,6 +8,7 @@ import ipaddress
 import re
 import threading
 import time
+import types
 from collections import OrderedDict
 from typing import Dict, List, Optional
 
@@ -235,7 +236,9 @@ _shared_lock = threading.Lock()
 
 
 def _shared(kind: str, timeout: float, lifetime: Optional[float], build) -> "dns.resolver.Resolver":
-    key = (kind, timeout, lifetime, tuple(AUDIT_UPSTREAMS))
+    # The Resolver class is part of the key so a test that swaps it in gets
+    # its own instance rather than one built from the real class.
+    key = (kind, timeout, lifetime, tuple(AUDIT_UPSTREAMS), dns.resolver.Resolver)
     resolver = _shared_resolvers.get(key)
     if resolver is None:
         with _shared_lock:
@@ -340,9 +343,11 @@ def resolve_probe(resolver: "dns.resolver.Resolver", qname: str, rdtype: str = "
             outcome = None
     if outcome is None:
         try:
-            outcome = ("answer", resolver.resolve(qname, rdtype, raise_on_no_answer=False))
+            outcome = ("answer", resolver.resolve(qname, rdtype))
         except dns.resolver.NXDOMAIN as e:
             outcome = ("nxdomain", e)
+        except dns.resolver.NoAnswer as e:
+            outcome = ("noanswer", e)
         with _probe_memo_lock:
             _probe_memo[key] = (now, *outcome)
             _probe_memo.move_to_end(key)
@@ -351,8 +356,11 @@ def resolve_probe(resolver: "dns.resolver.Resolver", qname: str, rdtype: str = "
     kind, value = outcome
     if kind == "nxdomain":
         raise value.with_traceback(None)
-    if raise_on_no_answer and getattr(value, "rrset", None) is None:
-        raise dns.resolver.NoAnswer(response=value.response)
+    if kind == "noanswer":
+        if raise_on_no_answer:
+            raise value.with_traceback(None)
+        return types.SimpleNamespace(rrset=None, response=value.response(),
+                                     canonical_name=None)
     return value
 
 

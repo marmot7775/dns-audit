@@ -23,6 +23,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from audit_engine import _build_suggested_spf, _spf_authorization_sources
+from test_spf_suggestion_vendor_footprints import DKIM_KEY
 
 DOMAIN = "vsp.test"
 PUBLISHED = "v=spf1 ip4:198.51.100.0/24 ip4:203.0.113.5 a:relay.vsp.test ~all"
@@ -35,6 +36,9 @@ ZONE = {
     },
     "_dmarc." + DOMAIN: {"TXT": ["v=DMARC1; p=reject; rua=mailto:d@vsp.test"]},
     "relay.vsp.test": {"A": ["198.51.100.9"]},
+    # An MX alone only shows Google receives mail (issue 270); its DKIM
+    # selector shows it sends, which is what earns the suggested include.
+    "google._domainkey." + DOMAIN: {"TXT": [DKIM_KEY]},
 }
 
 

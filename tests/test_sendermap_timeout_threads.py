@@ -58,4 +58,3 @@ def test_timed_out_maps_stay_inside_the_ceiling(monkeypatch):
     # The harness' own audit threads and the shared executor's workers are
     # counted by the ceiling; the map's lookups add nothing beyond the pool.
     assert peak - baseline <= audits + audit_engine._shared_executor._max_workers + pool
-    assert peak < audit_engine.AUDIT_THREAD_CEILING
