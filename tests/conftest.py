@@ -419,6 +419,15 @@ def no_network(request):
 
 
 @pytest.fixture(autouse=True)
+def reset_probe_memo():
+    """Forget shared DKIM selector answers between tests, which reuse domain
+    names across different zones (dns_tools.resolve_probe)."""
+    import dns_tools
+    dns_tools.clear_probe_memo()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def reset_health_cache():
     """Clear /api/health's memoized verdict between tests.
 

@@ -8,6 +8,7 @@ import ipaddress
 import re
 import threading
 import time
+from collections import OrderedDict
 from typing import Dict, List, Optional
 
 import dns.flags
@@ -289,6 +290,70 @@ def get_dnssec_resolver(timeout: float = 8.0) -> "dns.resolver.Resolver":
         resolver.cache = _DNSSEC_CACHE
         return resolver
     return _shared("dnssec", timeout, None, build)
+
+
+# ============================================================
+# Selector probe answers shared between the two DKIM probes
+# ============================================================
+#
+# An audit probes DKIM selectors twice: spf_intelligence.smart_dkim_check
+# (the DKIM card) and Sendermap's map (sendermap_adapter.AuditResolver), and
+# the two lists overlap, 118 queries per audit that the first one had already
+# asked. Neither can read the other's results in order: the card is built in
+# Phase 2 and the map runs after it. So both ask through resolve_probe, which
+# remembers a definitive answer (a key, no such name, no TXT at the name) for
+# PROBE_MEMO_TTL seconds, whichever probe asked first.
+#
+# Only definitive answers are kept. A timeout, SERVFAIL or REFUSED is raised
+# to the caller and not remembered, so the second probe asks again and a name
+# nobody could answer still reads as "probe incomplete", never "not found".
+#
+# PROBE_MEMO_TTL is far below the 5 minute result cache in server.py, the
+# same rule NEGATIVE_TTL_CAP follows: an operator who publishes a key and
+# re-audits must never be answered from the previous audit's memo.
+PROBE_MEMO_TTL = 20.0
+PROBE_MEMO_MAX = 4096
+_probe_memo: "OrderedDict[tuple, tuple]" = OrderedDict()
+_probe_memo_lock = threading.Lock()
+
+
+def clear_probe_memo() -> None:
+    with _probe_memo_lock:
+        _probe_memo.clear()
+
+
+def resolve_probe(resolver: "dns.resolver.Resolver", qname: str, rdtype: str = "TXT",
+                  raise_on_no_answer: bool = True):
+    """resolver.resolve(qname, rdtype) with its definitive outcome shared.
+
+    Raises what resolve() raises: NXDOMAIN, NoAnswer when raise_on_no_answer,
+    and any failure to get an answer.
+    """
+    key = (str(qname).lower().rstrip("."), rdtype)
+    now = time.monotonic()
+    with _probe_memo_lock:
+        hit = _probe_memo.get(key)
+        if hit is not None and now - hit[0] < PROBE_MEMO_TTL:
+            _probe_memo.move_to_end(key)
+            outcome = hit[1:]
+        else:
+            outcome = None
+    if outcome is None:
+        try:
+            outcome = ("answer", resolver.resolve(qname, rdtype, raise_on_no_answer=False))
+        except dns.resolver.NXDOMAIN as e:
+            outcome = ("nxdomain", e)
+        with _probe_memo_lock:
+            _probe_memo[key] = (now, *outcome)
+            _probe_memo.move_to_end(key)
+            while len(_probe_memo) > PROBE_MEMO_MAX:
+                _probe_memo.popitem(last=False)
+    kind, value = outcome
+    if kind == "nxdomain":
+        raise value.with_traceback(None)
+    if raise_on_no_answer and getattr(value, "rrset", None) is None:
+        raise dns.resolver.NoAnswer(response=value.response)
+    return value
 
 
 def lookup_ttl(name: str, rdtype: str = "TXT") -> Optional[int]:

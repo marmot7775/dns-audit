@@ -14,7 +14,7 @@ from typing import Any, List, Dict, Optional, Callable
 
 from dkim_formatter import analyze_dkim_key_strength
 
-from dns_tools import get_resolver, get_uncached_resolver
+from dns_tools import get_resolver, get_uncached_resolver, resolve_probe
 
 # Hard limits for DKIM selector discovery
 # Kept below the Phase 2 batch budget (CHECK_TIMEOUT + 5 = 20s). A child
@@ -357,7 +357,7 @@ def smart_dkim_check(domain: str, spf_record: Optional[str] = None,
             # name that resolves once here is not one any other domain's
             # audit will ever ask again.
             resolver = get_uncached_resolver(3, lifetime=3)
-            answers = resolver.resolve(fqdn, 'TXT')
+            answers = resolve_probe(resolver, fqdn, 'TXT')
             # Where the name led, when it is an alias. Microsoft 365 DKIM is a
             # CNAME into its own namespace, so this is the evidence that
             # attributes selector1/selector2 to it; the name alone is not.
