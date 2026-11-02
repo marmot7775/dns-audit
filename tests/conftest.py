@@ -307,6 +307,11 @@ def fake_dns(zone, mta_sts_policy=None, ct_certs=None, bimi_logo=None):
     the SSRF pinning below that seam has its own tests, and reproducing it
     here would test the harness instead of the policy parser.
     """
+    # A test that audits one domain against two zones must not be answered
+    # from the first zone's selector probes (dns_tools.resolve_probe).
+    import dns_tools
+    dns_tools.clear_probe_memo()
+
     def _method(self, name, rdtype="A", *args, **kwargs):
         return zone.resolve(name, rdtype, *args, **kwargs)
 
@@ -416,6 +421,15 @@ def no_network(request):
 
     with patch.object(socket, "socket", _GuardedSocket):
         yield
+
+
+@pytest.fixture(autouse=True)
+def reset_probe_memo():
+    """Forget shared DKIM selector answers between tests, which reuse domain
+    names across different zones (dns_tools.resolve_probe)."""
+    import dns_tools
+    dns_tools.clear_probe_memo()
+    yield
 
 
 @pytest.fixture(autouse=True)

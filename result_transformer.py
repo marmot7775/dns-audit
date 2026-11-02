@@ -311,7 +311,7 @@ def _lookup_unavailable_card(name: str, raw: Dict, subject: str, pill_label: str
         "configured": False,
         "explanation": (
             f"The DNS query for this domain's {subject}{where} did not complete. "
-            "This audit did not get an answer in time. That can be the "
+            "This audit did not get a usable DNS answer. That can be the "
             "domain's nameservers or the audit's own resolver, and the audit "
             "cannot tell which from here. This is not a "
             "finding about the domain, and it does not mean the record is "
@@ -2130,7 +2130,7 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                                  + ")"),
                       "plain_head": ("Your approved sender list needs more DNS lookups than "
                                      "receiving servers allow, so some or all of your mail fails "
-                                     "this check. Mail signed with DKIM for your own domain can still pass."),
+                                     "this check. A valid DKIM signature aligned with your From domain can still let DMARC pass."),
                       "who": WHO_DNS_HOST,
                       "impact": "Past 10 lookups, receivers return PermError. Some or all of your mail fails SPF, depending on the order of the record. For that mail, DMARC relies on DKIM alone."})
     elif _spf_band == "near":
@@ -9477,9 +9477,9 @@ def transform_ct(raw: Dict, domain: str) -> Dict:
         details.append({
             "type": "info",
             "text": (
-                f"{_e(raw.get('source') or 'The log service')} returned the first {total} "
-                "certificates of a longer list, oldest first. Renewals are on the pages "
-                "not fetched, so expiry was not judged."
+                f"This check read the first {total} certificates found at "
+                f"{_e(raw.get('source') or 'the log service')}, oldest first, and more "
+                "exist. Renewals are on the pages not read, so expiry was not judged."
             ),
         })
 

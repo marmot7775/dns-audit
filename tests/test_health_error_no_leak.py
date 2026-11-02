@@ -25,7 +25,7 @@ def test_health_failure_does_not_leak_resolver_detail(monkeypatch):
         def resolve(self, *args, **kwargs):
             _boom()
 
-    monkeypatch.setattr(server_module, "get_uncached_resolver", lambda timeout: _BoomResolver())
+    monkeypatch.setattr(server_module, "get_uncached_resolver", lambda timeout, lifetime=None: _BoomResolver())
     monkeypatch.setitem(server_module._negative_probe_cache, "expires", 0.0)
 
     response = client.get("/api/health")

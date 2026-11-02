@@ -6,7 +6,10 @@ Domain normalization and audit entry point.
 
 import ipaddress
 import re
+import threading
 import time
+import types
+from collections import OrderedDict
 from typing import Dict, List, Optional
 
 import dns.flags
@@ -177,12 +180,31 @@ def _upstream_nameservers(
 AUDIT_UPSTREAMS = _upstream_nameservers()
 
 
-def _from_template(timeout: float) -> "dns.resolver.Resolver":
+def set_lifetime(resolver: "dns.resolver.Resolver", lifetime: float,
+                 timeout: Optional[float] = None) -> None:
+    """Give `resolver` a total budget and split it across its nameservers.
+
+    dnspython applies `lifetime` to the whole resolve() call, across every
+    server it tries, while `timeout` is what one server gets per attempt. A
+    per-server timeout as large as the lifetime lets one slow upstream use the
+    whole budget before the next server is asked once. Dividing the lifetime
+    by the number of servers gives each of them an attempt inside it: about
+    two seconds each over three servers for a six second lifetime. `timeout`,
+    when given, is the most one server may take; it is never raised above the
+    share.
+    """
+    servers = max(1, len(resolver.nameservers))
+    share = lifetime / servers
+    resolver.lifetime = lifetime
+    resolver.timeout = min(timeout, share) if timeout is not None else share
+
+
+def _from_template(timeout: float, lifetime: Optional[float] = None) -> "dns.resolver.Resolver":
     """A resolver carrying the configuration read from resolv.conf at import,
     querying AUDIT_UPSTREAMS rather than the file's own nameserver list.
 
     Every factory below starts here, so no resolver built during an audit
-    opens /etc/resolv.conf again.
+    opens /etc/resolv.conf again. `lifetime` defaults to twice `timeout`.
     """
     resolver = dns.resolver.Resolver(configure=False)
     t = _resolv_conf_template
@@ -194,16 +216,49 @@ def _from_template(timeout: float) -> "dns.resolver.Resolver":
     resolver.edns = t.edns
     resolver.ednsflags = t.ednsflags
     resolver.payload = t.payload
-    resolver.timeout = timeout
-    resolver.lifetime = timeout * 2
+    set_lifetime(resolver, lifetime if lifetime is not None else timeout * 2, timeout)
     return resolver
 
 
-def get_uncached_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
-    """A resolver that neither reads nor writes the shared answer cache."""
-    resolver = _from_template(timeout)
-    resolver.cache = None
+# One resolver per (kind, timeout, lifetime, upstream list), built on first use.
+#
+# get_resolver() used to build a new one for every DNS query, 2534 calls over
+# five audits. Each build assigns `nameservers`, which makes dnspython run
+# _enrich_nameservers and inet_aton for every server: about 12 percent of
+# audit CPU for nothing. A Resolver is safe to share across threads for
+# resolve() calls, which keep their per-call state in a local _Resolution, as
+# long as nobody changes its attributes after construction. No caller does:
+# a caller that wants a different budget asks for it with the `lifetime`
+# argument, which selects a different shared instance, and a one-off
+# resolve(..., lifetime=n) call overrides the budget for that call alone.
+_shared_resolvers: Dict[tuple, "dns.resolver.Resolver"] = {}
+_shared_lock = threading.Lock()
+
+
+def _shared(kind: str, timeout: float, lifetime: Optional[float], build) -> "dns.resolver.Resolver":
+    # The Resolver class is part of the key so a test that swaps it in gets
+    # its own instance rather than one built from the real class.
+    key = (kind, timeout, lifetime, tuple(AUDIT_UPSTREAMS), dns.resolver.Resolver)
+    resolver = _shared_resolvers.get(key)
+    if resolver is None:
+        with _shared_lock:
+            resolver = _shared_resolvers.get(key)
+            if resolver is None:
+                resolver = build()
+                _shared_resolvers[key] = resolver
     return resolver
+
+
+def get_uncached_resolver(timeout: float = 5.0, lifetime: Optional[float] = None) -> "dns.resolver.Resolver":
+    """A resolver that neither reads nor writes the shared answer cache.
+
+    The instance is shared; do not change its attributes.
+    """
+    def build():
+        resolver = _from_template(timeout, lifetime)
+        resolver.cache = None
+        return resolver
+    return _shared("uncached", timeout, lifetime, build)
 
 # DNSSEC-validating public resolvers. Quad9 first because its AD-bit signal is
 # the strictest: it drops bogus answers rather than returning AD=0.
@@ -211,10 +266,15 @@ _DNSSEC_NAMESERVERS = ["9.9.9.9", "1.1.1.1", "1.0.0.1", "8.8.8.8"]
 
 
 def get_resolver(timeout: float = 5.0) -> "dns.resolver.Resolver":
-    """A plain resolver backed by the shared answer cache."""
-    resolver = _from_template(timeout)
-    resolver.cache = _PLAIN_CACHE
-    return resolver
+    """A plain resolver backed by the shared answer cache.
+
+    The instance is shared; do not change its attributes.
+    """
+    def build():
+        resolver = _from_template(timeout)
+        resolver.cache = _PLAIN_CACHE
+        return resolver
+    return _shared("plain", timeout, None, build)
 
 
 def get_dnssec_resolver(timeout: float = 8.0) -> "dns.resolver.Resolver":
@@ -223,12 +283,85 @@ def get_dnssec_resolver(timeout: float = 8.0) -> "dns.resolver.Resolver":
     Sets DO so DNSKEY/RRSIG/DS come back and the AD bit is meaningful, points
     at validating public resolvers instead of a possibly stub system resolver,
     and uses a 4096 byte EDNS buffer because DNSKEY responses run over 512.
+    The instance is shared; do not change its attributes.
     """
-    resolver = _from_template(timeout)
-    resolver.nameservers = list(_DNSSEC_NAMESERVERS)
-    resolver.use_edns(0, dns.flags.DO, 4096)
-    resolver.cache = _DNSSEC_CACHE
-    return resolver
+    def build():
+        resolver = _from_template(timeout)
+        resolver.nameservers = list(_DNSSEC_NAMESERVERS)
+        set_lifetime(resolver, timeout * 2, timeout)
+        resolver.use_edns(0, dns.flags.DO, 4096)
+        resolver.cache = _DNSSEC_CACHE
+        return resolver
+    return _shared("dnssec", timeout, None, build)
+
+
+# ============================================================
+# Selector probe answers shared between the two DKIM probes
+# ============================================================
+#
+# An audit probes DKIM selectors twice: spf_intelligence.smart_dkim_check
+# (the DKIM card) and Sendermap's map (sendermap_adapter.AuditResolver), and
+# the two lists overlap, 118 queries per audit that the first one had already
+# asked. Neither can read the other's results in order: the card is built in
+# Phase 2 and the map runs after it. So both ask through resolve_probe, which
+# remembers a definitive answer (a key, no such name, no TXT at the name) for
+# PROBE_MEMO_TTL seconds, whichever probe asked first.
+#
+# Only definitive answers are kept. A timeout, SERVFAIL or REFUSED is raised
+# to the caller and not remembered, so the second probe asks again and a name
+# nobody could answer still reads as "probe incomplete", never "not found".
+#
+# PROBE_MEMO_TTL is far below the 5 minute result cache in server.py, the
+# same rule NEGATIVE_TTL_CAP follows: an operator who publishes a key and
+# re-audits must never be answered from the previous audit's memo.
+PROBE_MEMO_TTL = 20.0
+PROBE_MEMO_MAX = 4096
+_probe_memo: "OrderedDict[tuple, tuple]" = OrderedDict()
+_probe_memo_lock = threading.Lock()
+
+
+def clear_probe_memo() -> None:
+    with _probe_memo_lock:
+        _probe_memo.clear()
+
+
+def resolve_probe(resolver: "dns.resolver.Resolver", qname: str, rdtype: str = "TXT",
+                  raise_on_no_answer: bool = True):
+    """resolver.resolve(qname, rdtype) with its definitive outcome shared.
+
+    Raises what resolve() raises: NXDOMAIN, NoAnswer when raise_on_no_answer,
+    and any failure to get an answer.
+    """
+    key = (str(qname).lower().rstrip("."), rdtype)
+    now = time.monotonic()
+    with _probe_memo_lock:
+        hit = _probe_memo.get(key)
+        if hit is not None and now - hit[0] < PROBE_MEMO_TTL:
+            _probe_memo.move_to_end(key)
+            outcome = hit[1:]
+        else:
+            outcome = None
+    if outcome is None:
+        try:
+            outcome = ("answer", resolver.resolve(qname, rdtype))
+        except dns.resolver.NXDOMAIN as e:
+            outcome = ("nxdomain", e)
+        except dns.resolver.NoAnswer as e:
+            outcome = ("noanswer", e)
+        with _probe_memo_lock:
+            _probe_memo[key] = (now, *outcome)
+            _probe_memo.move_to_end(key)
+            while len(_probe_memo) > PROBE_MEMO_MAX:
+                _probe_memo.popitem(last=False)
+    kind, value = outcome
+    if kind == "nxdomain":
+        raise value.with_traceback(None)
+    if kind == "noanswer":
+        if raise_on_no_answer:
+            raise value.with_traceback(None)
+        return types.SimpleNamespace(rrset=None, response=value.response(),
+                                     canonical_name=None)
+    return value
 
 
 def lookup_ttl(name: str, rdtype: str = "TXT") -> Optional[int]:

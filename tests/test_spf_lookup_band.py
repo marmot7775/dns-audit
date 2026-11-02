@@ -177,3 +177,12 @@ def test_a_floor_count_is_not_banded_ok(audit):
     assert card["spf_deep"]["lookup_band"] == "unknown"
     assert not any("well within" in d["text"] for d in card["details"])
     assert _lookup_rows(result) == []
+
+
+def test_over_limit_plan_head_says_dkim_must_align(run):
+    """DKIM only rescues DMARC when the signing domain aligns with From."""
+    rows = _lookup_rows(run(11))
+    assert len(rows) == 1, rows
+    head = rows[0]["plain_head"]
+    assert "A valid DKIM signature aligned with your From domain can still let DMARC pass." in head
+    assert "signed with DKIM for your own domain" not in head

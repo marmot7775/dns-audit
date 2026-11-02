@@ -792,8 +792,7 @@ def _validate_scope(scope: Optional[str]) -> Optional[str]:
 # Preflight resolver, built once from the resolv.conf configuration dns_tools
 # read at import, like every other resolver in the process.
 from dns_tools import get_uncached_resolver
-_preflight_resolver = get_uncached_resolver(5)
-_preflight_resolver.lifetime = 3
+_preflight_resolver = get_uncached_resolver(5, lifetime=3)
 
 
 def _preflight_dns_check(domain: str) -> Optional[Dict]:
@@ -1503,10 +1502,9 @@ _negative_probe_cache = {"error": None, "expires": 0.0}
 
 def _negative_lookup_probe() -> Optional[str]:
     """None when a nonexistent name comes back NXDOMAIN or NoAnswer, else the
-    exception class name. One query: timeout equals lifetime, so no second
-    attempt."""
-    resolver = get_uncached_resolver(3)
-    resolver.lifetime = 3
+    exception class name. One query inside a three second lifetime, split
+    across the configured servers so each gets an attempt."""
+    resolver = get_uncached_resolver(3, lifetime=3)
     name = f"health-{secrets.token_hex(4)}.{_NEGATIVE_PROBE_ZONE}"
     try:
         resolver.resolve(name, "TXT")

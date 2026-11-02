@@ -111,6 +111,21 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   them, so moving by headings showed one flat list. Cards are now h4,
   their Details 5, the sections and panels inside 6.
 
+- Nightly issues 268 to 280 (2026-11-02). SPF vendor coverage counts only
+  `+` includes reached before `all`. An MX only vendor gets a conditional
+  "if it also sends your mail" note, not an add-this-include recommendation.
+  The SPF plan head says a valid DKIM signature aligned with the From domain
+  can still let DMARC pass. Lookup failures read "did not get a usable DNS
+  answer". The Certificate Transparency card no longer calls a crt.sh timeout
+  plus a Cert Spotter error a double timeout, and the Cert Spotter fallback
+  follows up to three pages and says how many certificates it checked. The
+  PDF appendix prints the complete DKIM record. Each audit resolver budgets
+  its lifetime across the nameservers, and one resolver is shared per
+  configuration instead of one per query. The DKIM selector probes share
+  their definitive answers for 20 seconds (361 to 132 selector queries on the
+  test zone). Test only: a timed out sender map stays inside the thread
+  ceiling.
+
 ### Removed
 - The vendor fingerprinter (`advanced_fingerprinting.py`), its pattern table
   (`vendor_patterns.py`), the audit's vendor CNAME wave, `_vendor_missing_records`,

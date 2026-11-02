@@ -2236,6 +2236,11 @@ def _deep_analysis_page(data, S, number="C"):
     if dkim and dkim.get("dkim_deep"):
         body.append(Paragraph("DKIM in depth", S["heading2"]))
         body.extend(_dkim_deep_section(dkim["dkim_deep"], S))
+        # The Checks section shortens each p= value; the whole record is
+        # printed here, so the PDF still carries the evidence.
+        if dkim.get("record"):
+            body.append(Paragraph("Complete DKIM record", S["subheading"]))
+            body.extend(_record_block(dkim["record"], S))
 
     explanations = []
     for check in _ordered_checks(data):
