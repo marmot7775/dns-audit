@@ -4611,8 +4611,8 @@ def _raw_check_ct_uncached(domain: str, raw_results: Dict[str, Any]) -> Dict[str
 
 
 # ============================================================
-# APRF (draft-brotman-aggregate-performance-reporting-01; draft-ietf-mailmaint-aprf-00,
-# 2026-10-09, replaces it with no rule changes)
+# APRF (draft-ietf-mailmaint-aprf-01, 2026-10-31; it replaced -00 and the
+# individual draft-brotman-aggregate-performance-reporting)
 # ============================================================
 #
 # Informational only. The card goes in the response's draft_standards list,
@@ -4696,9 +4696,8 @@ def _raw_check_aprf(domain: str, raw_dkim: Optional[Dict],
 
     Section 4 names the record <s>._aprf._domainkey.<d>, a wildcard to the
     left of _aprf, or the bare _aprf._domainkey.<d>; the most specific match
-    wins. Section 4.2 of draft 01 writes the selector form as
-    selector1._domainkey.email.example.org, without the _aprf label. That
-    reads as a typo against section 4, so section 4 is what is queried.
+    wins (section 4.2). Earlier drafts left _aprf out of the selector form in
+    section 4.2; -01 fixed that, and section 4 was always what is queried.
 
     Any failure on those names sets lookup_failed: a failed query is not an
     absent record. A failure on a section 9 authorization lookup only marks

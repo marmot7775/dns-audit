@@ -1,4 +1,4 @@
-"""APRF (draft-brotman-aggregate-performance-reporting-01): informational only.
+"""APRF (draft-ietf-mailmaint-aprf-01): informational only.
 
 The check looks for the record a mailbox provider reads to find where to send
 an aggregate performance report, keyed on the DKIM signature: a selector
@@ -114,8 +114,22 @@ def test_selector_record_wins_over_wildcard_and_bare():
     assert not _queried(zone, f"old.{BARE}")
 
 
-# Our own domain publishes at the bare name only. All three forms are asked
-# about, and the bare record is what the card reports.
+# Our own domain publishes at the wildcard only, since 2026-11-01; the bare
+# name is absent. Every live selector name answers with the wildcard's record,
+# so the card reports one record, at the wildcard.
+def test_wildcard_only_bare_absent_is_published_at_the_wildcard():
+    raw, card, zone = _check({WILD: "v=APRFv1; rua=mailto:aprf@example.org"})
+    assert _queried(zone, BARE) and _queried(zone, f"s1.{BARE}")
+    assert [r["kind"] for r in raw["records"]] == ["wildcard"]
+    assert card["aprf_state"] == "published"
+    assert card["record_location"] == WILD
+    assert card["verdict"] == f"Published at {WILD}"
+    assert f" {BARE}" not in _text(card)
+
+
+# The bare name stays a discovery location in draft-ietf-mailmaint-aprf-01
+# (section 4, and first in the section 4.2 order), so a record there alone
+# is still published. All three forms are asked about.
 def test_bare_only_beside_live_selectors_is_published():
     raw, card, zone = _check({BARE: "v=APRFv1; rua=mailto:aprf@example.org"})
     assert _queried(zone, BARE) and _queried(zone, f"s1.{BARE}")

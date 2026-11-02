@@ -90,4 +90,5 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 102](doc-102.md): Thread cap: TasksMax on the unit, AUDIT_THREAD_CEILING, health thread fields, chunked DKIM priority wave
 - [Doc 103](doc-103.md): Five audit scopes grouped by the visitor's question; old scope keys map to new ones
 - [Doc 104](doc-104.md): Under Email Deliverability a p=none DMARC record grades pass; other scopes unchanged
+- [APRF -01](aprf-01.md): Own-domain test moved to the wildcard; article follows draft-ietf-mailmaint-aprf-01
 - [Making the standard visible](standard-visible.md): Architecture page, decisions, CI lint, packaging, cleanup
