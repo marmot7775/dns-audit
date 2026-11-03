@@ -323,18 +323,33 @@ def _aprf_log_state(result) -> Optional[str]:
     return None
 
 
+def _joined_status(shared):
+    """(status, error code) for a request that joined another's audit.
+
+    The leader marks a preflight refusal with _refused, because the codes
+    alone cannot tell it apart: "timeout" is both a preflight code and the
+    audit's own wall-clock error.
+    """
+    if shared.get("_refused"):
+        return "refused", shared.get("error")
+    return _audit_status(shared)
+
+
 def _log_audit(request: Request, domain: str, scope: Optional[str],
                duration: float, checks: int, source: str = "web",
                status: str = "ok", error: Optional[str] = None,
-               aprf: Optional[str] = None):
+               aprf: Optional[str] = None, cached: bool = False):
     """Write a GDPR-safe JSON-lines audit log entry.
 
     Logged: domain, timestamp, scope, duration, check count, outcome
-            (status, plus an error code when the outcome is not "ok"),
-            browser and OS family, whether the caller is a bot, source
-            (web/sse), a daily-rotating visitor hash, the
-            referring host if one was sent, and the APRF card's state
-            (none, published, ignored, unavailable) when that check ran.
+            (status, plus an error code when the outcome is not "ok";
+            "refused" with the preflight code when the domain was turned
+            away before the checks ran), browser and OS family, whether
+            the caller is a bot, source (web/sse/pdf), a daily-rotating
+            visitor hash, the referring host if one was sent, the APRF
+            card's state (none, published, ignored, unavailable) when that
+            check ran, and cached: true when no audit ran for this request
+            (a cache hit, or a request that joined an audit in flight).
     NOT logged: the raw user-agent string, IP address, geolocation,
             cookies, referring URL path, personal data.
 
@@ -369,6 +384,10 @@ def _log_audit(request: Request, domain: str, scope: Optional[str],
     # can be counted later. Present only when the check ran.
     if aprf:
         entry["aprf"] = aprf
+    # Present only when true, so every older line and every fresh audit reads
+    # the same as before. A reader counting audits run skips these lines.
+    if cached:
+        entry["cached"] = True
     ref = _referer_host(request)
     if ref:
         entry["ref"] = ref
@@ -898,6 +917,7 @@ async def audit_domain(
     selector = _validate_selector(selector, domain)
     request_id = str(uuid.uuid4())
     log.info("Audit requested: %s (scope=%s, rid=%s)", domain, scope or "complete", request_id)
+    req_start = time.time()
 
     cache_key = f"{domain}:{selector or ''}:{scope or 'complete'}"
 
@@ -905,6 +925,12 @@ async def audit_domain(
     cached = _get_cached(cache_key)
     if cached:
         log.info("Cache hit: %s (rid=%s)", domain, request_id)
+        # No audit ran, so the line says cached and carries no aprf: an
+        # adoption count over aprf counts audits, not answers.
+        log_status, log_error = _audit_status(cached)
+        _log_audit(request, domain, scope, round(time.time() - req_start, 2),
+                   len(cached.get("checks", [])), source="web",
+                   status=log_status, error=log_error, cached=True)
         cached_with_rid = {**cached, "request_id": request_id, "cached": True}
         return JSONResponse(content=cached_with_rid)
 
@@ -918,6 +944,10 @@ async def audit_domain(
         # otherwise cancel the shared result for the leader and every other
         # follower.
         shared = await asyncio.shield(_audit_future)
+        log_status, log_error = _joined_status(shared)
+        _log_audit(request, domain, scope, round(time.time() - req_start, 2),
+                   len(shared.get("checks", [])), source="web",
+                   status=log_status, error=log_error, cached=True)
         # The leader can exit without a result: it returns 503 when the
         # concurrency budget is full, before _payload is ever set. Followers
         # then received the generic error dict with HTTP 200, telling them the
@@ -938,7 +968,7 @@ async def audit_domain(
                 headers={"Retry-After": "5"} if _status == 503 else None,
             )
         return JSONResponse(content={
-            **{k: v for k, v in shared.items() if k != "_http_status"},
+            **{k: v for k, v in shared.items() if k not in ("_http_status", "_refused")},
             "request_id": request_id,
             "coalesced": True,
         })
@@ -986,7 +1016,11 @@ async def audit_domain(
             preflight_err = await anyio.to_thread.run_sync(_preflight_dns_check, domain)
             if preflight_err:
                 log.info("Preflight failed for %s: %s", domain, preflight_err.get("error"))
-                _payload = preflight_err
+                _log_audit(request, domain, scope, round(time.time() - start, 2), 0,
+                           source="web", status="refused", error=preflight_err.get("error"))
+                # Followers log their own line, refused too; the marker is
+                # filtered out of what they send back.
+                _payload = {**preflight_err, "_refused": True}
                 return JSONResponse(content=preflight_err)
 
             try:
@@ -1070,6 +1104,7 @@ async def audit_stream(
     selector = _validate_selector(selector, domain)
     request_id = str(uuid.uuid4())
     log.info("SSE audit requested: %s (scope=%s, rid=%s)", domain, scope or "complete", request_id)
+    req_start = time.time()
 
     cache_key = f"{domain}:{selector or ''}:{scope or 'complete'}"
 
@@ -1077,6 +1112,10 @@ async def audit_stream(
     cached = _get_cached(cache_key)
     if cached:
         log.info("SSE cache hit: %s (rid=%s)", domain, request_id)
+        log_status, log_error = _audit_status(cached)
+        _log_audit(request, domain, scope, round(time.time() - req_start, 2),
+                   len(cached.get("checks", [])), source="sse",
+                   status=log_status, error=log_error, cached=True)
         async def _cached_stream():
             cached_result = {**cached, "request_id": request_id}
             yield f"data: {json.dumps({'done': True, 'result': cached_result, 'cached': True, 'request_id': request_id})}\n\n"
@@ -1106,6 +1145,8 @@ async def audit_stream(
         preflight_err = await anyio.to_thread.run_sync(_preflight_dns_check, domain)
         if preflight_err:
             log.info("SSE preflight failed for %s: %s", domain, preflight_err.get("error"))
+            _log_audit(request, domain, scope, round(time.time() - req_start, 2), 0,
+                       source="sse", status="refused", error=preflight_err.get("error"))
             with _active_audits_lock:
                 _active_audits -= 1
             slot_held = False
@@ -1399,6 +1440,7 @@ async def audit_pdf(
     # key, and look up " google._domainkey.example.com".
     selector = _validate_selector(selector, domain)
     log.info("PDF requested: %s (scope=%s)", domain, scope or "complete")
+    req_start = time.time()
 
     cache_key = f"{domain}:{selector or ''}:{scope or 'complete'}"
 
@@ -1444,10 +1486,16 @@ async def audit_pdf(
         if cached:
             data = cached
             log.info("PDF using cached data: %s", domain)
+            log_status, log_error = _audit_status(cached)
+            _log_audit(request, domain, scope, round(time.time() - req_start, 2),
+                       len(cached.get("checks", [])), source="pdf",
+                       status=log_status, error=log_error, cached=True)
         else:
             preflight_err = await anyio.to_thread.run_sync(_preflight_dns_check, domain)
             if preflight_err:
                 log.info("PDF preflight failed for %s: %s", domain, preflight_err.get("error"))
+                _log_audit(request, domain, scope, round(time.time() - req_start, 2), 0,
+                           source="pdf", status="refused", error=preflight_err.get("error"))
                 # A domain that does not exist is the request's problem; a
                 # timeout or a broken nameserver is not, and says try again.
                 transient = preflight_err.get("error") in ("timeout", "dns_broken")
@@ -1469,6 +1517,10 @@ async def audit_pdf(
                 log.info("PDF coalesced onto in-flight audit: %s", domain)
                 data = await asyncio.shield(_pdf_future)
                 _pdf_future = None  # a follower must not resolve or pop it
+                log_status, log_error = _joined_status(data)
+                _log_audit(request, domain, scope, round(time.time() - req_start, 2),
+                           len(data.get("checks", [])), source="pdf",
+                           status=log_status, error=log_error, cached=True)
                 if data.get("error"):
                     return Response(
                         content=data.get("error_message", "Audit failed"),
@@ -1487,9 +1539,15 @@ async def audit_pdf(
                     )
                 except Exception as e:
                     log.error("PDF audit failed for %s: %s", domain, str(e)[:200], exc_info=True)
+                    _log_audit(request, domain, scope, round(time.time() - start, 2), 0,
+                               source="pdf", status="error", error="server_error")
                     raise HTTPException(status_code=500, detail="Audit failed: cannot generate PDF")
                 elapsed = round(time.time() - start, 2)
                 log.info("PDF audit complete: %s -- %.2fs", domain, elapsed)
+                log_status, log_error = _audit_status(data)
+                _log_audit(request, domain, scope, elapsed, len(data.get("checks", [])),
+                           source="pdf", status=log_status, error=log_error,
+                           aprf=_aprf_log_state(data))
                 _set_cached(cache_key, data)
                 _pdf_payload = data
 

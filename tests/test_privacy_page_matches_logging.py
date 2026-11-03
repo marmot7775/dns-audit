@@ -1,10 +1,11 @@
 """The privacy page and README describe the log and the lookups the code makes.
 
-The page said every audit writes a log line, including PDF downloads. The
-code writes none for a PDF download, a cached repeat inside five minutes,
-or a domain refused before the checks start. The page also named only
-Cloudflare and Sentry as third parties, while every audit sends the domain
-to public resolvers and to crt.sh or Cert Spotter.
+The page once said every audit writes a log line, including PDF downloads,
+when the code wrote none for a PDF download, a cached repeat inside five
+minutes, or a domain refused before the checks start. Those paths now write
+a line (source pdf, cached true, status refused), and the page says so.
+It also once named only Cloudflare and Sentry as third parties, while every
+audit sends the domain to public resolvers and to crt.sh or Cert Spotter.
 
 These tests pin the text to the behaviour: change one and the other has to
 change with it.
@@ -44,41 +45,46 @@ def logged(monkeypatch):
     monkeypatch.setattr(server, "RATE_LIMIT_MAX", 10_000)
     monkeypatch.setattr(server, "_cache", {})
     monkeypatch.setattr(server, "_log_audit",
-                        lambda *a, **k: calls.append(k.get("source")))
+                        lambda *a, **k: calls.append(
+                            (k.get("source"), k.get("status", "ok"), bool(k.get("cached")))))
     return server, calls
 
 
-def test_a_pdf_download_writes_no_log_line_and_the_page_says_so(logged, monkeypatch):
+def test_a_pdf_download_writes_a_pdf_line_and_the_page_says_so(logged, monkeypatch):
     server, calls = logged
     monkeypatch.setattr(server, "_preflight_dns_check", lambda d: None)
     with fake_dns(FakeZone(ZONE)):
         resp = TestClient(server.app).get(f"/api/audit/{DOMAIN}/pdf", params={"scope": "dmarc"})
     assert resp.status_code == 200, resp.text[:200]
-    assert calls == []
+    assert calls == [("pdf", "ok", False)]
     text = _privacy_text()
-    assert "or a PDF download" not in text
-    assert "A PDF download" in text
+    assert "or a PDF download" in text
+    assert "A PDF download is not logged" not in text
 
 
-def test_a_cached_repeat_writes_no_second_line_and_the_page_says_so(logged, monkeypatch):
+def test_a_cached_repeat_writes_a_cached_line_and_the_page_says_so(logged, monkeypatch):
     server, calls = logged
     monkeypatch.setattr(server, "_preflight_dns_check", lambda d: None)
     client = TestClient(server.app)
     with fake_dns(FakeZone(ZONE)):
         for _ in range(2):
             assert client.get("/api/audit", params={"domain": DOMAIN, "scope": "dmarc"}).status_code == 200
-    assert calls == ["web"]
-    assert "within five minutes" in _privacy_text()
+    assert calls == [("web", "ok", False), ("web", "ok", True)]
+    text = _privacy_text()
+    assert "within five minutes" in text
+    assert "not logged again" not in text
 
 
 @pytest.mark.parametrize("path", ["/api/audit", "/api/audit/stream"])
-def test_a_refused_domain_writes_no_line_and_the_page_says_so(logged, monkeypatch, path):
+def test_a_refused_domain_writes_a_refused_line_and_the_page_says_so(logged, monkeypatch, path):
     server, calls = logged
     monkeypatch.setattr(server, "_preflight_dns_check", lambda d: {
         "domain": d, "checks": [], "error": "domain_not_found", "error_message": "x"})
     TestClient(server.app).get(path, params={"domain": "nx.test"})
-    assert calls == []
-    assert "refused before the checks start" in _privacy_text()
+    assert [c[1] for c in calls] == ["refused"]
+    text = _privacy_text()
+    assert "refused before the checks started" in text
+    assert "is not logged either" not in text
 
 
 def test_the_page_names_where_the_audited_domain_is_sent():

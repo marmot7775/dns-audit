@@ -18,6 +18,11 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   cache. A step that makes the policy enforce never comes before the SPF and
   DKIM steps. No language model, nothing sent to a third party, privacy page
   unchanged.
+- Audit log (#295): every audit request writes a line. A PDF run is
+  `source: "pdf"`, a domain refused before the checks is `status: "refused"`
+  with the preflight code, and a cached repeat or a request that joins an
+  audit in flight carries `cached: true` (no aprf). The privacy page and
+  CLAUDE.md say so.
 - ARCHITECTURE.md: the pipeline, the module map, and the rules the code keeps.
 - docs/decisions: eight dated decision records.
 - CONTRIBUTING.md.
