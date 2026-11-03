@@ -94,10 +94,14 @@
   the one per card status the log records, kept for an adoption count. Fields
   are added, never renamed or
   removed, so older entries carry fewer of them.
-  - Not logged (2026-11-02, the privacy page says the same): PDF downloads,
-    cache hits and requests that join an identical audit in flight, and
-    preflight refusals (domain_not_found, dns_broken, timeout). source is
-    "web" or "sse" only.
+  - Every audit request writes a line (2026-11-03, the privacy page says the
+    same). source is "web", "sse" or "pdf". A preflight refusal is status
+    "refused" with error domain_not_found, dns_broken or timeout, checks 0.
+    A cache hit, or a request that joins an identical audit in flight, writes
+    a line with cached: true and no aprf (the field is absent otherwise), so
+    "audits run" is the lines without cached; a reader that counts volume,
+    durations or repeat domains has to skip cached and refused lines to keep
+    the meaning those counts had before.
   - `ua` is coarse labels only, "<browser family> / <OS family>", never a raw
     user-agent string and never a version number. Browser families: Chrome,
     Firefox, Safari, Edge, other, bot/tool, unknown. OS families: Windows,
