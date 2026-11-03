@@ -54,18 +54,19 @@
 
         <section class="dbis-section">
             <h2>What running an audit records</h2>
-            <p>Each audit the server runs for the web form or the streaming endpoint writes one line to a log file on the server. That line holds:</p>
+            <p>Each audit request writes one line to a log file on the server, whether it comes from the web form, the streaming endpoint or a PDF download. That line holds:</p>
             <ul>
                 <li>the domain you audited, and the time you audited it</li>
                 <li>which set of checks you ran, how long the run took, and how many checks completed</li>
-                <li>the outcome: finished, timed out, failed, or abandoned before it finished</li>
+                <li>the outcome: finished, timed out, failed, abandoned before it finished, or refused before the checks started, with a short code for why, such as a domain that does not exist</li>
                 <li>your browser family and operating system family, as one short label like <code>Firefox / Windows</code>. No version numbers, and the full user-agent string your browser sends is not written down.</li>
                 <li>whether the request looks like a bot rather than a person</li>
-                <li>whether it came from the web form or the streaming endpoint</li>
+                <li>whether it came from the web form, the streaming endpoint, or a PDF download</li>
+                <li>whether the answer came from the server's memory rather than a new run: the same audit asked for again within five minutes, or a request that arrived while the same audit was already running</li>
                 <li>a daily visitor token, described below</li>
                 <li>the hostname of the page that linked you here, if your browser sent one. The path and query string are dropped, so a link from a private forum thread records the forum, not the thread.</li>
             </ul>
-            <p>Some requests write no line at all. A PDF download is not logged. Asking for the same audit again within five minutes is answered from the server's memory and not logged again, and neither is a request that arrives while the same audit is already running. A domain refused before the checks start, because it does not exist or its DNS does not answer, is not logged either.</p>
+            <p>A domain refused before the checks start, because it does not exist or its DNS does not answer, still gets a line, so a typo is counted. A repeat answered from memory gets its own line too, marked as such, so it is not counted as a second audit.</p>
             <p>The domain you type is the whole point of the tool, so it is recorded. If a domain's existence is itself something you would rather keep private, audit it from a copy you run yourself.</p>
             <p>Once a week a copy of this log is downloaded to my own computer and summarized into a private usage report that only I see. It is not published or shared.</p>
         </section>
@@ -138,7 +139,7 @@
         <section class="dbis-section">
             <h2>Changes</h2>
             <p>This page describes the tool as it works today. When the tool changes, this page changes with it.</p>
-            <p><strong>Last updated:</strong> 2 November 2026</p>
+            <p><strong>Last updated:</strong> 3 November 2026</p>
         </section>
     </main>
     <footer class="site-footer">
