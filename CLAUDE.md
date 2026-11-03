@@ -94,6 +94,10 @@
   the one per card status the log records, kept for an adoption count. Fields
   are added, never renamed or
   removed, so older entries carry fewer of them.
+  - Not logged (2026-11-02, the privacy page says the same): PDF downloads,
+    cache hits and requests that join an identical audit in flight, and
+    preflight refusals (domain_not_found, dns_broken, timeout). source is
+    "web" or "sse" only.
   - `ua` is coarse labels only, "<browser family> / <OS family>", never a raw
     user-agent string and never a version number. Browser families: Chrome,
     Firefox, Safari, Edge, other, bot/tool, unknown. OS families: Windows,

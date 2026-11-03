@@ -42,7 +42,7 @@ dns-audit.com reads public DNS for the domain you name, and nothing else: no pas
 ## What it does not do
 
 - No blocklist lookups.
-- No mail sending and no SMTP connections. Outbound traffic is DNS plus HTTPS fetches of MTA-STS policies, BIMI logos, and certificate logs (crt.sh, with Cert Spotter as the fallback), and error reports to Sentry when SENTRY_DSN is set.
+- No mail sending and no SMTP connections. Outbound traffic is DNS (to the system resolver plus 1.1.1.1 and 8.8.8.8 by default) plus HTTPS fetches of MTA-STS policies, BIMI logos, and certificate logs (crt.sh, with Cert Spotter as the fallback), and error reports to Sentry when SENTRY_DSN is set.
 - No accounts.
 - No stored audit history beyond the 90-day DNS snapshot table. Results are cached in memory for five minutes. Usage is logged: the request log keeps each audit's domain, scope, duration and coarse browser labels, plus a short usage note from each of the two sister tools. Every field is listed on [the privacy page](https://dns-audit.com/privacy).
 

@@ -131,7 +131,8 @@ def _is_private_ip(ip_str: str) -> bool:
 
 from checks_extra import check_mta_sts, check_tls_rpt, check_bimi
 from mx_check import check_mx
-from spf_recursive import SPF_LOOKUP_LIMIT, count_spf_lookups, repair_spf_missing_spaces
+from spf_recursive import (SPF_LOOKUP_LIMIT, count_spf_lookups, open_authorizations,
+                           repair_spf_missing_spaces, terms_after_all)
 from sendermap.model import Claim, Kind, Need, Role, SenderMap, Service, State, Tier
 from sendermap.setup import WORDS as SETUP_WORDS
 from sendermap_adapter import (MAP_THREADS, hosted_spf_service, map_dkim_providers,
@@ -2579,6 +2580,11 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             raw = raw[1:]
 
         raw_lower = raw.lower()
+        # RFC 7208 section 5.1: terms after the first "all" are never
+        # evaluated. They are still syntax checked (a syntax error anywhere
+        # is a PermError), but they authorize nobody, so they are not
+        # counted as senders and a later all does not replace the first.
+        after_all = has_all
 
         # ── Check for spaces in mechanism syntax ────────────
         # Spaces between mechanism, colon, and value break parsing.
@@ -2644,7 +2650,7 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             mech_name_lower = mech_name.lower()
 
             if mech_name_lower == "include":
-                include_count += 1
+                include_count += 0 if after_all else 1
                 if not mech_value:
                     _add_syntax(
                         "Empty include: mechanism (no domain specified)",
@@ -2655,13 +2661,15 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
                 seen_mechanisms.append(part)
 
             elif mech_name_lower == "ip4":
-                ip4_count += 1
+                ip4_count += 0 if after_all else 1
                 # Validate IP address
                 try:
                     if "/" in mech_value:
                         net: ipaddress.IPv4Network | ipaddress.IPv6Network = ipaddress.IPv4Network(mech_value, strict=False)
                         prefix = net.prefixlen
-                        if prefix <= 16:
+                        # /0 is reported with +all below; a term after all
+                        # authorizes nothing.
+                        if 0 < prefix <= 16 and not after_all and qualifier in ("", "+"):
                             _add_issue(
                                 "warning",
                                 f"Overly broad SPF range: ip4:{mech_value} (/{prefix} = {net.num_addresses:,} addresses)",
@@ -2680,12 +2688,12 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
                 seen_mechanisms.append(part)
 
             elif mech_name_lower == "ip6":
-                ip6_count += 1
+                ip6_count += 0 if after_all else 1
                 try:
                     if "/" in mech_value:
                         net = ipaddress.IPv6Network(mech_value, strict=False)
                         prefix = net.prefixlen
-                        if prefix <= 48:
+                        if 0 < prefix <= 48 and not after_all and qualifier in ("", "+"):
                             _add_issue(
                                 "warning",
                                 f"Overly broad SPF range: ip6:{mech_value} (/{prefix})",
@@ -2723,9 +2731,10 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             mech_lower = raw_lower
 
             if mech_lower == "all":
+                if not has_all:
+                    effective_qualifier = qualifier if qualifier else "+"
+                    all_mech = effective_qualifier + "all"
                 has_all = True
-                effective_qualifier = qualifier if qualifier else "+"
-                all_mech = effective_qualifier + "all"
 
             elif mech_lower == "ptr":
                 # Reported once, by spf_recursive (merged below).
@@ -2872,6 +2881,81 @@ def _raw_check_spf(domain: str) -> Dict[str, Any]:
             "that servers not listed are not authorized, and DMARC decides what happens "
             "to their mail.",
             business_risk_key="SPF_NO_ALL",
+        )
+
+    # ── Step 7b: terms that authorize everyone, at any depth ────
+    # RFC 7208 section 5.2: an include matches when its target evaluates to
+    # pass, so a +all (or ip4:0.0.0.0/0, a/0 ...) one include down opens the
+    # domain exactly as a top-level +all does, whatever the record ends in.
+    # The top-level +all is reported above.
+    _tree = spf_recursive_result.get("tree") or {}
+    _root_terms = {(m.get("type"), (m.get("value") or "").lower()): m.get("raw")
+                   for m in _tree.get("mechanisms", [])}
+
+    def _via(path):
+        """The term in the audited record that leads to path's record."""
+        if len(path) < 2:
+            return None
+        first = path[1].lower()
+        return (_root_terms.get(("include", first)) or _root_terms.get(("redirect", first))
+                or f"include:{path[1]}")
+
+    open_terms: List[Dict[str, Any]] = []
+    wide_terms: List[Dict[str, Any]] = []
+    for _hit in open_authorizations(_tree):
+        _nested = len(_hit["path"]) > 1
+        if not _nested and _hit["term"].lstrip("+").lower() == "all":
+            continue
+        _entry = dict(_hit, via=_via(_hit["path"]))
+        (open_terms if _hit["breadth"] == "all" else wide_terms).append(_entry)
+    result["open_terms"] = open_terms
+    result["wide_terms"] = wide_terms
+    for _o in open_terms:
+        if _o["via"]:
+            _where = (f"{_o['via']} reaches {_o['term']} in the SPF record at "
+                      f"{_o['domain']}")
+            _fix = (f"Remove {_o['via']}, or have whoever runs {_o['domain']} replace "
+                    f"{_o['term']} with the servers that really send for you.")
+        else:
+            _where = f"{_o['term']} in this record"
+            _fix = f"Replace {_o['term']} with the addresses your mail servers actually use."
+        _add_issue(
+            "error",
+            f"SPF authorizes every server through {_o['via'] or _o['term']}",
+            f"{_where}, which matches every sending address. SPF passes for any "
+            "server on the internet, so a forger passes SPF, and DMARC, as you. "
+            "The all at the end of your record is never reached for those senders.",
+            _fix,
+            business_risk_key="SPF_PLUS_ALL",
+        )
+    for _w in wide_terms:
+        # Top-level ip4 and ip6 ranges already carry the broad-range warning.
+        if not _w["via"] and _w["term"].lstrip("+").lower().startswith(("ip4:", "ip6:")):
+            continue
+        _where = (f"{_w['via']} reaches {_w['term']} at {_w['domain']}" if _w["via"]
+                  else f"{_w['term']} in this record")
+        _add_issue(
+            "warning",
+            f"Very wide SPF range: {_w['term']}",
+            f"{_where}. It authorizes an IPv4 /8 or wider, or an IPv6 /16 or wider, "
+            "for each address it names: millions of servers you do not run.",
+            "Narrow the range to only the IPs your mail servers actually use.",
+        )
+
+    # ── Step 7c: terms after all (RFC 7208 section 5.1) ─────────
+    _after = terms_after_all(record)
+    result["terms_after_all"] = _after
+    if _after and all_mech:
+        _listed = ", ".join(_after)
+        _verb = "is" if len(_after) == 1 else "are"
+        _add_issue(
+            "warning",
+            f"Terms after {all_mech} are ignored: {_listed}",
+            f"Everything after {all_mech} is ignored (RFC 7208 section 5.1): "
+            f"{_listed} {_verb} never evaluated, so no sender {_verb} authorized by "
+            f"{'it' if len(_after) == 1 else 'them'}.",
+            f"Move the terms you need before {all_mech} and delete the rest, so the "
+            f"record ends with a single all.",
         )
 
     # ── Step 8: Merge syntax errors into issues and set final status ──
@@ -3523,6 +3607,27 @@ def _raw_check_caa(domain: str) -> Dict[str, Any]:
                 "No Certificate Authority is authorized to issue certificates for this domain. "
                 "This is a deliberate security lockdown. New certificate requests will be refused.",
                 "If you need certificates issued, add a CAA issue record for your CA (e.g., letsencrypt.org).",
+            )
+
+        # RFC 8659 section 4: with no issue property in the set, any CA may
+        # issue for the name itself. issuewild governs wildcards only, and
+        # iodef restricts nothing, so a set without issue is not a
+        # restriction on the bare domain, however many records it holds.
+        if not result["has_issue"]:
+            if result["has_issuewild"]:
+                _what = ("Only wildcard certificates are restricted. No issue property is "
+                         "published, so any Certificate Authority may issue a certificate "
+                         "for the domain itself and any name below it that is not a wildcard.")
+            else:
+                _what = ("No issuer is named, so any Certificate Authority may issue for the "
+                         "domain. An iodef record only says where to report violations; it "
+                         "restricts nothing.")
+            _add_issue(
+                "warning",
+                "CAA names no issuer (no issue property)",
+                _what,
+                f'Add an issue record for the CA you use, e.g. 0 issue "letsencrypt.org", '
+                f'or 0 issue ";" if {domain} needs no certificates.',
             )
 
         if result["has_issue"] and not result["has_issuewild"]:
@@ -5800,6 +5905,12 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
                                     "give a rotating key its own selector name."
                                 ),
                             })
+                    else:
+                        # TXT is published at the name but none of it carries
+                        # p=. RFC 6376 section 3.6.1 makes p= required, so this
+                        # is a published, broken key (or not a DKIM record at
+                        # all), not a selector this audit failed to find.
+                        _raw["selector_no_key"] = {"selector": _dkim_sel, "records": _txts}
                 except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
                     # The name genuinely has no TXT record. "Not found" is a
                     # true statement about the domain here.
@@ -6054,7 +6165,10 @@ def run_full_audit(domain: str, dkim_selector: Optional[str] = None,
         if raw_dmarc:
             for i, card in enumerate(checks):
                 if card.get("name") == "DMARC":
-                    checks[i] = transform_dmarc(raw_dmarc, tree_walk=tree_walk_result, is_no_mail=True,
+                    # The card names the signals actually present: null SPF
+                    # with a working MX is a domain that still receives mail.
+                    checks[i] = transform_dmarc({**raw_dmarc, "no_mail_signals": list(defensive_signals)},
+                                                tree_walk=tree_walk_result, is_no_mail=True,
                                                 scope=scope)
                     break
 

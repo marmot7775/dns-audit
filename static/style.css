@@ -8285,6 +8285,23 @@ h3.services-sub,
         transform: translateY(-50%);
     }
 
+    /* The requirement row's "See who sends as you" button sits inside a
+       sentence-sized label, 18px tall at 360px. The same ::after box gives
+       it a 44px target without changing the row's spacing. */
+    .req-link {
+        position: relative;
+    }
+
+    .req-link::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 44px;
+        transform: translateY(-50%);
+    }
+
     /* .back-to-top is fixed at bottom:16px, height 44px, so at the true
        bottom of the page (footer visible, scrolled past the button's
        reveal threshold) it can sit on top of footer-nav's rightmost link.

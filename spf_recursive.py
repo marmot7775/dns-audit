@@ -347,6 +347,109 @@ def mechanism_recurses(mech: Dict[str, str], has_all: bool) -> bool:
     return not mechanism_is_macro(mech)
 
 
+# Prefix lengths at or below which a range is reported as very wide: an IPv4
+# /8 is 16.7 million addresses, an IPv6 /16 is 1/65536 of the space.
+WIDE_IP4_PREFIX = 8
+WIDE_IP6_PREFIX = 16
+
+_CIDR_HOST_TERM_RE = re.compile(
+    r"^(?P<mech>a|mx)(?::[^/]*)?(?:/(?P<v4>\d{1,3}))?(?://(?P<v6>\d{1,3}))?$")
+
+
+def term_breadth(term: str) -> Optional[str]:
+    """How much of the address space one SPF term authorizes.
+
+    "all" when the term passes every IPv4 or every IPv6 sender: +all or a
+    bare all, ip4:x/0, ip6:x/0, a/0, mx/0, a//0, mx//0. "wide" when it
+    passes an IPv4 /8 or wider or an IPv6 /16 or wider. None otherwise,
+    including for any term whose qualifier is not "+" (RFC 7208 section
+    4.6.2: only a pass qualifier authorizes). Modifiers and include are None:
+    an include authorizes what its target does, which the walk reads there.
+    """
+    raw = (term or "").strip()
+    qualifier = "+"
+    if raw[:1] in "+-~?" and raw:
+        qualifier, raw = raw[0], raw[1:]
+    if qualifier != "+":
+        return None
+    low = raw.lower()
+    if low == "all":
+        return "all"
+    v4: Optional[int] = None
+    v6: Optional[int] = None
+    if low.startswith("ip4:") and "/" in low:
+        try:
+            v4 = int(low.rsplit("/", 1)[1])
+        except ValueError:
+            return None
+    elif low.startswith("ip6:") and "/" in low:
+        try:
+            v6 = int(low.rsplit("/", 1)[1])
+        except ValueError:
+            return None
+    else:
+        m = _CIDR_HOST_TERM_RE.match(low)
+        if not m:
+            return None
+        v4 = int(m.group("v4")) if m.group("v4") is not None else None
+        v6 = int(m.group("v6")) if m.group("v6") is not None else None
+    if v4 == 0 or v6 == 0:
+        return "all"
+    if (v4 is not None and v4 <= WIDE_IP4_PREFIX) or (v6 is not None and v6 <= WIDE_IP6_PREFIX):
+        return "wide"
+    return None
+
+
+def terms_after_all(record: str) -> List[str]:
+    """Mechanisms that follow the first "all" term, which RFC 7208 section
+    5.1 says are never evaluated. Modifiers (name=value) are not mechanisms
+    and are left out; redirect= beside all has its own finding."""
+    out: List[str] = []
+    seen_all = False
+    for part in (record or "").split()[1:]:
+        body = part.lstrip("+-~?")
+        eq, colon = body.find("="), body.find(":")
+        if eq != -1 and (colon == -1 or eq < colon):
+            continue
+        if seen_all:
+            out.append(part)
+        elif body.lower() == "all":
+            seen_all = True
+    return out
+
+
+def open_authorizations(tree: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Every term in the walked chain that authorizes very many senders.
+
+    Walks the tree _count_recursive built, in evaluation order, through
+    records reached by a pass-qualified include or by redirect (a record
+    under -include:, ~include: or ?include: is not authorizing, RFC 7208
+    section 5.2), and stops in each record at its first "all" (section 5.1).
+    Each entry is {"domain", "term", "breadth", "path"}: path is the chain of
+    domains from the audited one down to the record holding the term, so
+    the card can name the include that opens the domain.
+    """
+    found: List[Dict[str, Any]] = []
+
+    def _walk(node: Dict[str, Any], path: List[str]) -> None:
+        if not node or not node.get("record") or not node.get("authorizing", True):
+            return
+        here = path + [node.get("domain", "")]
+        for mech in node.get("mechanisms", []):
+            raw = mech.get("raw") or ""
+            breadth = term_breadth(raw)
+            if breadth:
+                found.append({"domain": node.get("domain", ""), "term": raw,
+                              "breadth": breadth, "path": here})
+            if mechanism_is_all(mech):
+                break
+        for child in node.get("children", []):
+            _walk(child, here)
+
+    _walk(tree, [])
+    return found
+
+
 def _parse_spf_mechanisms(spf_record: str) -> List[Dict[str, Any]]:
     """Parse an SPF record into its mechanisms with types and values."""
     mechanisms: List[Dict[str, Any]] = []

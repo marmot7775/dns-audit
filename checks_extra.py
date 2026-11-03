@@ -466,7 +466,10 @@ def _validate_mta_sts_policy(policy_text: str, domain: str) -> Tuple[Dict[str, A
     if policy["mode"] is None:
         issues.append(_make_issue("error", "Missing 'mode' in policy file",
             "The policy file must specify a mode.", "", "Add 'mode: enforce'."))
-    if not policy["mx_patterns"]:
+    # RFC 8461 section 3.2: mx is required "at least once, except when mode
+    # is none". Section 8.3 recommends exactly that minimal none policy
+    # (version, mode: none, a small max_age) to withdraw MTA-STS cleanly.
+    if not policy["mx_patterns"] and policy["mode"] != "none":
         issues.append(_make_issue("error", "No 'mx' entries in policy file",
             "The policy file must list at least one MX hostname pattern.", "",
             f"Add mx lines, e.g., 'mx: mail.{domain}'."))
