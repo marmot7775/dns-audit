@@ -54,7 +54,8 @@ def test_aprf_note_is_logged_with_counts_and_clean_domains(logged):
     assert r.status_code == 204
     (e,) = logged
     assert e["source"] == "tool" and e["tool"] == "aprf-reader"
-    assert (e["reports"], e["streams"], e["warnings"], e["skipped"], e["copies"]) == (40, 2, 3, 1, 0)
+    assert (e["reports"], e["streams"], e["warnings"], e["skipped"]) == (40, 2, 3, 1)
+    assert "copies" not in e  # always zero where the reader sent it, so no longer stored
     assert e["domains"] == ["example.com", "news.example.com"]  # lowercased, roll-up star dropped, junk and repeats out
     assert "ref" not in e  # the request's Referer is the tool page itself, so it is not used
     assert len(e["vid"]) == 12 and "Chrome" in e["ua"] and e["bot"] is False
