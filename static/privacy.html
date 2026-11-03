@@ -24,8 +24,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=e5f54f81fb">
-    <script src="/static/theme.js?v=e5f54f81fb"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7be11843a3">
+    <script src="/static/theme.js?v=7be11843a3"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
@@ -54,17 +54,18 @@
 
         <section class="dbis-section">
             <h2>What running an audit records</h2>
-            <p>Each audit writes one line to a log file on the server. That line holds:</p>
+            <p>Each audit the server runs for the web form or the streaming endpoint writes one line to a log file on the server. That line holds:</p>
             <ul>
                 <li>the domain you audited, and the time you audited it</li>
                 <li>which set of checks you ran, how long the run took, and how many checks completed</li>
                 <li>the outcome: finished, timed out, failed, or abandoned before it finished</li>
                 <li>your browser family and operating system family, as one short label like <code>Firefox / Windows</code>. No version numbers, and the full user-agent string your browser sends is not written down.</li>
                 <li>whether the request looks like a bot rather than a person</li>
-                <li>whether it came from the web form, the streaming endpoint, or a PDF download</li>
+                <li>whether it came from the web form or the streaming endpoint</li>
                 <li>a daily visitor token, described below</li>
                 <li>the hostname of the page that linked you here, if your browser sent one. The path and query string are dropped, so a link from a private forum thread records the forum, not the thread.</li>
             </ul>
+            <p>Some requests write no line at all. A PDF download is not logged. Asking for the same audit again within five minutes is answered from the server's memory and not logged again, and neither is a request that arrives while the same audit is already running. A domain refused before the checks start, because it does not exist or its DNS does not answer, is not logged either.</p>
             <p>The domain you type is the whole point of the tool, so it is recorded. If a domain's existence is itself something you would rather keep private, audit it from a copy you run yourself.</p>
             <p>Once a week a copy of this log is downloaded to my own computer and summarized into a private usage report that only I see. It is not published or shared.</p>
         </section>
@@ -109,6 +110,7 @@
             <p>The pages load nothing from anyone else. No analytics, no third-party scripts, no tag managers, no hosted fonts. The two typefaces are served from this domain.</p>
             <p>Cloudflare provides DNS and CDN for the site, so your connection reaches it first and it sees the request the way any network in the path does.</p>
             <p>Cloudflare also tells browsers that support it, such as Chrome and Edge, to send it a short report when a request to this site fails, whether the connection fails or the server returns an error. The report includes the address that was requested, which can contain the domain you audited, and Cloudflare sees your IP address when it arrives.</p>
+            <p>To run an audit, the server looks the domain up in public DNS. Those lookups go to the server's own resolver and to the public resolvers of Cloudflare (1.1.1.1) and Google (8.8.8.8), so they see the domain you audited and the DKIM selector names tried for it. The Certificate Transparency check sends the domain to crt.sh, and to Cert Spotter (run by SSLMate) when crt.sh does not answer. The MTA-STS policy and the BIMI logo are fetched from the hosts the domain's own records name. None of these requests carries your IP address or anything about your browser.</p>
             <p>When something on the server breaks, it sends an error report to Sentry, an error tracking service, so the fault can be found and fixed. A report holds the error, where in the code it happened, which part of the site it came from, and the domain being audited. The address you requested, your IP address, your user agent, the page that linked you here, and every other request header are removed before a report leaves the server. Nothing in your browser talks to Sentry.</p>
         </section>
 
@@ -136,7 +138,7 @@
         <section class="dbis-section">
             <h2>Changes</h2>
             <p>This page describes the tool as it works today. When the tool changes, this page changes with it.</p>
-            <p><strong>Last updated:</strong> 28 October 2026</p>
+            <p><strong>Last updated:</strong> 2 November 2026</p>
         </section>
     </main>
     <footer class="site-footer">

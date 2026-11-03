@@ -332,7 +332,7 @@ def _log_audit(request: Request, domain: str, scope: Optional[str],
     Logged: domain, timestamp, scope, duration, check count, outcome
             (status, plus an error code when the outcome is not "ok"),
             browser and OS family, whether the caller is a bot, source
-            (web/sse/pdf), a daily-rotating visitor hash, the
+            (web/sse), a daily-rotating visitor hash, the
             referring host if one was sent, and the APRF card's state
             (none, published, ignored, unavailable) when that check ran.
     NOT logged: the raw user-agent string, IP address, geolocation,
@@ -775,6 +775,24 @@ def _validate_domain(domain: str) -> str:
     return d
 
 
+def _validate_selector(selector: Optional[str], domain: str) -> Optional[str]:
+    """Trim a DKIM selector and refuse one DNS cannot look up.
+
+    Trimmed before validating: validating the trimmed value while caching
+    and resolving the raw one lets "%20google" pass, poison its own cache
+    key, and look up " google._domainkey.example.com". The name queried is
+    <selector>._domainkey.<domain>, which has to fit in 253 characters too;
+    a selector that passes SELECTOR_PATTERN alone could make a name dnspython
+    refuses (NameTooLong), and the card then said "not found" in red.
+    """
+    selector = selector.strip() if selector else None
+    if selector and not SELECTOR_PATTERN.match(selector):
+        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
+    if selector and len(selector) + len("._domainkey.") + len(domain) > 253:
+        raise HTTPException(status_code=400, detail="Invalid DKIM selector: the full name would be longer than 253 characters.")
+    return selector
+
+
 def _validate_scope(scope: Optional[str]) -> Optional[str]:
     """Validate scope parameter. Returns None for default (complete).
 
@@ -877,9 +895,7 @@ async def audit_domain(
     # Normalize before validating. Validating the trimmed value while caching
     # and resolving the raw one lets "%20google" pass, poison its own cache
     # key, and look up " google._domainkey.example.com".
-    selector = selector.strip() if selector else None
-    if selector and not SELECTOR_PATTERN.match(selector):
-        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
+    selector = _validate_selector(selector, domain)
     request_id = str(uuid.uuid4())
     log.info("Audit requested: %s (scope=%s, rid=%s)", domain, scope or "complete", request_id)
 
@@ -1051,9 +1067,7 @@ async def audit_stream(
     # Normalize before validating. Validating the trimmed value while caching
     # and resolving the raw one lets "%20google" pass, poison its own cache
     # key, and look up " google._domainkey.example.com".
-    selector = selector.strip() if selector else None
-    if selector and not SELECTOR_PATTERN.match(selector):
-        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
+    selector = _validate_selector(selector, domain)
     request_id = str(uuid.uuid4())
     log.info("SSE audit requested: %s (scope=%s, rid=%s)", domain, scope or "complete", request_id)
 
@@ -1383,9 +1397,7 @@ async def audit_pdf(
     # Normalize before validating. Validating the trimmed value while caching
     # and resolving the raw one lets "%20google" pass, poison its own cache
     # key, and look up " google._domainkey.example.com".
-    selector = selector.strip() if selector else None
-    if selector and not SELECTOR_PATTERN.match(selector):
-        raise HTTPException(status_code=400, detail="Invalid DKIM selector. Use letters, digits and hyphens, with periods between parts (RFC 6376 section 3.1).")
+    selector = _validate_selector(selector, domain)
     log.info("PDF requested: %s (scope=%s)", domain, scope or "complete")
 
     cache_key = f"{domain}:{selector or ''}:{scope or 'complete'}"

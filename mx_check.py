@@ -222,6 +222,32 @@ def check_mx(domain: str, executor=None) -> Dict[str, Any]:
             "Senders get a clean rejection.", ""))
         return result
 
+    # Any other shape that carries a "." exchange. RFC 7505 section 3: a
+    # domain that publishes a null MX MUST NOT publish any other MX record,
+    # and the null MX has preference 0. Either mistake used to fall into the
+    # per-host path below and read as a dangling MX with a blank host name,
+    # with advice to add addresses for it.
+    null_entries = [(p, h) for p, h in raw_mx if h in (".", "")]
+    if null_entries:
+        result["null_mx_misconfigured"] = True
+        raw_mx = [(p, h) for p, h in raw_mx if h not in (".", "")]
+        if raw_mx:
+            result["issues"].append(_make_issue(
+                "error", "Null MX published next to other MX records",
+                "A null MX (RFC 7505) is published next to other MX records. The null "
+                "MX must be the only MX record: delete either the null MX or the others.",
+                "Senders may treat the domain as refusing all mail, or ignore the null MX.",
+                "Delete the null MX record (. ) if this domain receives mail, or delete the "
+                "other MX records if it does not."))
+        else:
+            _pref = null_entries[0][0]
+            result["issues"].append(_make_issue(
+                "error", f"Null MX at preference {_pref}",
+                f"The null MX should use preference 0 (RFC 7505 section 3). This one uses "
+                f"{_pref}, so it is not a valid null MX.",
+                "Senders may not recognize the declaration that this domain takes no mail.",
+                "Replace the record with 0 . (preference 0, exchange a single dot)."))
+
     # A and AAAA for every MX host at once. The lookups are independent, and
     # one after another they were most of this check's time.
     lookups = [(h, t) for _, h in raw_mx if not _is_ip_address(h) for t in ("A", "AAAA")]

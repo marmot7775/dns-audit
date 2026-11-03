@@ -692,6 +692,23 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
     _quarantine_pct0 = (_eff_policy == "quarantine"
                         and (_rec_tags.get("pct") or "").strip() == "0"
                         and dmarc_status != "fail")
+    # t=y (RFC 9989 section 4.7): receivers on RFC 9989 apply one level
+    # below p, so p=reject is applied as quarantine and p=quarantine as none.
+    # The card warns; the summary read the published p= alone and said
+    # "protected" and "Full" beside it.
+    _testing_flag = ((_rec_tags.get("t") or "").strip().lower() == "y"
+                     and _eff_policy in ("reject", "quarantine")
+                     and dmarc_status != "fail")
+    if _testing_flag and _eff_policy == "reject":
+        _testing_sentence = ("While t=y is set, receivers on RFC 9989 send forged mail to "
+                             "spam instead of refusing it.")
+    else:
+        _testing_sentence = ("While t=y is set, receivers on RFC 9989 take no action on "
+                             "forged mail. Older receivers still send it to spam.")
+    # An SPF term that authorizes every server (+all, or one reached through
+    # an include) lets forged mail pass SPF aligned, and so pass DMARC,
+    # whatever the policy asks.
+    _spf_open = spf_check.get("verdict") == "Authorizes the entire internet to send as you"
     # Set when a branch below names a broken record or a domain with no mail,
     # so the no-reporting sentence further down does not replace it.
     _verdict_final = False
@@ -792,6 +809,9 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # no branch below may say anything is blocked.
         verdict = ("Your policy is set to cover none of the forged mail (pct=0), so "
                    "receivers that still read pct do not block any of it.")
+        _verdict_final = True
+    elif _testing_flag:
+        verdict = _testing_sentence
         _verdict_final = True
     elif _vector_total and protected_count == _vector_total:
         # An inherited name's readiness is the parent record's, and the
@@ -905,6 +925,8 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         if _pct and not (_pct.isascii() and _pct.isdigit() and int(_pct) >= 100):
             # pct below 100 covers part of the forged mail; no row says that.
             return verdict, "warn", "warning"
+        if _testing_flag:
+            return _testing_sentence, "warn", "warning"
         if _inherited_from:
             _sp = _np = _eff_policy
         else:
@@ -956,6 +978,17 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
             spoof_label = "Monitoring only"
         spoof_color = "amber"
 
+    _spoof_detail_override = None
+    if not dmarc_unassessed and _spf_open:
+        # The policy is never applied to forged mail that passes SPF.
+        spoof_label, spoof_color = "Bypassed", "red"
+        _spoof_detail_override = "SPF authorizes every server, so forged mail passes DMARC"
+    elif not dmarc_unassessed and _testing_flag and spoof_label in ("Full", "Strong"):
+        spoof_label, spoof_color = "Partial", "amber"
+        _spoof_detail_override = ("t=y: receivers on RFC 9989 quarantine instead of refusing"
+                                  if _eff_policy == "reject"
+                                  else "t=y: receivers on RFC 9989 take no action")
+
     spoofing_protection = {
         "label": spoof_label,
         "color": spoof_color,
@@ -971,7 +1004,7 @@ def build_executive_summary(checks: List[Dict], roadmap: Dict,
         # beside it is replaced with the thing it was standing in for.
         "detail": ("Not in this run's scope." if _scoped_out("DMARC")
                    else "DMARC lookup did not complete" if dmarc_unavailable
-                   else _spoofing_detail(vectors)),
+                   else _spoof_detail_override or _spoofing_detail(vectors)),
     }
 
     # Metric 2: RFC 9989 Readiness
@@ -1887,6 +1920,16 @@ def build_security_roadmap(checks: List[Dict], is_no_mail: bool = False,
                       "plain_head": "Your approved sender list lets any server on the internet send as you.",
                       "who": WHO_DNS_HOST,
                       "impact": "+all authorizes every server on the internet to send as your domain."})
+    elif spf.get("open_terms"):
+        # The same opening one include down, or a range of every address.
+        _o = spf["open_terms"][0]
+        _name = _o.get("via") or _o.get("term")
+        items.append({"priority": "critical", "protocol": "SPF", "_kind": "spf_plus_all",
+                      "action": f"Remove {_name} from your SPF record",
+                      "plain_head": "Your approved sender list lets any server on the internet send as you.",
+                      "who": WHO_DNS_HOST,
+                      "impact": (f"{_name} authorizes every server on the internet to send as "
+                                 "your domain, so SPF and DMARC pass for forged mail.")})
 
     # No rua at any policy.
     #
@@ -3398,6 +3441,37 @@ def _report_uri_unusable(raw: Dict) -> bool:
                for i in raw.get("issues", []))
 
 
+def _no_mail_sentence(raw: Dict, with_rua: bool = True, rua_only: bool = False) -> str:
+    """Say which no-mail declarations this domain makes, and only those.
+
+    is_no_mail needs two signals, and null SPF plus p=reject is enough, so a
+    domain with a working MX can arrive here. "null MX, null SPF" was then
+    false beside the MX card. Without the signal list (a caller that has
+    not computed it) the sentence names neither record.
+    """
+    signals = raw.get("no_mail_signals")
+    null_mx = signals is not None and "null_mx" in signals
+    null_spf = signals is not None and "null_spf" in signals
+    if null_mx and null_spf:
+        lead = "This domain is configured to not send or receive email (null MX, null SPF)."
+        rua = ("Aggregate reporting (rua) is optional because there is no legitimate "
+               "mail to monitor.")
+    elif null_spf:
+        lead = "This domain publishes null SPF, so it sends no email."
+        rua = ("Aggregate reporting (rua) is optional because there is no outgoing mail "
+               "to report on, though reports would still show forged mail sent in its name.")
+    elif null_mx:
+        lead = "This domain publishes a null MX, so it receives no email."
+        rua = ("Aggregate reporting (rua) still shows who sends as this domain, if it "
+               "sends any mail.")
+    else:
+        lead = "This domain declares that it does not send email."
+        rua = "Aggregate reporting (rua) is optional because there is no outgoing mail to report on."
+    if rua_only:
+        return rua
+    return f"{lead} {rua}" if with_rua else lead
+
+
 def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: bool = False,
                     scope: Optional[str] = None) -> Dict:
     # The tree walk is optional and comes back None whenever dmarc_tree_walk
@@ -3748,6 +3822,17 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         verdict = f"Policy: {policy}" if policy else "Invalid record"
         status = "fail"
 
+    # t=y (RFC 9989 section 4.7) asks receivers for one level below p. The
+    # verdict said "failures are rejected" beside the warning row saying
+    # receivers treat the record as quarantine. RFC 7489 receivers ignore t,
+    # so the published policy still applies there.
+    _testing = (bool(record) and not inherited and raw.get("t") == "y"
+                and policy in ("reject", "quarantine") and not _pct_below_100(raw.get("pct")))
+    if _testing:
+        verdict = ("p=reject with t=y (RFC 9989 receivers quarantine instead)"
+                   if policy == "reject"
+                   else "p=quarantine with t=y (RFC 9989 receivers take no action)")
+
     # Fail only on what invalidates the record: a fatal syntax problem or an
     # engine error. What receivers ignore under RFC 9989 section 4.8 (unknown
     # tags, malformed optional values) arrives as a warning and grades warn:
@@ -3879,6 +3964,16 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
         )
     else:
         explanation = f"DMARC record found but the policy value is unexpected: '{_e(str(policy))}'."
+    if _testing and not inherited and record and not raw.get("policy_recovery_applied"):
+        _lower = "p=quarantine" if policy == "reject" else "p=none"
+        explanation += (
+            " <strong>t=y is set.</strong> "
+            "<a href=\"https://datatracker.ietf.org/doc/html/rfc9989#section-4.7\" "
+            "target=\"_blank\" rel=\"noopener\">RFC 9989 section 4.7</a> asks receivers to "
+            f"apply one level below the published policy, so receivers on RFC 9989 treat this "
+            f"record as {_lower}. Receivers still on RFC 7489 ignore t and apply "
+            f"p={_e(str(policy))}. Remove t=y once your reports show no legitimate failures."
+        )
 
     # Reporting note
     if record and not raw.get("rua") and not is_no_mail:
@@ -3896,11 +3991,7 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
                 "or whether authentication is passing."
             )
     elif record and is_no_mail and policy in ("quarantine", "reject"):
-        explanation += (
-            " This domain is configured to not send or receive email "
-            "(null MX, null SPF). Aggregate reporting (rua) is optional "
-            "because there is no legitimate mail to monitor."
-        )
+        explanation += " " + _no_mail_sentence(raw)
 
     # Details
     details: List[Dict[str, Any]] = []
@@ -4070,11 +4161,10 @@ def transform_dmarc(raw: Dict, tree_walk: Optional[Dict] = None, is_no_mail: boo
     elif not record:
         if is_no_mail:
             fix = (
-                f"This domain is configured to not send or receive email "
-                f"(null MX, null SPF, no DKIM). To protect against spoofing, "
+                f"{_no_mail_sentence(raw, with_rua=False)} To protect against spoofing, "
                 f"publish a DMARC record at <strong>_dmarc.{_e(domain_name)}</strong> with "
-                f"<strong>p=reject</strong>. Aggregate reporting (rua) is optional "
-                f"because there is no legitimate mail to monitor."
+                f"<strong>p=reject</strong>. "
+                + _no_mail_sentence(raw, rua_only=True)
             )
         else:
             fix = (
@@ -6252,6 +6342,11 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     record = raw.get("record")
     pill_label = None
     null_spf = _is_null_spf(record)
+    # A term that matches every sender, in this record or in one an include
+    # or redirect reaches (RFC 7208 section 5.2). The domain is as open as
+    # with a top-level +all, whatever its record ends in.
+    _open_terms = raw.get("open_terms") or []
+    _opened_by = (_open_terms[0].get("via") or _open_terms[0].get("term")) if _open_terms else None
 
     # Verdict
     if null_spf:
@@ -6266,7 +6361,7 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
     else:
         all_mech = raw.get("all_mechanism") or ""
         lookups = raw.get("lookup_count", 0)
-        if all_mech == "+all":
+        if all_mech == "+all" or _open_terms:
             verdict = "Authorizes the entire internet to send as you"
         elif lookups > 10:
             verdict = (f"SPF is invalid ({lookup_ratio_text(lookups, raw.get('lookup_truncated'))}"
@@ -6352,6 +6447,17 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         else:
             explanation = "SPF record found."
 
+        if _open_terms and all_mech != "+all":
+            explanation = (
+                f"<strong>{_e(_opened_by or "")}</strong> authorizes every server on the internet "
+                f"before the record reaches its end, so SPF passes for anyone and the closing "
+                f"<strong>{_e(all_mech or 'all')}</strong> is never reached for them. A forger "
+                "passes SPF with your domain aligned, which passes DMARC too. "
+                "<a href=\"https://datatracker.ietf.org/doc/html/rfc7208#section-5.2\" "
+                "target=\"_blank\" rel=\"noopener\">RFC 7208 section 5.2</a>: an include "
+                "matches when the record it names passes."
+            )
+
         if lookups and lookups > 10:
             explanation += (
                 f" <strong>Critical:</strong> This SPF record has a PermError because it requires "
@@ -6416,7 +6522,11 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
             details.append({"type": "error", "text": f"{lookups} DNS lookups. Past 10 lookups, receivers must return PermError (RFC 7208 section 4.6.4). PermError is not a pass, so SPF cannot satisfy DMARC for any message from this domain."})
 
         all_mech = raw.get("all_mechanism") or ""
-        if all_mech == "-all":
+        if _open_terms and all_mech != "+all":
+            details.append({"type": "error",
+                            "text": (f"{all_mech or 'The end of the record'} is never reached for most "
+                                     f"senders: {_opened_by} authorizes every server first")})
+        elif all_mech == "-all":
             details.append({"type": "good", "text": "-all (hardfail): servers not listed are not authorized"})
         elif all_mech == "~all":
             details.append({"type": "good", "text": "~all (softfail): servers not listed are not authorized"})
@@ -6453,12 +6563,17 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         has_engine_errors = any(
             i.get("severity") == "error" for i in raw.get("issues", [])
         )
-        if all_mech == "+all":
+        if all_mech == "+all" or _open_terms:
             status = "fail"
         elif lookups and lookups > 10:
             status = "fail"
         elif has_engine_errors:
             status = "fail"
+        elif raw.get("wide_terms") or raw.get("terms_after_all"):
+            # A range of an IPv4 /8 or wider (or IPv6 /16) authorizes millions
+            # of servers, and a term after all authorizes nobody although it
+            # reads as a sender. Both work, so warn, not fail.
+            status = "warn"
         elif raw.get("spf_indeterminate"):
             # At least one lookup in the chain never answered, so the lookup
             # count is a floor rather than a total. Do not certify the record.
@@ -6590,6 +6705,8 @@ def transform_spf(raw: Dict, has_mx: bool = True) -> Dict:
         "spf_deep": _build_spf_deep_analysis(raw) if record else None,
         "ttl_info": format_ttl(raw.get("ttl")),
         "deliverability": _deliverability,
+        "open_terms": [{"term": o.get("term"), "domain": o.get("domain"), "via": o.get("via")}
+                       for o in _open_terms],
     }
 
 
@@ -7006,6 +7123,63 @@ def _transform_dkim_card(raw: Dict, domain: str, has_mx: bool = True, non_mail: 
                 "fix": (
                     f"Verify that DKIM is enabled in your email provider's settings and that the public key "
                     f"TXT record is published at <strong>{_e(selector_not_found)}._domainkey.{_e(domain)}</strong>."
+                ),
+                "fix_records": None,
+                "deliverability": None,
+            }
+
+        # The operator named a selector, a TXT record exists at it, and none
+        # of it carries p=. RFC 6376 section 3.6.1 makes p= required, so a
+        # DKIM record without it is a published, broken key. A TXT that is
+        # not a DKIM record at all is reported as what it is. Either way the
+        # generic "probe could not confirm, re-run with the selector" text
+        # below contradicted what the user did.
+        _no_key = raw.get("selector_no_key")
+        if _no_key and not revoked:
+            _sel = _no_key.get("selector", "")
+            _name = f"{_sel}._domainkey.{domain}"
+            _recs = [r for r in (_no_key.get("records") or []) if r is not None]
+            _dkim_like = any(
+                re.match(r"\s*v\s*=\s*DKIM1\b", r, re.I)
+                or re.search(r"(?:^|;)\s*(?:k|h|t|s|n|g)\s*=", r, re.I)
+                for r in _recs)
+            _nk_details: List[Dict[str, Any]] = [{
+                "type": "error",
+                "text": (f"Selector '{_e(_sel)}' is published but has no p= tag, so receivers "
+                         "cannot verify any signature" if _dkim_like
+                         else f"The TXT record at {_e(_name)} is not a DKIM key record"),
+                "business_risk": BUSINESS_RISK.get("DKIM_SELECTOR_NOT_FOUND"),
+            }]
+            for _r in _recs[:3]:
+                _nk_details.append({"type": "info", "text": f"Found at {_e(_name)}: {_e(_r)}"})
+            for issue in raw.get("issues", []):
+                _nk_details.append(_issue_to_detail(issue))
+            return {
+                "name": "DKIM",
+                "status": "fail",
+                "pill_label": PILL_FAIL,
+                "verdict": (f"Selector '{_sel}' has no public key (p= missing)" if _dkim_like
+                            else f"Selector '{_sel}' holds a TXT record that is not DKIM"),
+                "record": _recs[0] if _recs else None,
+                "configured": True,
+                "explanation": (
+                    (f"A TXT record is published at <strong>{_e(_name)}</strong>, but it has no "
+                     "<strong>p=</strong> tag. "
+                     "<a href=\"https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1\" "
+                     "target=\"_blank\" rel=\"noopener\">RFC 6376 section 3.6.1</a> makes p= "
+                     "required: it carries the public key. Without it, every signature made with "
+                     "this selector fails verification. An empty p= would mean a retired key; a "
+                     "missing one means the record is broken.")
+                    if _dkim_like else
+                    (f"The TXT record at <strong>{_e(_name)}</strong> is not a DKIM key record: "
+                     "it has no v=DKIM1 and no p= tag. Receivers looking up this selector find no "
+                     "key, so every signature made with it fails verification.")
+                ),
+                "details": _nk_details,
+                "fix": (
+                    f"Republish the public key at <strong>{_e(_name)}</strong> exactly as your email "
+                    "provider gives it, including the <strong>p=</strong> value. Most providers "
+                    "show the full record in their DKIM settings."
                 ),
                 "fix_records": None,
                 "deliverability": None,
@@ -7943,6 +8117,23 @@ def transform_mx(raw: Dict) -> Dict:
     if providers:
         explanation += f" Provider: {_e(', '.join(providers))}."
 
+    # A "." exchange in any shape but the lone "0 ." (RFC 7505 section 3).
+    # mx_check reports it and leaves it out of the per-host rows.
+    _null_misconfigured = bool(raw.get("null_mx_misconfigured"))
+    _real_hosts = len(raw.get("mx_details", []))
+    if _null_misconfigured:
+        verdict = ("Null MX published next to other MX records" if _real_hosts
+                   else "Null MX published with the wrong preference")
+        explanation = (
+            "A null MX record (<strong>.</strong>, "
+            "<a href=\"https://datatracker.ietf.org/doc/html/rfc7505\" target=\"_blank\" "
+            "rel=\"noopener\">RFC 7505</a>) declares that a domain accepts no mail. It must "
+            "be the only MX record and use preference 0. "
+            + ("This domain publishes it beside other MX records, so senders get two "
+               "contradicting answers." if _real_hosts
+               else "This one uses another preference, so it is not a valid null MX.")
+        )
+
     # Details
     details = []
     for mx_detail in raw.get("mx_details", []):
@@ -7957,7 +8148,9 @@ def transform_mx(raw: Dict) -> Dict:
         else:
             details.append({"type": "error", "text": f"Priority {priority}: {hostname} does not resolve (dangling MX)"})
 
-    if count >= 2:
+    if _null_misconfigured:
+        pass
+    elif count >= 2:
         details.append({"type": "good", "text": "Multiple MX hosts provide failover redundancy"})
     elif count == 1 and _is_major_provider:
         details.append({"type": "info", "text": f"Single MX hostname, but {providers[0]} handles redundancy internally"})
@@ -7976,7 +8169,7 @@ def transform_mx(raw: Dict) -> Dict:
 
     # Deliverability context
     _deliverability = None
-    if count == 1 and not _is_major_provider:
+    if count == 1 and not _is_major_provider and not _null_misconfigured:
         _deliverability = (
             "You have only one mail server. If it goes down, incoming emails will queue at "
             "the sender's server for hours or days, and some senders give up after a few retries. "
@@ -8781,6 +8974,10 @@ def transform_caa(raw: Dict, domain: str) -> Dict:
             verdict = f"Restricted to {authorized_cas[0]}"
         else:
             verdict = f"{len(authorized_cas)} CAs authorized"
+    elif not has_issue and has_issuewild:
+        verdict = "Only wildcard certificates restricted"
+    elif not has_issue:
+        verdict = "No issuer named: any CA may issue"
     else:
         verdict = "Certificate issuance restricted"
 

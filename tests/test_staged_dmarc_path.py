@@ -480,19 +480,16 @@ def test_no_dashes_in_the_new_text(none_result):
         assert "—" not in value and " -- " not in value
 
 
-def test_the_privacy_page_body_is_untouched():
-    """The decision on issue 286: no audit data goes to a third party, so the
-    privacy page says what it said. Only the asset version strings that the
-    cache-busting step rewrites on every static page may differ."""
-    import subprocess
-    out = subprocess.run(["git", "show", "origin/main:static/privacy.html"],
-                         cwd=REPO, capture_output=True, text=True)
-    if out.returncode != 0:
-        pytest.skip("no origin/main to compare with")
-    def strip(t):
-        return re.sub(r"\?v=[a-zA-Z0-9]+", "?v=", t)
+def test_the_privacy_page_says_nothing_new_about_the_stepper():
+    """The decision on issue 286: no audit data goes to a third party and the
+    step check keeps nothing, so the privacy page needs no stepper section.
+    This compared the whole page body with origin/main, which also froze the
+    page against the 2026-11 corrections to what the log and the lookups do
+    (issues 295 and 296). It now checks the decision itself."""
     with open(os.path.join(REPO, "static", "privacy.html"), encoding="utf-8") as f:
-        assert strip(f.read()) == strip(out.stdout)
+        page = f.read().lower()
+    for word in ("step-check", "step check", "stepper", "language model"):
+        assert word not in page, word
 
 
 # ---------------------------------------------------------------
