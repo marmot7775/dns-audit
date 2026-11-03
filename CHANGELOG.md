@@ -40,6 +40,14 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
   services listed and no missing records claimed.
 
 ### Changed
+- sendermap 0.1.13 (was 0.1.11). Who sends as you shows its new risks under
+  Across the domain: a bare `all`, or an SPF term matching every IPv4 or IPv6
+  address, authorizes every server. A report address outside the domain is
+  credited only when its domain authorizes the reports (RFC 9990 section 4);
+  without that the map warns and the vendor panel, on the page and in the PDF,
+  no longer lists that report service. Names are encoded with IDNA 2008. The
+  audit does not pass stop_early, so dkim_skipped and the dkim_stopped gap stay
+  empty.
 - What to do, "Value:" lines: a long vendor host wraps at phone width instead
   of running past its box and being cut off.
 - The shared TLS adapter refuses verify=False, a custom CA bundle or a client
