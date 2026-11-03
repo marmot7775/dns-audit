@@ -438,7 +438,7 @@ def open_authorizations(tree: Dict[str, Any]) -> List[Dict[str, Any]]:
         for mech in node.get("mechanisms", []):
             raw = mech.get("raw") or ""
             breadth = term_breadth(raw)
-            if breadth:
+            if breadth and not mech.get("void"):
                 found.append({"domain": node.get("domain", ""), "term": raw,
                               "breadth": breadth, "path": here})
             if mechanism_is_all(mech):

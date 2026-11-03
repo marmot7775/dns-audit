@@ -6779,6 +6779,9 @@ def _build_spf_deep_analysis(raw: Dict) -> Optional[Dict]:
     for part in parts:
         if part.lower() == "v=spf1":
             continue
+        if all_mechanism:
+            # RFC 7208 section 5.1: nothing after the first all is evaluated.
+            break
 
         # Determine type and lookup cost. An explicit qualifier is legal on
         # every mechanism (RFC 7208 section 4.6.2), so classify the token
