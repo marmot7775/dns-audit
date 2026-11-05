@@ -1695,7 +1695,7 @@ def _usage_entry(note: dict) -> Optional[dict]:
             entry[k] = v
         status = note.get("status")
         if status is not None:
-            if status not in _APRF_STATUSES:
+            if not isinstance(status, str) or status not in _APRF_STATUSES:
                 return None
             entry["status"] = status
         skips = note.get("skips")

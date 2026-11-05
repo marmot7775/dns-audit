@@ -59,6 +59,11 @@ def test_an_unknown_outcome_is_refused():
     assert _usage_entry(_note(status="fine", skips={})) is None
 
 
+@pytest.mark.parametrize("bad", [["ok"], {"ok": 1}, 1, True])
+def test_a_non_string_outcome_is_refused_not_an_error(bad):
+    assert _usage_entry(_note(status=bad)) is None
+
+
 def test_outcome_may_be_absent_while_the_old_page_is_live():
     entry = _usage_entry(_note(skipped=11, copies=0))
     assert entry is not None
