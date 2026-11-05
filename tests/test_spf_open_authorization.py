@@ -17,7 +17,7 @@ DOMAIN = "t.test"
 def _zone(spf, extra=None):
     zone = {
         DOMAIN: {"MX": [(10, f"mail.{DOMAIN}")], "NS": [f"ns1.{DOMAIN}", f"ns2.{DOMAIN}"],
-                 "TXT": [spf]},
+                 "TXT": [spf], "A": ["192.0.2.1"], "AAAA": ["2001:db8::1"]},
         f"mail.{DOMAIN}": {"A": ["192.0.2.1"]},
         f"_dmarc.{DOMAIN}": {"TXT": [f"v=DMARC1; p=reject; rua=mailto:a@{DOMAIN}"]},
     }
