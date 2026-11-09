@@ -1636,7 +1636,8 @@ def _negative_lookup_probe() -> Optional[str]:
 # The APRF Report Reader (aprf.dns-audit.com) and the Email Header Decoder
 # (headers.dns-audit.com) do their work in the visitor's browser. After each
 # use they send one note here, so their use shows in the same audit log and
-# weekly report as an audit. A note carries counts and a result, never what
+# weekly report as an audit. A page may also send one visit note when it
+# opens, so a visitor who leaves without reading anything is still counted. A note carries counts and a result, never what
 # the visitor read: no report contents and no header text. The APRF note may
 # name the signing domains in the reports, as an audit names its domain.
 _USAGE_TOOLS = {"aprf-reader", "header-decoder"}
@@ -1687,6 +1688,13 @@ def _usage_entry(note: dict) -> Optional[dict]:
     ref = note.get("ref")
     if isinstance(ref, str) and DOMAIN_PATTERN.match(ref.lower()):
         entry["ref"] = ref.lower()
+    # A visit note: the page was opened. Sent once per page load, before any
+    # use, so a visitor who reads nothing still shows. It carries nothing past
+    # the tool and the linking host; any other field is ignored.
+    if note.get("visit") is True:
+        entry.pop("sample", None)
+        entry["visit"] = True
+        return entry
     if tool == "aprf-reader":
         for k in _USAGE_COUNTS:
             v = note.get(k)
