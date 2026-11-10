@@ -1657,21 +1657,26 @@ _USAGE_MAX_BODY = 4096
 _USAGE_MAX_DOMAINS = 20
 # Per IP and hour; a note past this is dropped, and audits are not affected
 _USAGE_PER_HOUR = 120
+# Visit notes count against their own allowance, so they cannot use up the
+# slots a read note needs.
+_USAGE_VISITS_PER_HOUR = 60
 _usage_hits: dict = defaultdict(list)
 _usage_lock = threading.Lock()
 
 
-def _usage_allowed(client_ip: str) -> bool:
+def _usage_allowed(client_ip: str, visit: bool = False) -> bool:
     now = time.time()
+    key = (client_ip, "visit") if visit else client_ip
+    limit = _USAGE_VISITS_PER_HOUR if visit else _USAGE_PER_HOUR
     with _usage_lock:
         if len(_usage_hits) > _RATE_LIMIT_MAX_IPS:
             _usage_hits.clear()
-        hits = [t for t in _usage_hits[client_ip] if now - t < 3600]
-        if len(hits) >= _USAGE_PER_HOUR:
-            _usage_hits[client_ip] = hits
+        hits = [t for t in _usage_hits[key] if now - t < 3600]
+        if len(hits) >= limit:
+            _usage_hits[key] = hits
             return False
         hits.append(now)
-        _usage_hits[client_ip] = hits
+        _usage_hits[key] = hits
         return True
 
 
@@ -1765,7 +1770,7 @@ async def usage_note(request: Request):
     entry = _usage_entry(note) if isinstance(note, dict) else None
     if entry is None:
         return Response(status_code=400)
-    if not _usage_allowed(_get_client_ip(request)):
+    if not _usage_allowed(_get_client_ip(request), visit=entry.get("visit") is True):
         return Response(status_code=429)
     ua_raw = request.headers.get("User-Agent", "")
     line = {

@@ -40,3 +40,14 @@ def test_visit_note_for_an_unknown_tool_is_refused():
 def test_only_a_true_visit_flag_counts(visit):
     # Anything but true falls through to the use checks, which this bare note fails
     assert _usage_entry({"tool": "aprf-reader", "visit": visit}) is None
+
+
+def test_visits_do_not_consume_the_read_allowance(monkeypatch):
+    server_module._usage_hits.clear()
+    monkeypatch.setattr(server_module, "_USAGE_VISITS_PER_HOUR", 2)
+    monkeypatch.setattr(server_module, "_USAGE_PER_HOUR", 2)
+    ip = "203.0.113.9"
+    assert [server_module._usage_allowed(ip, visit=True) for _ in range(3)] == [True, True, False]
+    assert server_module._usage_allowed(ip) and server_module._usage_allowed(ip)
+    assert not server_module._usage_allowed(ip)
+    server_module._usage_hits.clear()
