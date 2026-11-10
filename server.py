@@ -1638,8 +1638,7 @@ def _negative_lookup_probe() -> Optional[str]:
 # use they send one note here, so their use shows in the same audit log and
 # weekly report as an audit. A page may also send one visit note when it
 # opens, so a visitor who leaves without reading anything is still counted. A note carries counts and a result, never what
-# the visitor read: no report contents and no header text. The APRF note may
-# name the signing domains in the reports, as an audit names its domain.
+# the visitor read: no report contents, no header text, and no domains.
 _USAGE_TOOLS = {"aprf-reader", "header-decoder"}
 _USAGE_COUNTS = ("reports", "streams", "warnings")
 _HEADER_STATUSES = {"pass", "fail", "forwarded", "none", "error", "unknown"}
@@ -1654,7 +1653,6 @@ _APRF_STATUSES = {"ok", "partial", "none", "error"}
 _SKIP_CODES = {"nested_archive", "encrypted", "too_large", "unpack_failed",
                "no_report_attached", "zip_too_many", "parse_failed"}
 _USAGE_MAX_BODY = 4096
-_USAGE_MAX_DOMAINS = 20
 # Per IP and hour; a note past this is dropped, and audits are not affected
 _USAGE_PER_HOUR = 120
 # Visit notes count against their own allowance, so they cannot use up the
@@ -1707,10 +1705,9 @@ def _usage_entry(note: dict) -> Optional[dict]:
                 return None
             entry[k] = v
         status = note.get("status")
-        if status is not None:
-            if not isinstance(status, str) or status not in _APRF_STATUSES:
-                return None
-            entry["status"] = status
+        if not isinstance(status, str) or status not in _APRF_STATUSES:
+            return None
+        entry["status"] = status
         skips = note.get("skips")
         if isinstance(skips, dict):
             # Walk the closed set, not the submitted keys: an unknown code is
@@ -1723,27 +1720,9 @@ def _usage_entry(note: dict) -> Optional[dict]:
                 counts[code] = n
             if counts:
                 entry["skips"] = counts
-        else:
-            # The reader deployed before skips and statuses existed sends a bare
-            # total and no status. Drop this arm, and make status required above,
-            # once that page is replaced.
-            legacy = note.get("skipped")
-            if not isinstance(legacy, bool) and isinstance(legacy, int) and 0 <= legacy <= 10_000_000:
-                entry["skipped"] = legacy
-        domains = note.get("domains", [])
-        if not isinstance(domains, list):
-            return None
-        kept = []
-        for d in domains[:_USAGE_MAX_DOMAINS]:
-            # A roll-up report names "*.example.com"; the domain is what matters
-            d = d.lower().removeprefix("*.") if isinstance(d, str) else ""
-            if DOMAIN_PATTERN.match(d) and d not in kept:
-                kept.append(d)
-        # Omitted rather than written empty: the reader stopped sending signing
-        # domains (aprf-reader CLAUDE.md), so every note would otherwise carry a
-        # "domains": [] that means nothing.
-        if kept:
-            entry["domains"] = kept
+        # A bare "skipped" total and signing "domains" came from the reader as
+        # deployed before 3 November 2026. Neither is accepted now; like any
+        # unknown field they are ignored, never written.
     else:
         status = note.get("status")
         if status not in _HEADER_STATUSES:
