@@ -18,8 +18,8 @@ from fastapi.testclient import TestClient
 
 import server as server_module
 
-APRF = {"tool": "aprf-reader", "reports": 40, "streams": 2, "warnings": 3, "skipped": 1, "copies": 0,
-        "domains": ["Example.com", "*.news.example.com", "not a domain", "example.com"]}
+APRF = {"tool": "aprf-reader", "status": "partial", "reports": 40, "streams": 2, "warnings": 3,
+        "skips": {"encrypted": 1}, "domains": ["Example.com", "*.news.example.com"]}
 
 
 class _Capture(logging.Handler):
@@ -49,14 +49,14 @@ def _post(client, note, raw=None):
                                 "Referer": "https://aprf.dns-audit.com/some/path?q=1"})
 
 
-def test_aprf_note_is_logged_with_counts_and_clean_domains(logged):
+def test_aprf_note_is_logged_with_counts_and_no_domains(logged):
     r = _post(TestClient(server_module.app), APRF)
     assert r.status_code == 204
     (e,) = logged
     assert e["source"] == "tool" and e["tool"] == "aprf-reader"
-    assert (e["reports"], e["streams"], e["warnings"], e["skipped"]) == (40, 2, 3, 1)
-    assert "copies" not in e  # always zero where the reader sent it, so no longer stored
-    assert e["domains"] == ["example.com", "news.example.com"]  # lowercased, roll-up star dropped, junk and repeats out
+    assert (e["status"], e["reports"], e["streams"], e["warnings"]) == ("partial", 40, 2, 3)
+    assert e["skips"] == {"encrypted": 1}
+    assert "domains" not in e  # sent by the old reader only, and never recorded now
     assert "ref" not in e  # the request's Referer is the tool page itself, so it is not used
     assert len(e["vid"]) == 12 and "Chrome" in e["ua"] and e["bot"] is False
 
@@ -74,7 +74,7 @@ def test_header_note_carries_the_result_only(logged):
     ({"tool": "header-decoder", "status": "maybe"}, None),
     ({**APRF, "reports": -1}, None),
     ({**APRF, "streams": "2"}, None),
-    ({**APRF, "domains": "example.com"}, None),
+    ({k: v for k, v in APRF.items() if k != "status"}, None),
     (None, "not json"),
     (None, json.dumps([APRF])),
     (None, json.dumps({**APRF, "pad": "x" * 5000})),

@@ -29,7 +29,7 @@ _usage_entry = server_module._usage_entry
 
 def _note(**over):
     note = {"tool": "aprf-reader", "reports": 394, "streams": 53,
-            "warnings": 409, "domains": ["sender.example"]}
+            "warnings": 409}
     note.update(over)
     return note
 
@@ -49,7 +49,7 @@ def test_a_failed_read_is_a_note_not_a_silence():
     """The 'error' note carries zero counts and still has to be accepted."""
     entry = _usage_entry({"tool": "aprf-reader", "status": "error",
                           "reports": 0, "streams": 0, "warnings": 0,
-                          "skips": {}, "domains": []})
+                          "skips": {}})
     assert entry is not None
     assert entry["status"] == "error"
     assert entry["reports"] == 0
@@ -64,10 +64,9 @@ def test_a_non_string_outcome_is_refused_not_an_error(bad):
     assert _usage_entry(_note(status=bad)) is None
 
 
-def test_outcome_may_be_absent_while_the_old_page_is_live():
-    entry = _usage_entry(_note(skipped=11, copies=0))
-    assert entry is not None
-    assert "status" not in entry
+def test_outcome_is_required_now_the_old_page_is_gone():
+    # The reader before 3 November 2026 sent no status; it has been replaced
+    assert _usage_entry(_note(skipped=11, copies=0)) is None
 
 
 # ------------------------------------------------------------------
@@ -102,10 +101,10 @@ def test_no_skips_means_no_skips_field():
     assert "skipped" not in entry
 
 
-def test_the_old_bare_count_still_lands_until_the_page_is_replaced():
-    entry = _usage_entry(_note(skipped=11, copies=0))
-    assert entry["skipped"] == 11
-    assert "skips" not in entry
+def test_a_bare_skipped_count_is_ignored():
+    entry = _usage_entry(_note(status="partial", skipped=11))
+    assert entry is not None
+    assert "skipped" not in entry and "skips" not in entry
 
 
 def test_skips_wins_over_a_bare_count_if_a_page_sends_both():
@@ -130,23 +129,16 @@ def test_a_note_carries_no_filename_or_error_text():
 
 
 def test_counts_are_still_required():
-    assert _usage_entry({"tool": "aprf-reader", "status": "ok",
-                         "domains": []}) is None
+    assert _usage_entry({"tool": "aprf-reader", "status": "ok"}) is None
 
 
 # ------------------------------------------------------------------
-# signing domains, which the reader no longer sends
+# signing domains, which the reader stopped sending on 3 November 2026
 # ------------------------------------------------------------------
 
-def test_no_domains_means_no_domains_field():
-    """An empty list would be a field on every note that says nothing."""
-    entry = _usage_entry({"tool": "aprf-reader", "status": "ok", "reports": 1,
-                          "streams": 1, "warnings": 0, "skips": {}})
-    assert entry is not None
-    assert "domains" not in entry
-
-
-def test_domains_are_still_recorded_from_a_reader_that_sends_them():
+def test_domains_are_never_recorded():
     entry = _usage_entry(_note(status="ok", skips={},
                                domains=["Sender.Example", "*.bigsender.example"]))
-    assert entry["domains"] == ["sender.example", "bigsender.example"]
+    assert entry is not None
+    assert "domains" not in entry
+    assert "sender.example" not in repr(entry).lower()
