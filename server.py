@@ -1847,15 +1847,25 @@ async def robots_txt():
     )
 
 
-# Google Search Console ownership check. Google fetches this file again from
-# time to time, so it stays for as long as the property is verified.
-_GOOGLE_VERIFICATION = "google12ffad50ed279279.html"
+# Google Search Console ownership checks. Google fetches these files again
+# from time to time, so each stays for as long as its property is verified.
+# The name is tied to the Google account, so a second account means a second
+# file.
+_GOOGLE_VERIFICATIONS = (
+    "google12ffad50ed279279.html",
+    "googlee8d272ed3ebe2963.html",
+)
 
 
-@app.get(f"/{_GOOGLE_VERIFICATION}", include_in_schema=False)
-async def google_site_verification():
-    return Response(f"google-site-verification: {_GOOGLE_VERIFICATION}\n",
-                    media_type="text/html")
+def _google_verification_route(filename: str) -> None:
+    @app.get(f"/{filename}", include_in_schema=False)
+    async def google_site_verification():
+        return Response(f"google-site-verification: {filename}\n",
+                        media_type="text/html")
+
+
+for _filename in _GOOGLE_VERIFICATIONS:
+    _google_verification_route(_filename)
 
 
 # ============================================================

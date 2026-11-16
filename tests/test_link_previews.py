@@ -13,6 +13,8 @@ import re
 import struct
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -101,10 +103,14 @@ def test_head_never_reaches_the_audit_api():
     assert client.head("/api/audit?domain=example.com").status_code == 405
 
 
-def test_google_search_console_verification_file_is_served():
-    r = client.get("/google12ffad50ed279279.html")
+@pytest.mark.parametrize("filename", [
+    "google12ffad50ed279279.html",
+    "googlee8d272ed3ebe2963.html",
+])
+def test_google_search_console_verification_file_is_served(filename):
+    r = client.get(f"/{filename}")
     assert r.status_code == 200
-    assert r.text.strip() == "google-site-verification: google12ffad50ed279279.html"
+    assert r.text.strip() == f"google-site-verification: {filename}"
 
 
 def test_llms_txt_lists_the_three_tools():
