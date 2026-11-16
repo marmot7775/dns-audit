@@ -99,3 +99,9 @@ def test_head_answers_like_get_without_a_body():
 
 def test_head_never_reaches_the_audit_api():
     assert client.head("/api/audit?domain=example.com").status_code == 405
+
+
+def test_google_search_console_verification_file_is_served():
+    r = client.get("/google12ffad50ed279279.html")
+    assert r.status_code == 200
+    assert r.text.strip() == "google-site-verification: google12ffad50ed279279.html"
