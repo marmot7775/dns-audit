@@ -44,7 +44,7 @@ def test_every_article_links_to_every_other_by_its_h1():
 
 
 def _visible(page):
-    return re.sub(r"<script\b.*?</script>", "", page, flags=re.S)
+    return re.sub(r"<script\b[^>]*>.*?</script[^>]*>", "", page, flags=re.S | re.I)
 
 
 def test_the_home_page_shows_the_faq_its_markup_describes():
