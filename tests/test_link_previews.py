@@ -105,3 +105,15 @@ def test_google_search_console_verification_file_is_served():
     r = client.get("/google12ffad50ed279279.html")
     assert r.status_code == 200
     assert r.text.strip() == "google-site-verification: google12ffad50ed279279.html"
+
+
+def test_llms_txt_lists_the_three_tools():
+    llms = client.get("/llms.txt").text
+    for url in ("https://dns-audit.com/", "https://headers.dns-audit.com/",
+                "https://aprf.dns-audit.com/"):
+        assert f"]({url})" in llms, url
+    assert llms.index("## Tools") < llms.index("## Articles")
+
+
+def test_robots_txt_keeps_crawlers_out_of_cdn_cgi():
+    assert "Disallow: /cdn-cgi/\n" in client.get("/robots.txt").text

@@ -29,8 +29,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="preload" href="/static/fonts/dm-sans-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/style.css?v=7be11843a3">
-    <script src="/static/theme.js?v=7be11843a3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=d9783b4c5c">
+    <script src="/static/theme.js?v=d9783b4c5c"></script>
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -136,6 +136,17 @@
                 <h2>What to do with this</h2>
                 <p>If you handle sensitive correspondence or regulated data, publish TLSA records for your MX hosts, and turn on DANE validation for the mail you send. Pair DANE with MTA-STS for senders that will not do DNSSEC, and pair both with <a href="https://datatracker.ietf.org/doc/html/rfc8460" target="_blank" rel="noopener">TLS-RPT</a> so sending servers tell you when they cannot deliver to you securely. If you last looked at the protocol before 2017, the picture has moved, and the objections you remember were about operations that have since been automated.</p>
             </section>
+            <nav class="dbis-section more-articles" aria-labelledby="more-articles">
+                <h2 id="more-articles">More articles</h2>
+                <ul>
+                    <li><a href="/articles/aprf">What APRF inbox placement reports tell you, and what they don't</a></li>
+                    <li><a href="/articles/postmaster-tools">Gmail Postmaster Tools without the reputation ratings</a></li>
+                    <li><a href="/articles/p-reject">What to check before you publish p=reject</a></li>
+                    <li><a href="/articles/spf-lookups">SPF permerror from too many lookups: how to get back under 10</a></li>
+                    <li><a href="/articles/dmarcbis">What RFC 9989 changes for your DMARC record</a></li>
+                    <li><a href="/articles/dnssec">DNSSEC in 2026: what changed and whether you need it</a></li>
+                </ul>
+            </nav>
         </article>
     </main>
     <footer class="site-footer">

@@ -794,6 +794,36 @@ main {
     letter-spacing: 0.005em;
 }
 
+/* The questions the FAQPage JSON-LD describes, shown on the page. It sits
+   after the results, so the form stays first and the results push it down. */
+.home-faq {
+    padding: var(--space-xl) 0 var(--space-2xl);
+}
+
+.home-faq h2 {
+    margin: 0 0 var(--space-md);
+    font-size: var(--font-xl);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+    color: var(--text-primary);
+}
+
+.home-faq h3 {
+    margin: var(--space-lg) 0 var(--space-sm);
+    font-size: var(--font-md);
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.home-faq p {
+    margin: 0;
+    font-size: var(--font-md);
+    line-height: 1.65;
+    color: var(--text-secondary);
+}
+
 /* ==========================================================================
    RESULTS
    ========================================================================== */
@@ -8390,6 +8420,16 @@ h3.services-sub,
 .dbis-article h2 {
     margin-top: 3rem;
     margin-bottom: 1rem;
+}
+
+/* The list of the other articles that closes each article. On a phone each
+   link is a 44px touch target. */
+@media (max-width: 640px) {
+    .more-articles li a {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+    }
 }
 
 /* Doc 92: article short version */

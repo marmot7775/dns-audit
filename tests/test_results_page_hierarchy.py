@@ -70,7 +70,10 @@ def test_every_card_starts_collapsed_and_the_page_is_short(browser, fixture_resu
             emptyVerdicts: [...document.querySelectorAll('.result-card')]
                 .filter(c => !c.querySelector('.result-verdict').textContent.trim())
                 .map(c => c.id),
-            height: document.documentElement.scrollHeight,
+            // To the end of the results: the questions under them are the same
+            // on every page and are not what a closed result costs in height.
+            height: Math.round(document.getElementById('results-section')
+                .getBoundingClientRect().bottom + window.scrollY),
             toggle: document.querySelector('#toggle-all-btn span').textContent,
         })""")
         assert m["cards"] == 12, m["cards"]

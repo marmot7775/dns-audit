@@ -10,6 +10,11 @@ the docs themselves are in [docs/history](docs/history/README.md). Docs 16,
 ## [Unreleased]
 
 ### Added
+- SEO site audit fixes ([doc](docs/history/seo-site-audit.md)): the home page
+  shows the four questions its FAQPage markup describes, every article ends
+  with links to the other six, and `/llms.txt` lists the three tools.
+  `robots.txt` disallows `/cdn-cgi/`, www redirects to the apex in nginx, and
+  the SPF article's title tag is 63 characters.
 - Staged DMARC path (#286): the plan shows only the next DMARC stage, with the
   condition for moving on in plain words, the record in the change set, vendor
   rows from Sendermap's catalog, and a plain statement that the site never sees

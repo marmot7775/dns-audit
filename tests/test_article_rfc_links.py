@@ -85,6 +85,15 @@ _DANE_SOURCES = {
 }
 
 
+# Every article closes with the same More articles list (SEO site audit).
+# It is site navigation, not something the article cites, so the tests below
+# that pin an article's own links read the page without it;
+# tests/test_seo_site_audit.py pins the list.
+def _without_more_articles(content):
+    return re.sub(r'<nav class="dbis-section more-articles".*?</nav>', "", content,
+                  flags=re.S)
+
+
 def _anchors(content):
     return re.findall(r'<a href="([^"]+)"[^>]*>([^<]+)</a>', content)
 
@@ -114,7 +123,7 @@ def test_dane_article_internal_links_resolve_to_pages():
 # Further reading. No other external link belongs on the page.
 def test_spf_lookups_article_links_only_rfc_7208():
     with open(os.path.join(ARTICLES_DIR, "spf-lookups.html"), encoding="utf-8") as f:
-        content = f.read()
+        content = _without_more_articles(f.read())
     anchors = _anchors(content)
     external = [(href, text) for href, text in anchors if href.startswith("http")
                 and "dns-audit.com" not in href and "github.com" not in href
@@ -137,7 +146,7 @@ _P_REJECT_LINKS = [
 
 def test_p_reject_article_links_only_the_provider_requirement_pages():
     with open(os.path.join(ARTICLES_DIR, "p-reject.html"), encoding="utf-8") as f:
-        content = f.read()
+        content = _without_more_articles(f.read())
     article = content[content.index("<article"):content.index("</article>")]
     anchors = _anchors(article)
     assert [a for a in anchors if not a[0].startswith("/")] == _P_REJECT_LINKS
@@ -167,7 +176,7 @@ _POSTMASTER_LINKS = [
 
 def test_postmaster_tools_article_links_its_sources():
     with open(os.path.join(ARTICLES_DIR, "postmaster-tools.html"), encoding="utf-8") as f:
-        content = f.read()
+        content = _without_more_articles(f.read())
     article = content[content.index("<article"):content.index("</article>")]
     anchors = _anchors(article)
     assert [h for h, _ in anchors if h.startswith("http")] == _POSTMASTER_LINKS
@@ -194,6 +203,6 @@ def test_every_article_has_a_byline_linking_about_neil():
 # links are the byline and the APRF Report Reader, a dns-audit.com tool.
 def test_aprf_article_has_no_links():
     with open(os.path.join(ARTICLES_DIR, "aprf.html"), encoding="utf-8") as f:
-        content = f.read()
+        content = _without_more_articles(f.read())
     article = content[content.index("<article"):content.index("</article>")]
     assert [h for h, _ in _anchors(article)] == ["/about#neil", "https://aprf.dns-audit.com/"]
