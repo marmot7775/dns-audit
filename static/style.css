@@ -812,7 +812,7 @@ main {
 .home-faq h3 {
     margin: var(--space-lg) 0 var(--space-sm);
     font-size: var(--font-md);
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.4;
     color: var(--text-primary);
 }
