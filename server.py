@@ -1839,6 +1839,9 @@ async def robots_txt():
         "Disallow: /api/\n"
         "Disallow: /docs\n"
         "Disallow: /redoc\n"
+        # Cloudflare rewrites the footer address into a link under /cdn-cgi/
+        # that only a browser can decode; a crawler following it gets a 404.
+        "Disallow: /cdn-cgi/\n"
         "\n"
         "Sitemap: https://dns-audit.com/sitemap.xml\n"
     )
@@ -2032,11 +2035,27 @@ async def sitemap():
     return Response(content=xml, media_type="application/xml")
 
 
+# The sister tools the site header links on every page. Each description is
+# the meta description of that tool's own index page, copied as it stood on
+# 2026-11-15; copy it again when the tool's page changes.
+_SISTER_TOOLS = [
+    ("Header Decoder", "https://headers.dns-audit.com/",
+     "This free email header analyzer shows in one sentence why a message "
+     "passed or failed SPF, DKIM, and DMARC, and what to fix."),
+    ("APRF Reader", "https://aprf.dns-audit.com/",
+     "Free APRF report reader. See whether your mail reaches the inbox, from "
+     "the mailbox provider's own numbers: inbox and unwanted counts day by "
+     "day, what changed, and a check against the draft standard. Free, no "
+     "sign-up."),
+]
+
+
 @app.get("/llms.txt", response_class=PlainTextResponse, tags=["SEO"])
 async def llms_txt():
     """A plain text map of the site for AI assistants (llmstxt.org): what
-    the tool is, and every article with its own description."""
+    the tool is, the tools, and every article with its own description."""
     base = "https://dns-audit.com"
+    home = _page_meta("index.html")
     lines = [
         "# dns-audit.com",
         "",
@@ -2045,9 +2064,12 @@ async def llms_txt():
         "nameservers, Certificate Transparency) read from a domain's public "
         "records, with findings in plain language and copy-paste fixes.",
         "",
-        "## Articles",
+        "## Tools",
         "",
+        f"- [{home.get('title', 'dns-audit.com')}]({base}/): {home.get('description', '')}",
     ]
+    lines += [f"- [{name}]({url}): {desc}" for name, url, desc in _SISTER_TOOLS]
+    lines += ["", "## Articles", ""]
     for p in _SITE_PAGES:
         if p["loc"].startswith("/articles/") and p["loc"] != "/articles/":
             meta = _page_meta(p["file"])

@@ -93,3 +93,4 @@ repo. Doc 42 (branch cleanup) was not saved either.
 - [Doc 105](doc-105.md): The DKIM probe runs on Sendermap's selector sweep plus LOCAL_SELECTORS; the master list and the 40-name cap are gone
 - [APRF -01](aprf-01.md): Own-domain test moved to the wildcard; article follows draft-ietf-mailmaint-aprf-01
 - [Making the standard visible](standard-visible.md): Architecture page, decisions, CI lint, packaging, cleanup
+- [SEO site audit fixes](seo-site-audit.md): /cdn-cgi/ out of the crawl, www redirects to the apex, articles link each other, the FAQ is on the page, llms.txt lists the tools
