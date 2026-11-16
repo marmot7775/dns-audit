@@ -1844,6 +1844,17 @@ async def robots_txt():
     )
 
 
+# Google Search Console ownership check. Google fetches this file again from
+# time to time, so it stays for as long as the property is verified.
+_GOOGLE_VERIFICATION = "google12ffad50ed279279.html"
+
+
+@app.get(f"/{_GOOGLE_VERIFICATION}", include_in_schema=False)
+async def google_site_verification():
+    return Response(f"google-site-verification: {_GOOGLE_VERIFICATION}\n",
+                    media_type="text/html")
+
+
 # ============================================================
 # 404 handler
 # ============================================================
